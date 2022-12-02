@@ -3,6 +3,7 @@ package p2p
 import (
 	"bytes"
 	"context"
+	headerpkg "github.com/celestiaorg/celestia-node/pkg/header"
 	"testing"
 	"time"
 
@@ -11,8 +12,6 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
@@ -339,7 +338,7 @@ func (m *mockStore) Head(context.Context) (*header.ExtendedHeader, error) {
 	return m.headers[m.headHeight], nil
 }
 
-func (m *mockStore) Get(ctx context.Context, hash tmbytes.HexBytes) (*header.ExtendedHeader, error) {
+func (m *mockStore) Get(ctx context.Context, hash headerpkg.Hash) (*header.ExtendedHeader, error) {
 	for _, header := range m.headers {
 		if bytes.Equal(header.Hash(), hash) {
 			return header, nil
@@ -375,7 +374,7 @@ func (m *mockStore) GetVerifiedRange(
 	return m.GetRangeByHeight(ctx, uint64(h.Height)+1, to)
 }
 
-func (m *mockStore) Has(context.Context, tmbytes.HexBytes) (bool, error) {
+func (m *mockStore) Has(context.Context, headerpkg.Hash) (bool, error) {
 	return false, nil
 }
 
