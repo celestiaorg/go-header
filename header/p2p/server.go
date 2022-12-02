@@ -5,15 +5,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/protocol"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
 	"github.com/celestiaorg/celestia-node/header"
 	p2p_pb "github.com/celestiaorg/celestia-node/header/p2p/pb"
+	headerpkg "github.com/celestiaorg/celestia-node/pkg/header"
 )
 
 // ExchangeServer represents the server-side component for
@@ -150,11 +149,11 @@ func (serv *ExchangeServer) requestHandler(stream network.Stream) {
 // handleRequestByHash returns the ExtendedHeader at the given hash
 // if it exists.
 func (serv *ExchangeServer) handleRequestByHash(hash []byte) ([]*header.ExtendedHeader, error) {
-	log.Debugw("server: handling header request", "hash", tmbytes.HexBytes(hash).String())
+	log.Debugw("server: handling header request", "hash", headerpkg.Hash(hash).String())
 
 	h, err := serv.store.Get(serv.ctx, hash)
 	if err != nil {
-		log.Errorw("server: getting header by hash", "hash", tmbytes.HexBytes(hash).String(), "err", err)
+		log.Errorw("server: getting header by hash", "hash", headerpkg.Hash(hash).String(), "err", err)
 		return nil, err
 	}
 	return []*header.ExtendedHeader{h}, nil
