@@ -43,7 +43,7 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 // and caller should get it elsewhere.
 func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 	if hs.Height() >= height {
-		return *new(H), errElapsedHeight
+		return *new(H), errElapsedHeight //nolint:gocritic
 	}
 
 	hs.heightReqsLk.Lock()
@@ -52,7 +52,7 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 		// The lock above can park a goroutine long enough for hs.height to change for a requested height,
 		// leaving the request never fulfilled and the goroutine deadlocked.
 		hs.heightReqsLk.Unlock()
-		return *new(H), errElapsedHeight
+		return *new(H), errElapsedHeight //nolint:gocritic
 	}
 	resp := make(chan H, 1)
 	hs.heightReqs[height] = append(hs.heightReqs[height], resp)
@@ -62,7 +62,7 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 	case resp := <-resp:
 		return resp, nil
 	case <-ctx.Done():
-		return *new(H), ctx.Err()
+		return *new(H), ctx.Err() //nolint:gocritic
 	}
 }
 
