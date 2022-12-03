@@ -2,16 +2,16 @@ package sync
 
 import (
 	"context"
-	headerpkg "github.com/celestiaorg/celestia-node/pkg/header"
-	"github.com/celestiaorg/celestia-node/pkg/header/local"
-	"github.com/celestiaorg/celestia-node/pkg/header/store"
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/celestia-node/header"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/celestiaorg/celestia-node/pkg/header"
+	"github.com/celestiaorg/celestia-node/pkg/header/local"
+	"github.com/celestiaorg/celestia-node/pkg/header/store"
 )
 
 var blockTime = 30 * time.Second
@@ -24,18 +24,18 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t, 3)
+	suite := header.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
-	_, err := remoteStore.Append(ctx, suite.GenExtendedHeaders(100)...)
+	_, err := remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	_, err = remoteStore.GetByHeight(ctx, 100)
 	require.NoError(t, err)
 
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer(local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
 
@@ -65,22 +65,22 @@ func TestSyncCatchUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t, 3)
+	suite := header.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer(local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
 	// 1. Initial sync
 	err := syncer.Start(ctx)
 	require.NoError(t, err)
 
 	// 2. chain grows and syncer misses that
-	_, err = remoteStore.Append(ctx, suite.GenExtendedHeaders(100)...)
+	_, err = remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	// 3. syncer rcvs header from the future and starts catching-up
-	res := syncer.incomingNetHead(ctx, suite.GenExtendedHeaders(1)[0])
+	res := syncer.incomingNetHead(ctx, suite.GenDummyHeaders(1)[0])
 	assert.Equal(t, pubsub.ValidationAccept, res)
 
 	time.Sleep(time.Millisecond * 10) // needs some to realize it is syncing
@@ -110,28 +110,28 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t, 3)
+	suite := header.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer(local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
 	err := syncer.Start(ctx)
 	require.NoError(t, err)
 
 	// miss 1 (helps to test that Syncer properly requests missed Headers from Exchange)
-	_, err = remoteStore.Append(ctx, suite.GenExtendedHeaders(1)...)
+	_, err = remoteStore.Append(ctx, suite.GenDummyHeaders(1)...)
 	require.NoError(t, err)
 
-	range1 := suite.GenExtendedHeaders(15)
+	range1 := suite.GenDummyHeaders(15)
 	_, err = remoteStore.Append(ctx, range1...)
 	require.NoError(t, err)
 
 	// miss 2
-	_, err = remoteStore.Append(ctx, suite.GenExtendedHeaders(3)...)
+	_, err = remoteStore.Append(ctx, suite.GenDummyHeaders(3)...)
 	require.NoError(t, err)
 
-	range2 := suite.GenExtendedHeaders(23)
+	range2 := suite.GenDummyHeaders(23)
 	_, err = remoteStore.Append(ctx, range2...)
 	require.NoError(t, err)
 
@@ -164,13 +164,13 @@ func TestSyncer_OnlyOneRecentRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t, 3)
+	suite := header.NewTestSuite(t)
 	store := store.NewTestStore(ctx, t, suite.Head())
-	newHead := suite.GenExtendedHeader()
+	newHead := suite.GenDummyHeader()
 	exchange := &exchangeCountingHead{header: newHead}
-	syncer := NewSyncer(exchange, store, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](exchange, store, &header.DummySubscriber{}, blockTime)
 
-	res := make(chan *header.ExtendedHeader)
+	res := make(chan *header.DummyHeader)
 	for i := 0; i < 10; i++ {
 		go func() {
 			head, err := syncer.networkHead(ctx)
@@ -187,38 +187,38 @@ func TestSyncer_OnlyOneRecentRequest(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		head := <-res
-		assert.True(t, exchange.header.Equals(head))
+		assert.Equal(t, exchange.header, head)
 	}
 	assert.Equal(t, 1, exchange.counter)
 }
 
 type exchangeCountingHead struct {
-	header  *header.ExtendedHeader
+	header  *header.DummyHeader
 	counter int
 }
 
-func (e *exchangeCountingHead) Head(context.Context) (*header.ExtendedHeader, error) {
+func (e *exchangeCountingHead) Head(context.Context) (*header.DummyHeader, error) {
 	e.counter++
 	time.Sleep(time.Millisecond * 100) // simulate requesting something
 	return e.header, nil
 }
 
-func (e *exchangeCountingHead) Get(ctx context.Context, bytes headerpkg.Hash) (*header.ExtendedHeader, error) {
+func (e *exchangeCountingHead) Get(ctx context.Context, bytes header.Hash) (*header.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (e *exchangeCountingHead) GetByHeight(ctx context.Context, u uint64) (*header.ExtendedHeader, error) {
+func (e *exchangeCountingHead) GetByHeight(ctx context.Context, u uint64) (*header.DummyHeader, error) {
 	panic("implement me")
 }
 
 func (e *exchangeCountingHead) GetRangeByHeight(
 	c context.Context,
 	from, amount uint64,
-) ([]*header.ExtendedHeader, error) {
+) ([]*header.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (e *exchangeCountingHead) GetVerifiedRange(c context.Context, from *header.ExtendedHeader, amount uint64,
-) ([]*header.ExtendedHeader, error) {
+func (e *exchangeCountingHead) GetVerifiedRange(c context.Context, from *header.DummyHeader, amount uint64,
+) ([]*header.DummyHeader, error) {
 	panic("implement me")
 }
