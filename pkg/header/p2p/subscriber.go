@@ -15,7 +15,7 @@ import (
 type Subscriber[H header.Header] struct {
 	pubsub *pubsub.PubSub
 	topic  *pubsub.Topic
-	msgID pubsub.MsgIdFunction
+	msgID  pubsub.MsgIdFunction
 }
 
 // NewSubscriber returns a Subscriber that manages the header Module's
@@ -23,7 +23,7 @@ type Subscriber[H header.Header] struct {
 func NewSubscriber[H header.Header](ps *pubsub.PubSub, msgID pubsub.MsgIdFunction) *Subscriber[H] {
 	return &Subscriber[H]{
 		pubsub: ps,
-		msgID: msgID,
+		msgID:  msgID,
 	}
 }
 
@@ -80,4 +80,3 @@ func (p *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	}
 	return p.topic.Publish(ctx, bin, opts...)
 }
-

@@ -26,7 +26,12 @@ type session[H header.Header] struct {
 	errCh chan error
 }
 
-func newSession[H header.Header](ctx context.Context, h host.Host, peerTracker []*peerStat, protocolID protocol.ID) *session[H] {
+func newSession[H header.Header](
+	ctx context.Context,
+	h host.Host,
+	peerTracker []*peerStat,
+	protocolID protocol.ID,
+) *session[H] {
 	ctx, cancel := context.WithCancel(ctx)
 	return &session[H]{
 		ctx:        ctx,

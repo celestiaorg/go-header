@@ -86,7 +86,8 @@ func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	exchange.Params.MaxHeadersPerRequest = 10
 	exchange.ctx, exchange.cancel = context.WithCancel(context.Background())
 	t.Cleanup(exchange.cancel)
-	servers := make([]*ExchangeServer[*header.DummyHeader], len(hosts)-1) // amount of servers is len(hosts)-1 because one peer acts as a client
+	// amount of servers is len(hosts)-1 because one peer acts as a client
+	servers := make([]*ExchangeServer[*header.DummyHeader], len(hosts)-1)
 	for index := range servers {
 		servers[index], err = NewExchangeServer[*header.DummyHeader](hosts[index], store, protocolSuffix)
 		require.NoError(t, err)
@@ -327,8 +328,8 @@ func createStore(t *testing.T, numHeaders int) *mockStore {
 }
 
 func (m *mockStore) Init(context.Context, *header.DummyHeader) error { return nil }
-func (m *mockStore) Start(context.Context) error                        { return nil }
-func (m *mockStore) Stop(context.Context) error                         { return nil }
+func (m *mockStore) Start(context.Context) error                     { return nil }
+func (m *mockStore) Stop(context.Context) error                      { return nil }
 
 func (m *mockStore) Height() uint64 {
 	return uint64(m.headHeight)

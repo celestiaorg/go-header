@@ -7,12 +7,13 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/celestiaorg/celestia-node/pkg/header"
-	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	"github.com/celestiaorg/celestia-node/pkg/header"
+	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"
 )
 
 var log = logging.Logger("header/p2p")
