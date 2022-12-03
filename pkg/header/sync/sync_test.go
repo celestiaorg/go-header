@@ -35,7 +35,12 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	require.NoError(t, err)
 
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](
+		local.NewExchange(remoteStore),
+		localStore,
+		&header.DummySubscriber{},
+		blockTime,
+	)
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
 
@@ -70,7 +75,12 @@ func TestSyncCatchUp(t *testing.T) {
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](
+		local.NewExchange(remoteStore),
+		localStore,
+		&header.DummySubscriber{},
+		blockTime,
+	)
 	// 1. Initial sync
 	err := syncer.Start(ctx)
 	require.NoError(t, err)
@@ -115,7 +125,12 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](local.NewExchange(remoteStore), localStore, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*header.DummyHeader](
+		local.NewExchange(remoteStore),
+		localStore,
+		&header.DummySubscriber{},
+		blockTime,
+	)
 	err := syncer.Start(ctx)
 	require.NoError(t, err)
 

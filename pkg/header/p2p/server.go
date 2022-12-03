@@ -5,10 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/protocol"
+
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
 	"github.com/celestiaorg/celestia-node/pkg/header"
 	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"

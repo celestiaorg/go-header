@@ -56,7 +56,12 @@ type Syncer[H header.Header] struct {
 }
 
 // NewSyncer creates a new instance of Syncer.
-func NewSyncer[H header.Header](exchange header.Exchange[H], store header.Store[H], sub header.Subscriber[H], blockTime time.Duration) *Syncer[H] {
+func NewSyncer[H header.Header](
+	exchange header.Exchange[H],
+	store header.Store[H],
+	sub header.Subscriber[H],
+	blockTime time.Duration,
+) *Syncer[H] {
 	return &Syncer[H]{
 		sub:         sub,
 		exchange:    exchange,
