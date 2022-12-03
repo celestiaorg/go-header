@@ -8,13 +8,13 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/celestiaorg/celestia-node/header"
+	"github.com/celestiaorg/celestia-node/pkg/header"
 	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"
 )
 
 // session aims to divide a range of headers
 // into several smaller requests among different peers.
-type session struct {
+type session[H header.Header] struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	host       host.Host
@@ -26,9 +26,9 @@ type session struct {
 	errCh chan error
 }
 
-func newSession(ctx context.Context, h host.Host, peerTracker []*peerStat, protocolID protocol.ID) *session {
+func newSession[H header.Header](ctx context.Context, h host.Host, peerTracker []*peerStat, protocolID protocol.ID) *session[H] {
 	ctx, cancel := context.WithCancel(ctx)
-	return &session{
+	return &session[H]{
 		ctx:        ctx,
 		cancel:     cancel,
 		protocolID: protocolID,
@@ -39,14 +39,14 @@ func newSession(ctx context.Context, h host.Host, peerTracker []*peerStat, proto
 }
 
 // GetRangeByHeight requests headers from different peers.
-func (s *session) getRangeByHeight(
+func (s *session[H]) getRangeByHeight(
 	ctx context.Context,
 	from, amount, headersPerPeer uint64,
-) ([]*header.ExtendedHeader, error) {
+) ([]H, error) {
 	log.Debugw("requesting headers", "from", from, "to", from+amount)
 
 	requests := prepareRequests(from, amount, headersPerPeer)
-	result := make(chan []*header.ExtendedHeader, len(requests))
+	result := make(chan []H, len(requests))
 	s.reqCh = make(chan *p2p_pb.ExtendedHeaderRequest, len(requests))
 
 	go s.handleOutgoingRequests(ctx, result)
@@ -54,7 +54,7 @@ func (s *session) getRangeByHeight(
 		s.reqCh <- req
 	}
 
-	headers := make([]*header.ExtendedHeader, 0, amount)
+	headers := make([]H, 0, amount)
 	for i := 0; i < len(requests); i++ {
 		select {
 		case <-s.ctx.Done():
@@ -74,7 +74,7 @@ func (s *session) getRangeByHeight(
 }
 
 // close stops the session.
-func (s *session) close() {
+func (s *session[H]) close() {
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
@@ -83,7 +83,7 @@ func (s *session) close() {
 
 // handleOutgoingRequests pops a peer from the queue and sends a prepared request to the peer.
 // Will exit via canceled session context or when all request are processed.
-func (s *session) handleOutgoingRequests(ctx context.Context, result chan []*header.ExtendedHeader) {
+func (s *session[H]) handleOutgoingRequests(ctx context.Context, result chan []H) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -102,11 +102,11 @@ func (s *session) handleOutgoingRequests(ctx context.Context, result chan []*hea
 }
 
 // doRequest chooses the best peer to fetch headers and sends a request in range of available maxRetryAttempts.
-func (s *session) doRequest(
+func (s *session[H]) doRequest(
 	ctx context.Context,
 	stat *peerStat,
 	req *p2p_pb.ExtendedHeaderRequest,
-	headers chan []*header.ExtendedHeader,
+	headers chan []H,
 ) {
 	r, size, duration, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
 	if err != nil {
@@ -137,18 +137,20 @@ func (s *session) doRequest(
 }
 
 // processResponse converts ExtendedHeaderResponse to ExtendedHeader.
-func (s *session) processResponse(responses []*p2p_pb.ExtendedHeaderResponse) ([]*header.ExtendedHeader, error) {
-	headers := make([]*header.ExtendedHeader, 0)
+func (s *session[H]) processResponse(responses []*p2p_pb.ExtendedHeaderResponse) ([]H, error) {
+	headers := make([]H, 0)
 	for _, resp := range responses {
 		err := convertStatusCodeToError(resp.StatusCode)
 		if err != nil {
 			return nil, err
 		}
-		header, err := header.UnmarshalExtendedHeader(resp.Body)
+		var empty H
+		header := empty.New()
+		err = header.UnmarshalBinary(resp.Body)
 		if err != nil {
 			return nil, err
 		}
-		headers = append(headers, header)
+		headers = append(headers, header.(H))
 	}
 	if len(headers) == 0 {
 		return nil, header.ErrNotFound
