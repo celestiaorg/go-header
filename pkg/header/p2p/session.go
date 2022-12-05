@@ -22,7 +22,7 @@ type session[H header.Header] struct {
 	// peerTracker contains discovered peers with records that describes their activity.
 	queue *peerQueue
 
-	reqCh chan *p2p_pb.ExtendedHeaderRequest
+	reqCh chan *p2p_pb.HeaderRequest
 	errCh chan error
 }
 
@@ -52,7 +52,7 @@ func (s *session[H]) getRangeByHeight(
 
 	requests := prepareRequests(from, amount, headersPerPeer)
 	result := make(chan []H, len(requests))
-	s.reqCh = make(chan *p2p_pb.ExtendedHeaderRequest, len(requests))
+	s.reqCh = make(chan *p2p_pb.HeaderRequest, len(requests))
 
 	go s.handleOutgoingRequests(ctx, result)
 	for _, req := range requests {
@@ -110,7 +110,7 @@ func (s *session[H]) handleOutgoingRequests(ctx context.Context, result chan []H
 func (s *session[H]) doRequest(
 	ctx context.Context,
 	stat *peerStat,
-	req *p2p_pb.ExtendedHeaderRequest,
+	req *p2p_pb.HeaderRequest,
 	headers chan []H,
 ) {
 	r, size, duration, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
@@ -141,8 +141,8 @@ func (s *session[H]) doRequest(
 	s.queue.push(stat)
 }
 
-// processResponse converts ExtendedHeaderResponse to ExtendedHeader.
-func (s *session[H]) processResponse(responses []*p2p_pb.ExtendedHeaderResponse) ([]H, error) {
+// processResponse converts HeaderResponse to ExtendedHeader.
+func (s *session[H]) processResponse(responses []*p2p_pb.HeaderResponse) ([]H, error) {
 	headers := make([]H, 0)
 	for _, resp := range responses {
 		err := convertStatusCodeToError(resp.StatusCode)
@@ -163,13 +163,13 @@ func (s *session[H]) processResponse(responses []*p2p_pb.ExtendedHeaderResponse)
 	return headers, nil
 }
 
-// prepareRequests converts incoming range into separate ExtendedHeaderRequest.
-func prepareRequests(from, amount, headersPerPeer uint64) []*p2p_pb.ExtendedHeaderRequest {
-	requests := make([]*p2p_pb.ExtendedHeaderRequest, 0, amount/headersPerPeer)
+// prepareRequests converts incoming range into separate HeaderRequest.
+func prepareRequests(from, amount, headersPerPeer uint64) []*p2p_pb.HeaderRequest {
+	requests := make([]*p2p_pb.HeaderRequest, 0, amount/headersPerPeer)
 	for amount > uint64(0) {
 		var requestSize uint64
-		request := &p2p_pb.ExtendedHeaderRequest{
-			Data: &p2p_pb.ExtendedHeaderRequest_Origin{Origin: from},
+		request := &p2p_pb.HeaderRequest{
+			Data: &p2p_pb.HeaderRequest_Origin{Origin: from},
 		}
 		if amount < headersPerPeer {
 			requestSize = amount
