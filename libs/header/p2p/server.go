@@ -10,8 +10,8 @@ import (
 
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
-	"github.com/celestiaorg/celestia-node/pkg/header"
-	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"
+	"github.com/celestiaorg/celestia-node/libs/header"
+	p2p_pb "github.com/celestiaorg/celestia-node/libs/header/p2p/pb"
 )
 
 // ExchangeServer represents the server-side component for
