@@ -10,18 +10,17 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/protocol"
 
-	"github.com/celestiaorg/celestia-node/header"
-	headerpkg "github.com/celestiaorg/celestia-node/pkg/header"
+	"github.com/celestiaorg/celestia-node/pkg/header"
 	p2p_pb "github.com/celestiaorg/celestia-node/pkg/header/p2p/pb"
 )
 
 // ExchangeServer represents the server-side component for
 // responding to inbound header-related requests.
-type ExchangeServer struct {
+type ExchangeServer[H header.Header] struct {
 	protocolID protocol.ID
 
 	host  host.Host
-	store header.Store
+	store header.Store[H]
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -31,12 +30,12 @@ type ExchangeServer struct {
 
 // NewExchangeServer returns a new P2P server that handles inbound
 // header-related requests.
-func NewExchangeServer(
+func NewExchangeServer[H header.Header](
 	host host.Host,
-	store header.Store,
+	store header.Store[H],
 	protocolSuffix string,
 	opts ...Option[ServerParameters],
-) (*ExchangeServer, error) {
+) (*ExchangeServer[H], error) {
 	params := DefaultServerParameters()
 	for _, opt := range opts {
 		opt(&params)
@@ -45,7 +44,7 @@ func NewExchangeServer(
 		return nil, err
 	}
 
-	return &ExchangeServer{
+	return &ExchangeServer[H]{
 		protocolID: protocolID(protocolSuffix),
 		host:       host,
 		store:      store,
@@ -54,7 +53,7 @@ func NewExchangeServer(
 }
 
 // Start sets the stream handler for inbound header-related requests.
-func (serv *ExchangeServer) Start(context.Context) error {
+func (serv *ExchangeServer[H]) Start(context.Context) error {
 	serv.ctx, serv.cancel = context.WithCancel(context.Background())
 	log.Info("server: listening for inbound header requests")
 
@@ -64,7 +63,7 @@ func (serv *ExchangeServer) Start(context.Context) error {
 }
 
 // Stop removes the stream handler for serving header-related requests.
-func (serv *ExchangeServer) Stop(context.Context) error {
+func (serv *ExchangeServer[H]) Stop(context.Context) error {
 	log.Info("server: stopping server")
 	serv.cancel()
 	serv.host.RemoveStreamHandler(serv.protocolID)
@@ -72,7 +71,7 @@ func (serv *ExchangeServer) Stop(context.Context) error {
 }
 
 // requestHandler handles inbound ExtendedHeaderRequests.
-func (serv *ExchangeServer) requestHandler(stream network.Stream) {
+func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	err := stream.SetReadDeadline(time.Now().Add(serv.Params.ReadDeadline))
 	if err != nil {
 		log.Debugf("error setting deadline: %s", err)
@@ -89,7 +88,7 @@ func (serv *ExchangeServer) requestHandler(stream network.Stream) {
 		log.Error(err)
 	}
 
-	var headers []*header.ExtendedHeader
+	var headers []H
 	// retrieve and write ExtendedHeaders
 	switch pbreq.Data.(type) {
 	case *p2p_pb.ExtendedHeaderRequest_Hash:
@@ -114,7 +113,7 @@ func (serv *ExchangeServer) requestHandler(stream network.Stream) {
 
 	// reallocate headers with 1 nil ExtendedHeader if code is not StatusCode_OK
 	if code != p2p_pb.StatusCode_OK {
-		headers = make([]*header.ExtendedHeader, 1)
+		headers = make([]H, 1)
 	}
 	// write all headers to stream
 	for _, h := range headers {
@@ -124,7 +123,7 @@ func (serv *ExchangeServer) requestHandler(stream network.Stream) {
 		var bin []byte
 		// if header is not nil, then marshal it to []byte.
 		// if header is nil, then error was received,so we will set empty []byte to proto.
-		if h != nil {
+		if header.Header(h) != header.Header(*new(H)) {
 			bin, err = h.MarshalBinary()
 			if err != nil {
 				log.Errorw("server: marshaling header to proto", "height", h.Height, "err", err)
@@ -148,20 +147,20 @@ func (serv *ExchangeServer) requestHandler(stream network.Stream) {
 
 // handleRequestByHash returns the ExtendedHeader at the given hash
 // if it exists.
-func (serv *ExchangeServer) handleRequestByHash(hash []byte) ([]*header.ExtendedHeader, error) {
-	log.Debugw("server: handling header request", "hash", headerpkg.Hash(hash).String())
+func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
+	log.Debugw("server: handling header request", "hash", header.Hash(hash).String())
 
 	h, err := serv.store.Get(serv.ctx, hash)
 	if err != nil {
-		log.Errorw("server: getting header by hash", "hash", headerpkg.Hash(hash).String(), "err", err)
+		log.Errorw("server: getting header by hash", "hash", header.Hash(hash).String(), "err", err)
 		return nil, err
 	}
-	return []*header.ExtendedHeader{h}, nil
+	return []H{h}, nil
 }
 
 // handleRequest fetches the ExtendedHeader at the given origin and
 // writes it to the stream.
-func (serv *ExchangeServer) handleRequest(from, to uint64) ([]*header.ExtendedHeader, error) {
+func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 	if from == uint64(0) {
 		log.Debug("server: handling head request")
 		head, err := serv.store.Head(serv.ctx)
@@ -169,7 +168,7 @@ func (serv *ExchangeServer) handleRequest(from, to uint64) ([]*header.ExtendedHe
 			log.Errorw("server: getting head", "err", err)
 			return nil, err
 		}
-		return []*header.ExtendedHeader{head}, nil
+		return []H{head}, nil
 	}
 
 	if to-from > serv.Params.MaxRequestSize {
