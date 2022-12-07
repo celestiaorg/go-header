@@ -2,13 +2,13 @@ package store
 
 import (
 	"context"
+	"github.com/ipfs/go-datastore"
 	"testing"
 
-	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // NewTestStore creates initialized and started in memory header Store which is useful for testing.

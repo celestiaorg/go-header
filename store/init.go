@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // Init ensures a Store is initialized. If it is not already initialized,

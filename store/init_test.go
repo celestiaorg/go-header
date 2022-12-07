@@ -2,16 +2,16 @@ package store
 
 import (
 	"context"
+	"github.com/ipfs/go-datastore"
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	"github.com/celestiaorg/celestia-node/libs/header/local"
+	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/local"
 )
 
 func TestInitStore_NoReinit(t *testing.T) {

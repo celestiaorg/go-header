@@ -1,11 +1,10 @@
 package store
 
 import (
+	"github.com/ipfs/go-datastore"
 	"strconv"
 
-	"github.com/ipfs/go-datastore"
-
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 var (

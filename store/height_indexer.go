@@ -2,11 +2,10 @@ package store
 
 import (
 	"context"
-
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/ipfs/go-datastore"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 // TODO(@Wondertan): There should be a more clever way to index heights, than just storing

@@ -7,7 +7,7 @@ import (
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // subscription handles retrieving ExtendedHeaders from the header pubsub topic.
