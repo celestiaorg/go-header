@@ -12,19 +12,20 @@ import (
 	"github.com/celestiaorg/celestia-node/libs/header"
 	"github.com/celestiaorg/celestia-node/libs/header/local"
 	"github.com/celestiaorg/celestia-node/libs/header/store"
+	"github.com/celestiaorg/celestia-node/libs/header/test"
 )
 
 var blockTime = 30 * time.Second
 
 func TestSyncSimpleRequestingHead(t *testing.T) {
 	// this way we force local head of Syncer to expire, so it requests a new one from trusted peer
-	header.TrustingPeriod = time.Microsecond
+	test.TrustingPeriod = time.Microsecond
 	requestSize = 13 // just some random number
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t)
+	suite := test.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
@@ -35,10 +36,10 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	require.NoError(t, err)
 
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](
+	syncer := NewSyncer[*test.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&header.DummySubscriber{},
+		&test.DummySubscriber{},
 		blockTime,
 	)
 	err = syncer.Start(ctx)
@@ -65,20 +66,20 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 
 func TestSyncCatchUp(t *testing.T) {
 	// just set a big enough value, so we trust local header and don't request anything
-	header.TrustingPeriod = time.Minute
+	test.TrustingPeriod = time.Minute
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t)
+	suite := test.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](
+	syncer := NewSyncer[*test.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&header.DummySubscriber{},
+		&test.DummySubscriber{},
 		blockTime,
 	)
 	// 1. Initial sync
@@ -115,20 +116,20 @@ func TestSyncCatchUp(t *testing.T) {
 
 func TestSyncPendingRangesWithMisses(t *testing.T) {
 	// just set a big enough value, so we trust local header and don't request anything
-	header.TrustingPeriod = time.Minute
+	test.TrustingPeriod = time.Minute
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t)
+	suite := test.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer := NewSyncer[*header.DummyHeader](
+	syncer := NewSyncer[*test.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&header.DummySubscriber{},
+		&test.DummySubscriber{},
 		blockTime,
 	)
 	err := syncer.Start(ctx)
@@ -179,13 +180,13 @@ func TestSyncer_OnlyOneRecentRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := header.NewTestSuite(t)
+	suite := test.NewTestSuite(t)
 	store := store.NewTestStore(ctx, t, suite.Head())
 	newHead := suite.GenDummyHeader()
 	exchange := &exchangeCountingHead{header: newHead}
-	syncer := NewSyncer[*header.DummyHeader](exchange, store, &header.DummySubscriber{}, blockTime)
+	syncer := NewSyncer[*test.DummyHeader](exchange, store, &test.DummySubscriber{}, blockTime)
 
-	res := make(chan *header.DummyHeader)
+	res := make(chan *test.DummyHeader)
 	for i := 0; i < 10; i++ {
 		go func() {
 			head, err := syncer.networkHead(ctx)
@@ -208,32 +209,32 @@ func TestSyncer_OnlyOneRecentRequest(t *testing.T) {
 }
 
 type exchangeCountingHead struct {
-	header  *header.DummyHeader
+	header  *test.DummyHeader
 	counter int
 }
 
-func (e *exchangeCountingHead) Head(context.Context) (*header.DummyHeader, error) {
+func (e *exchangeCountingHead) Head(context.Context) (*test.DummyHeader, error) {
 	e.counter++
 	time.Sleep(time.Millisecond * 100) // simulate requesting something
 	return e.header, nil
 }
 
-func (e *exchangeCountingHead) Get(ctx context.Context, bytes header.Hash) (*header.DummyHeader, error) {
+func (e *exchangeCountingHead) Get(ctx context.Context, bytes header.Hash) (*test.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (e *exchangeCountingHead) GetByHeight(ctx context.Context, u uint64) (*header.DummyHeader, error) {
+func (e *exchangeCountingHead) GetByHeight(ctx context.Context, u uint64) (*test.DummyHeader, error) {
 	panic("implement me")
 }
 
 func (e *exchangeCountingHead) GetRangeByHeight(
 	c context.Context,
 	from, amount uint64,
-) ([]*header.DummyHeader, error) {
+) ([]*test.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (e *exchangeCountingHead) GetVerifiedRange(c context.Context, from *header.DummyHeader, amount uint64,
-) ([]*header.DummyHeader, error) {
+func (e *exchangeCountingHead) GetVerifiedRange(c context.Context, from *test.DummyHeader, amount uint64,
+) ([]*test.DummyHeader, error) {
 	panic("implement me")
 }
