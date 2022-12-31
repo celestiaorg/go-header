@@ -182,7 +182,7 @@ func TestSyncer_OnlyOneRecentRequest(t *testing.T) {
 
 	suite := test.NewTestSuite(t)
 	store := store.NewTestStore(ctx, t, suite.Head())
-	newHead := suite.GenDummyHeader()
+	newHead := suite.GetRandomHeader()
 	exchange := &exchangeCountingHead{header: newHead}
 	syncer := NewSyncer[*test.DummyHeader](exchange, store, &test.DummySubscriber{}, blockTime)
 
