@@ -290,5 +290,6 @@ func (mhs *DummySubscriber) NextHeader(ctx context.Context) (*DummyHeader, error
 	return mhs.Headers[0], nil
 }
 
-func (mhs *DummySubscriber) Stop(context.Context) error { return nil }
-func (mhs *DummySubscriber) Cancel()                    {}
+func (mhs *DummySubscriber) Stop(context.Context) error  { return nil }
+func (hms *DummySubscriber) Start(context.Context) error { return nil }
+func (mhs *DummySubscriber) Cancel()                     {}
