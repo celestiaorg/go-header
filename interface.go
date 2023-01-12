@@ -20,6 +20,8 @@ type Subscriber[H Header] interface {
 	// before they are sent through Subscriptions.
 	// Multiple validators can be registered.
 	AddValidator(func(context.Context, H) pubsub.ValidationResult) error
+	// Start starts the Subscriber, registering a topic validator for the "header-sub" topic and joining it.
+	Start(context.Context) error
 	// Stop removes header-sub validator and closes the topic.
 	Stop(context.Context) error
 }
@@ -43,6 +45,12 @@ type Broadcaster[H Header] interface {
 // from the network.
 type Exchange[H Header] interface {
 	Getter[H]
+
+	// Start starts the exchange.
+	Start(context.Context) error
+
+	// Stop stops the exchange
+	Stop(context.Context) error
 }
 
 var (
