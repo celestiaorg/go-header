@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	"github.com/celestiaorg/celestia-node/libs/header/local"
-	"github.com/celestiaorg/celestia-node/libs/header/store"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/local"
+	"github.com/celestiaorg/go-header/store"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func TestSyncSimpleRequestingHead(t *testing.T) {

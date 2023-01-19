@@ -3,7 +3,7 @@ package store
 import (
 	"sync"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // batch keeps an adjacent range of headers and loosely mimics the Store
