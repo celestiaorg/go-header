@@ -15,8 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	p2p_pb "github.com/celestiaorg/celestia-node/libs/header/p2p/pb"
+	"github.com/celestiaorg/go-header"
+	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
 var log = logging.Logger("header/p2p")

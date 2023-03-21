@@ -19,10 +19,10 @@ import (
 
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	headerMock "github.com/celestiaorg/celestia-node/libs/header/mocks"
-	p2p_pb "github.com/celestiaorg/celestia-node/libs/header/p2p/pb"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header"
+	headerMock "github.com/celestiaorg/go-header/mocks"
+	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
+	"github.com/celestiaorg/go-header/test"
 )
 
 const networkID = "private"

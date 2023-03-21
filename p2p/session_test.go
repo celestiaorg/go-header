@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func Test_PrepareRequests(t *testing.T) {

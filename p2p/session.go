@@ -10,8 +10,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	p2p_pb "github.com/celestiaorg/celestia-node/libs/header/p2p/pb"
+	"github.com/celestiaorg/go-header"
+	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
 // errEmptyResponse means that server side closes the connection without sending at least 1

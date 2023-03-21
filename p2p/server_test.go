@@ -7,8 +7,8 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header/store"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header/store"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func TestExchangeServer_handleRequestTimeout(t *testing.T) {

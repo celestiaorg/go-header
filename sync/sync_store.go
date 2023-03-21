@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // syncStore is a Store wrapper that provides synchronization over writes and reads

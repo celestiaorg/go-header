@@ -3,7 +3,7 @@ package sync
 import (
 	"sync"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // ranges keeps non-overlapping and non-adjacent header ranges which are used to cache headers (in

@@ -8,8 +8,8 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/test"
 )
 
 // NewTestStore creates initialized and started in memory header Store which is useful for testing.

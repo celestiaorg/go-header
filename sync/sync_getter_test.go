@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func TestSyncGetterHead(t *testing.T) {

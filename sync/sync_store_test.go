@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/celestiaorg/celestia-node/libs/header/mocks"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header/mocks"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func TestSyncStore(t *testing.T) {

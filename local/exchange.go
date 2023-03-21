@@ -3,7 +3,7 @@ package local
 import (
 	"context"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // Exchange is a simple Exchange that reads Headers from Store without any networking.

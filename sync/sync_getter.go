@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/celestiaorg/celestia-node/libs/header"
+	"github.com/celestiaorg/go-header"
 )
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time

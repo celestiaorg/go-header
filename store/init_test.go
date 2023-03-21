@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-node/libs/header/local"
-	"github.com/celestiaorg/celestia-node/libs/header/test"
+	"github.com/celestiaorg/go-header/local"
+	"github.com/celestiaorg/go-header/test"
 )
 
 func TestInitStore_NoReinit(t *testing.T) {
