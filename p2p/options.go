@@ -32,9 +32,9 @@ type ServerParameters struct {
 // DefaultServerParameters returns the default params to configure the store.
 func DefaultServerParameters() ServerParameters {
 	return ServerParameters{
-		WriteDeadline:       time.Second * 5,
+		WriteDeadline:       time.Second * 8,
 		ReadDeadline:        time.Minute,
-		RangeRequestTimeout: time.Second * 5,
+		RangeRequestTimeout: time.Second * 10,
 	}
 }
 
