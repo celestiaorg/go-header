@@ -123,11 +123,13 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	if code != p2p_pb.StatusCode_OK {
 		headers = make([]H, 1)
 	}
+
+	if err := stream.SetWriteDeadline(time.Now().Add(serv.Params.WriteDeadline)); err != nil {
+		log.Debugf("error setting deadline: %s", err)
+	}
+
 	// write all headers to stream
 	for _, h := range headers {
-		if err := stream.SetWriteDeadline(time.Now().Add(serv.Params.ReadDeadline)); err != nil {
-			log.Debugf("error setting deadline: %s", err)
-		}
 		var bin []byte
 		// if header is not nil, then marshal it to []byte.
 		// if header is nil, then error was received,so we will set empty []byte to proto.
@@ -186,10 +188,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		return serv.handleHeadRequest()
 	}
 
-	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
-	defer cancel()
-
-	ctx, span := tracer.Start(ctx, "request-range", trace.WithAttributes(
+	ctx, span := tracer.Start(serv.ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
 	defer span.End()
