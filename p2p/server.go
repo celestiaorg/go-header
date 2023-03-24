@@ -188,7 +188,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		return serv.handleHeadRequest()
 	}
 
-	ctx, span := tracer.Start(context.Background(), "request-range", trace.WithAttributes(
+	ctx, span := tracer.Start(serv.ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
 	defer span.End()
