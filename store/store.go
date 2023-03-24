@@ -108,6 +108,9 @@ func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H]
 }
 
 func (s *Store[H]) Init(ctx context.Context, initial H) error {
+	if s.heightSub.Height() != 0 {
+		return fmt.Errorf("store already initialized")
+	}
 	// trust the given header as the initial head
 	err := s.flush(ctx, initial)
 	if err != nil {
@@ -115,6 +118,7 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	}
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
+	s.heightSub.Pub(initial)
 	return nil
 }
 
