@@ -112,3 +112,25 @@ func TestStorePendingCacheMiss(t *testing.T) {
 	_, err = store.GetRangeByHeight(ctx, 101, 151)
 	require.NoError(t, err)
 }
+
+func TestBatch_GetByHeightBeforeInit(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := test.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*test.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	go func() {
+		_ = store.Init(ctx, suite.Head())
+	}()
+
+	h, err := store.GetByHeight(ctx, 1)
+	require.NoError(t, err)
+	require.NotNil(t, h)
+}
