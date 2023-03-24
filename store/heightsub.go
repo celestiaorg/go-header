@@ -16,7 +16,7 @@ var errElapsedHeight = errors.New("elapsed height")
 type heightSub[H header.Header] struct {
 	// height refers to the latest locally available header height
 	// that has been fully verified and inserted into the subjective chain
-	height       uint64 // atomic
+	height       atomic.Uint64
 	heightReqsLk sync.Mutex
 	heightReqs   map[uint64][]chan H
 }
@@ -30,12 +30,12 @@ func newHeightSub[H header.Header]() *heightSub[H] {
 
 // Height reports current height.
 func (hs *heightSub[H]) Height() uint64 {
-	return atomic.LoadUint64(&hs.height)
+	return hs.height.Load()
 }
 
 // SetHeight sets the new head height for heightSub.
 func (hs *heightSub[H]) SetHeight(height uint64) {
-	atomic.StoreUint64(&hs.height, height)
+	hs.height.Store(height)
 }
 
 // Sub subscribes for a header of a given height.
