@@ -13,10 +13,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
-
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
 )
 
 var (
