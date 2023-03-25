@@ -16,6 +16,13 @@ Exchange Server, Exchange Client and GossipSub Subscriber for header exchange.
     On start the client connects to trusted peers (bootstrappers) as well as kicks off tracking and garbage collection routines for peer connections.
     The getters it defines are several and are used to get headers by height, range, and hash.
     The exchange client uses bi-directional read-write libp2p streams to request and receive headers from peers.
+    The peers that the client interacts with are tracked by the client's peerTracker, and they are of two types:
+
+    Trusted Peers: These are bootstrapper peers that are trusted by the client and are used to request headers.
+
+    Connected Peers: Peers that were not supplied as TrustedPeers but got connected to the node down the line.
+    The peer manager provides the most available peers to the client's session for requesting headers by using an availability queue
+    with negative sorting. The availability queue is updated by the client's peerTracker on every peer connection/disconnection.
 
   - Subscriber:
     The subscriber is an abstraction over GossipSub subscriptions that tracks the pubsub object + topic.
@@ -29,77 +36,58 @@ For more information, see the documentation for each component.
 
 # Usage	Examples
 
-  - Exchange Server Usage
-    To use the exchange server, first create a new instance of the server and start it:
+Exchange Server Usage:
+To use the exchange server, first create a new instance of the server and start it:
 
-```go
-s, err:= p2p.NewExchangeServer[H](
+	s, err:= p2p.NewExchangeServer[H](
+		libp2pHost,
+		store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	err = s.Start()
+	// ...
+	err = s.Stop()
 
-	libp2pHost,
-	store,
-	WithNetworkID[ServerParameters](networkID),
+Exchange Client Usage: To use the exchange client, first create a new instance of the client and start it:
 
-)
-err = s.Start()
-// ...
-err = s.Stop()
-```
+	c, err := p2p.NewExchange[H](
+		libp2pHost,
+		trustedPeers,
+		libp2pConnGater,
+		WithChainId(chainID),
+	)
+	err = c.Start()
 
-  - Exchange Client Usage
+Then, you can use the various getters to get headers:
 
-    To use the exchange client, first create a new instance of the client and start it:
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Get the best head from trusted peers
+	head, err := c.Head(ctx)
 
-```go
-c, err := p2p.NewExchange[H](
+	// Get a header by height
+	header, err := c.GetByHeight(ctx, height)
 
-	libp2pHost,
-	trustedPeers,
-	libp2pConnGater,
-	WithChainId(chainID),
+	// Get a range of headers by height
+	headers, err := c.GetRangeByHeight(ctx, start, end)
 
-)
-err = c.Start()
-```
+	// Get a range of verified headers by height
+	headers, err := c.GetVerifiedRange(ctx, header, amount)
 
-	Then, you can use the various getters to get headers:
+	// Get a header by hash
+	header, err := c.Get(ctx, header.hash)
 
-```go
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// Get the best head from trusted peers
-head, err := c.Head(ctx)
+Subscriber Usage: To use the subscriber, first create a new instance of the subscriber and start it:
 
-// Get a header by height
-header, err := c.GetByHeight(ctx, height)
+	sub := p2p.NewSubscriber[H](
+		pubsub, // pubsub.PubSub from libp2p
+		msdIDFn, // message ID signing function
+		networkID, // network ID
+	)
+	err := sub.Start()
 
-// Get a range of headers by height
-headers, err := c.GetRangeByHeight(ctx, start, end)
+Then, you can add validators and subscribe to headers:
 
-// Get a range of verified headers by height
-headers, err := c.GetVerifiedRange(ctx, header, amount)
-
-// Get a header by hash
-header, err := c.Get(ctx, header.hash)
-```
-
-  - Subscriber Usage
-    To use the subscriber, first create a new instance of the subscriber and start it:
-
-```go
-sub := p2p.NewSubscriber[H](
-
-	pubsub, // pubsub.PubSub from libp2p
-	msdIDFn, // message ID signing function
-	networkID, // network ID
-
-)
-err := sub.Start()
-```
-
-	Then, you can add validators and subscribe to headers:
-
-```go
-// Add a validator
-
+	// Add a validator
 	err := sub.AddValidator(func(ctx context.Context, header H) pubsub.ValidationResult {
 		if msg.ValidatorData != nil {
 			return true
@@ -107,25 +95,24 @@ err := sub.Start()
 		return false
 	})
 
-// Subscribe to headers
-subscription, err := sub.Subscribe(ctx)
+	// Subscribe to headers
+	subscription, err := sub.Subscribe(ctx)
 
-// Keep listening for new headers
+	// Keep listening for new headers
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				subscription.Cancel()
-				return
-			case header := subscription.NextHeader(ctx):
-				// Do something with the header
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					subscription.Cancel()
+					return
+				case header := subscription.NextHeader(ctx):
+					// Do something with the header
+				}
 			}
-		}
-	}()
+		}()
 
-// Broadcast a header
-err := sub.Broadcast(header)
-```
+	// Broadcast a header
+	err := sub.Broadcast(header)
 */
 package p2p
