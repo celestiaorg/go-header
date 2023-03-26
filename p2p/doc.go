@@ -24,6 +24,8 @@ Exchange Server, Exchange Client and GossipSub Subscriber for header exchange.
     The peer manager provides the most available peers to the client's session for requesting headers by using an availability queue
     with negative sorting. The availability queue is updated by the client's peerTracker on every peer connection/disconnection.
 
+    To learn more about the peer usage, see https://github.com/celestiaorg/go-header/blobl/main/docs/peer-usage-p2p-header.png
+
   - Subscriber:
     The subscriber is an abstraction over GossipSub subscriptions that tracks the pubsub object + topic.
     On start, the subscriber joins the GossipSub topic: "${networkID}/header-ex/v0.0.3" to listen for incoming headers.
@@ -35,6 +37,8 @@ Exchange Server, Exchange Client and GossipSub Subscriber for header exchange.
 For more information, see the documentation for each component.
 
 # Usage	Examples
+
+<details><summary>sss</summary>hshs</details>
 
 Exchange Server Usage:
 To use the exchange server, first create a new instance of the server and start it:
