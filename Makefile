@@ -1,9 +1,6 @@
 SHELL=/usr/bin/env bash
 PROJECTNAME=$(shell basename "$(PWD)")
-LDFLAGS=-ldflags="-X 'main.buildTime=$(shell date)' -X 'main.lastCommit=$(shell git rev-parse HEAD)' -X 'main.semanticVersion=$(shell git describe --tags --dirty=-dev)'"
-ifeq (${PREFIX},)
-	PREFIX := /usr/local
-endif
+
 ## help: Get more info on make commands.
 help: Makefile
 	@echo " Choose a command run in "$(PROJECTNAME)":"
@@ -53,11 +50,6 @@ benchmark:
 	@echo "--> Running benchmarks"
 	@go test -run="none" -bench=. -benchtime=100x -benchmem ./...
 .PHONY: benchmark
-
-PB_PKGS=$(shell find . -name 'pb' -type d)
-PB_CORE=$(shell go list -f {{.Dir}} -m github.com/tendermint/tendermint)
-PB_GOGO=$(shell go list -f {{.Dir}} -m github.com/gogo/protobuf)
-PB_CELESTIA_APP=$(shell go list -f {{.Dir}} -m github.com/celestiaorg/celestia-app)
 
 lint-imports:
 	@echo "--> Running imports linter"

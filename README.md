@@ -29,7 +29,7 @@ There are 4 main components in the header package:
 
 | Requirement | Notes          |
 | ----------- | -------------- |
-| Go version  | 1.19 or higher |
+| Go version  | 1.20 or higher |
 
 
 ## Installation
