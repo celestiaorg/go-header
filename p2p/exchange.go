@@ -14,7 +14,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
-	"go.uber.org/multierr"
 
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
@@ -121,26 +120,25 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 
 	var (
 		zero H
+
+		trustedPeers = ex.trustedPeers()
+		headerCh     = make(chan H, len(trustedPeers))
 		// refers to number of times one trusted peer can be retried for
 		// their head
 		headRequestRetries = 5
-		trustedPeers       = ex.trustedPeers()
-		headerCh           = make(chan H, len(trustedPeers))
+		timeout            = time.Millisecond * 150
 	)
 
 	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
-			var (
-				timeout = time.Millisecond * 150
-				err     error
-			)
+			var err error
 
 			timer := time.NewTimer(timeout)
 			defer timer.Stop()
 
 			for i := 0; i < headRequestRetries; i++ {
-				// request ensures that the result slice will have at least one Header
+				// request ensures that the result slice will have at least one header
 				headers, err := ex.request(ctx, from, req)
 				if err == nil {
 					headerCh <- headers[0]
@@ -153,11 +151,9 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 
 				select {
 				case <-ex.ctx.Done():
-					err = multierr.Append(err, ex.ctx.Err())
-					break
+					return
 				case <-ctx.Done():
-					err = multierr.Append(err, ctx.Err())
-					break
+					return
 				case <-timer.C:
 				}
 			}
