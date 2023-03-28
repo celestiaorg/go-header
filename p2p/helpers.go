@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
@@ -16,6 +17,9 @@ import (
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
+
+// retries is the amount of attempts to open the stream in case of an error.
+const retries = 5
 
 func protocolID(networkID string) protocol.ID {
 	return protocol.ID(fmt.Sprintf("/%s/header-ex/v0.0.3", networkID))
@@ -45,11 +49,21 @@ func sendMessage(
 	req *p2p_pb.HeaderRequest,
 ) ([]*p2p_pb.HeaderResponse, uint64, uint64, error) {
 	startTime := time.Now()
-	stream, err := host.NewStream(ctx, to, protocol)
+
+	var (
+		stream network.Stream
+		err    error
+	)
+
+	for i := 0; i < retries; i++ {
+		stream, err = host.NewStream(ctx, to, protocol)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("header/p2p: failed to open a new stream: %w", err)
 	}
-
 	// set stream deadline from the context deadline.
 	// if it is empty, then we assume that it will
 	// hang until the server will close the stream by the timeout.
