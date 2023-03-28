@@ -120,15 +120,14 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 	}
 
 	var (
-		zero     H
-		headerCh = make(chan H)
+		zero H
+		// refers to number of times one trusted peer can be retried for
+		// their head
+		headRequestRetries = 5
+		trustedPeers       = ex.trustedPeers()
+		headerCh           = make(chan H, len(trustedPeers))
 	)
 
-	// refers to number of times one trusted peer can be retried for
-	// their head
-	headRequestRetries := 5
-
-	trustedPeers := ex.trustedPeers()
 	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
@@ -153,6 +152,9 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 				timer.Reset(timeout)
 
 				select {
+				case <-ex.ctx.Done():
+					err = multierr.Append(err, ex.ctx.Err())
+					break
 				case <-ctx.Done():
 					err = multierr.Append(err, ctx.Err())
 					break
