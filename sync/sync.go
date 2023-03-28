@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -87,7 +88,7 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	// gets the latest head and kicks off syncing if necessary
 	_, err = s.Head(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting latest head during Start: %w", err)
 	}
 	// start syncLoop only if Start is errorless
 	go s.syncLoop()
