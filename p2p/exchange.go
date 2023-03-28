@@ -127,6 +127,8 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
+			ctx, cancel := context.WithTimeout(ctx, ex.Params.TrustedPeersRequestTimeout)
+			defer cancel()
 			// request ensures that the result slice will have at least one Header
 			headers, err := ex.request(ctx, from, req)
 			if err != nil {
@@ -251,17 +253,25 @@ func (ex *Exchange[H]) performRequest(
 
 	for i := 0; i < requestRetry; i++ {
 		for _, peer := range trustedPeers {
+			// check for contexts
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-ex.ctx.Done():
+				return nil, ex.ctx.Err()
+			default:
+			}
+
 			ctx, cancel := context.WithTimeout(ctx, ex.Params.TrustedPeersRequestTimeout)
 			h, err := ex.request(ctx, peer, req)
 			cancel()
-			switch err {
-			default:
+			if err != nil {
 				reqErr = err
 				log.Debugw("requesting header from trustedPeer failed",
 					"trustedPeer", peer, "err", err, "try", i)
-			case nil:
-				return h, err
+				continue
 			}
+			return h, err
 		}
 	}
 	return nil, reqErr
