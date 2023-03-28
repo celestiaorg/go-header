@@ -319,15 +319,18 @@ func TestExchange_HandleHeaderWithDifferentChainID(t *testing.T) {
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
 	exchg.Params.chainID = "test"
 
-	_, err := exchg.Head(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+	t.Cleanup(cancel)
+
+	_, err := exchg.Head(ctx)
 	require.Error(t, err)
 
-	_, err = exchg.GetByHeight(context.Background(), 1)
+	_, err = exchg.GetByHeight(ctx, 1)
 	require.Error(t, err)
 
-	h, err := store.GetByHeight(context.Background(), 1)
+	h, err := store.GetByHeight(ctx, 1)
 	require.NoError(t, err)
-	_, err = exchg.Get(context.Background(), h.Hash())
+	_, err = exchg.Get(ctx, h.Hash())
 	require.Error(t, err)
 }
 

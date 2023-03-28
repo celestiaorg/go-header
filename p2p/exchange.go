@@ -119,23 +119,50 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 	}
 
 	var (
-		zero     H
-		headerCh = make(chan H)
+		zero H
+
+		trustedPeers = ex.trustedPeers()
+		headerCh     = make(chan H, len(trustedPeers))
+		// refers to number of times one trusted peer can be retried for
+		// their head
+		headRequestRetries = 5
+		timeout            = time.Millisecond * 150
 	)
 
-	trustedPeers := ex.trustedPeers()
 	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
-			// request ensures that the result slice will have at least one Header
-			headers, err := ex.request(ctx, from, req)
+			var err error
+
+			timer := time.NewTimer(timeout)
+			defer timer.Stop()
+
+			for i := 0; i < headRequestRetries; i++ {
+				// request ensures that the result slice will have at least one header
+				headers, err := ex.request(ctx, from, req)
+				if err == nil {
+					headerCh <- headers[0]
+					return
+				}
+				if !timer.Stop() {
+					break
+				}
+				timer.Reset(timeout)
+
+				select {
+				case <-ex.ctx.Done():
+					return
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+				}
+			}
 			if err != nil {
 				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
 				var zero H
 				headerCh <- zero
 				return
 			}
-			headerCh <- headers[0]
 		}(from)
 	}
 
