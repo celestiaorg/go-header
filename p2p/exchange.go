@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	"go.uber.org/multierr"
 
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
@@ -123,19 +124,47 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		headerCh = make(chan H)
 	)
 
+	// refers to number of times one trusted peer can be retried for
+	// their head
+	headRequestRetries := 5
+
 	trustedPeers := ex.trustedPeers()
 	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
-			// request ensures that the result slice will have at least one Header
-			headers, err := ex.request(ctx, from, req)
+			var (
+				timeout = time.Millisecond * 150
+				err     error
+			)
+
+			timer := time.NewTimer(timeout)
+			defer timer.Stop()
+
+			for i := 0; i < headRequestRetries; i++ {
+				// request ensures that the result slice will have at least one Header
+				headers, err := ex.request(ctx, from, req)
+				if err == nil {
+					headerCh <- headers[0]
+					return
+				}
+				if !timer.Stop() {
+					break
+				}
+				timer.Reset(timeout)
+
+				select {
+				case <-ctx.Done():
+					err = multierr.Append(err, ctx.Err())
+					break
+				case <-timer.C:
+				}
+			}
 			if err != nil {
 				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
 				var zero H
 				headerCh <- zero
 				return
 			}
-			headerCh <- headers[0]
 		}(from)
 	}
 
