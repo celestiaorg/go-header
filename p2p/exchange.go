@@ -232,6 +232,8 @@ func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	return headers[0], nil
 }
 
+const requestRetry = 3
+
 func (ex *Exchange[H]) performRequest(
 	ctx context.Context,
 	req *p2p_pb.HeaderRequest,
@@ -247,18 +249,19 @@ func (ex *Exchange[H]) performRequest(
 	}
 	var reqErr error
 
-	for _, peer := range trustedPeers {
-		ctx, cancel := context.WithTimeout(ctx, ex.Params.TrustedPeersRequestTimeout)
-		h, err := ex.request(ctx, peer, req)
-		cancel()
-		switch err {
-		default:
-			reqErr = err
-			log.Debugw("requesting header from trustedPeer failed",
-				"trustedPeer", peer, "err", err)
-			continue
-		case context.Canceled, context.DeadlineExceeded, nil:
-			return h, err
+	for i := 0; i < requestRetry; i++ {
+		for _, peer := range trustedPeers {
+			ctx, cancel := context.WithTimeout(ctx, ex.Params.TrustedPeersRequestTimeout)
+			h, err := ex.request(ctx, peer, req)
+			cancel()
+			switch err {
+			default:
+				reqErr = err
+				log.Debugw("requesting header from trustedPeer failed",
+					"trustedPeer", peer, "err", err, "try", i)
+			case nil:
+				return h, err
+			}
 		}
 	}
 	return nil, reqErr
