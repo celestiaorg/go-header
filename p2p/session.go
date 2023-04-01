@@ -164,10 +164,7 @@ func (s *session[H]) doRequest(
 		logFn := log.Errorw
 
 		switch err {
-		case header.ErrNotFound:
-			logFn = log.Debugw
-			fallthrough
-		case errEmptyResponse:
+		case header.ErrNotFound, errEmptyResponse:
 			logFn = log.Debugw
 			stat.decreaseScore()
 		default:
