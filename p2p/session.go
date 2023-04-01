@@ -168,6 +168,7 @@ func (s *session[H]) doRequest(
 			logFn = log.Debugw
 			fallthrough
 		case errEmptyResponse:
+			logFn = log.Debugw
 			stat.decreaseScore()
 		default:
 			s.peerTracker.blockPeer(stat.peerID, err)
