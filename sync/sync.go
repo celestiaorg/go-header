@@ -83,7 +83,7 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	// syncer does not subscribe itself and syncs headers together with validation
 	err := s.sub.AddValidator(s.incomingNetworkHead)
 	if err != nil {
-		return err
+		// FIXME: Ignore the error for now
 	}
 	// gets the latest head and kicks off syncing if necessary
 	_, err = s.Head(ctx)
