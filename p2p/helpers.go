@@ -11,10 +11,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
-
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
 )
 
 func protocolID(networkID string) protocol.ID {
