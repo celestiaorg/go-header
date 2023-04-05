@@ -8,6 +8,7 @@
 Go Header contains all services related to generating, requesting, syncing and storing Headers.
 
 There are 4 main components in the header package:
+
  1. p2p.Subscriber listens for new Headers from the P2P network (via the
     HeaderSub)
  2. p2p.Exchange request Headers from other nodes
@@ -30,7 +31,6 @@ There are 4 main components in the header package:
 | Requirement | Notes          |
 | ----------- | -------------- |
 | Go version  | 1.20 or higher |
-
 
 ## Installation
 

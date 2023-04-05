@@ -4,8 +4,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/celestiaorg/go-header/headertest"
 )
 
 func TestAddParallel(t *testing.T) {
