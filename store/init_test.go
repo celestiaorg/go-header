@@ -5,28 +5,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header/local"
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestInitStore_NoReinit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 	exchange := local.NewExchange(NewTestStore(ctx, t, head))
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStore[*test.DummyHeader](ds)
+	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
-	err = Init[*test.DummyHeader](ctx, store, exchange, head.Hash())
+	err = Init[*headertest.DummyHeader](ctx, store, exchange, head.Hash())
 	assert.NoError(t, err)
 
 	err = store.Start(ctx)
@@ -38,7 +38,7 @@ func TestInitStore_NoReinit(t *testing.T) {
 	err = store.Stop(ctx)
 	require.NoError(t, err)
 
-	reopenedStore, err := NewStore[*test.DummyHeader](ds)
+	reopenedStore, err := NewStore[*headertest.DummyHeader](ds)
 	assert.NoError(t, err)
 
 	err = reopenedStore.Start(ctx)

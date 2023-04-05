@@ -4,16 +4,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestAddParallel(t *testing.T) {
-	var pending ranges[*test.DummyHeader]
+	var pending ranges[*headertest.DummyHeader]
 
 	n := 500
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	headers := suite.GenDummyHeaders(n)
 
 	wg := &sync.WaitGroup{}
@@ -35,7 +34,7 @@ func TestAddParallel(t *testing.T) {
 
 func TestRangeGet(t *testing.T) {
 	n := 300
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	headers := suite.GenDummyHeaders(n)
 
 	r := newRange(headers[200])

@@ -1,8 +1,7 @@
-package test
+package headertest
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/gob"
@@ -11,10 +10,8 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-	"golang.org/x/crypto/sha3"
-
 	"github.com/celestiaorg/go-header"
+	"golang.org/x/crypto/sha3"
 )
 
 type Raw struct {
@@ -29,6 +26,24 @@ type DummyHeader struct {
 	Raw
 
 	hash header.Hash
+}
+
+func RandDummyHeader(t *testing.T) *DummyHeader {
+	t.Helper()
+
+	dh := &DummyHeader{
+		Raw{
+			PreviousHash: RandBytes(32),
+			Height:       randInt63(),
+			Time:         time.Now().UTC(),
+		},
+		nil,
+	}
+	err := dh.rehash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dh
 }
 
 func (d *DummyHeader) New() header.Header {
@@ -147,123 +162,3 @@ func randInt63() int64 {
 
 	return int64(binary.BigEndian.Uint64(buf[:]) & math.MaxInt64)
 }
-
-func RandDummyHeader(t *testing.T) *DummyHeader {
-	t.Helper()
-	dh, err := randDummyHeader()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return dh
-}
-
-func randDummyHeader() (*DummyHeader, error) {
-	dh := &DummyHeader{
-		Raw{
-			PreviousHash: RandBytes(32),
-			Height:       randInt63(),
-			Time:         time.Now().UTC(),
-		},
-		nil,
-	}
-	err := dh.rehash()
-	return dh, err
-}
-
-func mustRandDummyHeader() *DummyHeader {
-	dh, err := randDummyHeader()
-	if err != nil {
-		panic(err)
-	}
-	return dh
-}
-
-// Suite provides everything you need to test chain of Headers.
-// If not, please don't hesitate to extend it for your case.
-type Suite struct {
-	t *testing.T
-
-	head *DummyHeader
-}
-
-type Generator[H header.Header] interface {
-	GetRandomHeader() H
-}
-
-// NewTestSuite setups a new test suite.
-func NewTestSuite(t *testing.T) *Suite {
-	return &Suite{
-		t: t,
-	}
-}
-
-func (s *Suite) genesis() *DummyHeader {
-	return &DummyHeader{
-		hash: nil,
-		Raw: Raw{
-			PreviousHash: nil,
-			Height:       1,
-			Time:         time.Now().Add(-10 * time.Second).UTC(),
-		},
-	}
-}
-
-func (s *Suite) Head() *DummyHeader {
-	if s.head == nil {
-		s.head = s.genesis()
-	}
-	return s.head
-}
-
-func (s *Suite) GenDummyHeaders(num int) []*DummyHeader {
-	headers := make([]*DummyHeader, num)
-	for i := range headers {
-		headers[i] = s.GetRandomHeader()
-	}
-	return headers
-}
-
-func (s *Suite) GetRandomHeader() *DummyHeader {
-	if s.head == nil {
-		s.head = s.genesis()
-		return s.head
-	}
-
-	dh := mustRandDummyHeader()
-	dh.Raw.Height = s.head.Height() + 1
-	dh.Raw.PreviousHash = s.head.Hash()
-	_ = dh.rehash()
-	s.head = dh
-	return s.head
-}
-
-type DummySubscriber struct {
-	Headers []*DummyHeader
-}
-
-func (mhs *DummySubscriber) AddValidator(func(context.Context, *DummyHeader) pubsub.ValidationResult) error {
-	return nil
-}
-
-func (mhs *DummySubscriber) Subscribe() (header.Subscription[*DummyHeader], error) {
-	return mhs, nil
-}
-
-func (mhs *DummySubscriber) NextHeader(ctx context.Context) (*DummyHeader, error) {
-	defer func() {
-		if len(mhs.Headers) > 1 {
-			// pop the already-returned header
-			cp := mhs.Headers
-			mhs.Headers = cp[1:]
-		} else {
-			mhs.Headers = make([]*DummyHeader, 0)
-		}
-	}()
-	if len(mhs.Headers) == 0 {
-		return nil, context.Canceled
-	}
-	return mhs.Headers[0], nil
-}
-
-func (mhs *DummySubscriber) Stop(context.Context) error { return nil }
-func (mhs *DummySubscriber) Cancel()                    {}

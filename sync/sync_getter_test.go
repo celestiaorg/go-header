@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/celestiaorg/go-header"
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestSyncGetterHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	fex := &fakeGetter[*test.DummyHeader]{}
-	sex := &syncGetter[*test.DummyHeader]{Getter: fex}
+	fex := &fakeGetter[*headertest.DummyHeader]{}
+	sex := &syncGetter[*headertest.DummyHeader]{Getter: fex}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
