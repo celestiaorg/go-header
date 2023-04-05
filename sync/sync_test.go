@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header/headertest"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
 	"github.com/celestiaorg/go-header/store"
 )

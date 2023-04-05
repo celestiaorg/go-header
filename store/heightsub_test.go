@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/celestiaorg/go-header/headertest"
 )
 
 func TestHeightSub(t *testing.T) {

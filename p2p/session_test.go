@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header/headertest"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/celestiaorg/go-header/headertest"
 )
 
 func Test_PrepareRequests(t *testing.T) {

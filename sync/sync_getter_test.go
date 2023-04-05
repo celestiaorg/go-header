@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/headertest"
 )
 
 func TestSyncGetterHead(t *testing.T) {

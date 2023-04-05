@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/celestiaorg/go-header"
 )
 
 type Raw struct {

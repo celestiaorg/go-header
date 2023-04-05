@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	headerMock "github.com/celestiaorg/go-header/headertest"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	libhost "github.com/libp2p/go-libp2p/core/host"
@@ -19,12 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header"
+	headerMock "github.com/celestiaorg/go-header/headertest"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
-<<<<<<< Updated upstream
-	"github.com/celestiaorg/go-header/test"
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
-=======
->>>>>>> Stashed changes
 )
 
 const networkID = "private"

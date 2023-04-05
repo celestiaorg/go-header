@@ -3,8 +3,9 @@ package headertest
 import (
 	"context"
 
-	"github.com/celestiaorg/go-header"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+
+	"github.com/celestiaorg/go-header"
 )
 
 type Subscriber[H header.Header] struct {
@@ -42,4 +43,3 @@ func (mhs *Subscriber[H]) NextHeader(ctx context.Context) (H, error) {
 
 func (mhs *Subscriber[H]) Stop(context.Context) error { return nil }
 func (mhs *Subscriber[H]) Cancel()                    {}
-

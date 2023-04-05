@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/celestiaorg/go-header/headertest"
 	"github.com/ipfs/go-datastore"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/store"
 )
 
