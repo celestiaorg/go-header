@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,14 +13,13 @@ import (
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/local"
 	"github.com/celestiaorg/go-header/store"
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestSyncSimpleRequestingHead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
@@ -30,10 +30,10 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	require.NoError(t, err)
 
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
+	syncer, err := NewSyncer[*headertest.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 		WithBlockTime(time.Second*30),
 		WithTrustingPeriod(time.Microsecond),
 	)
@@ -64,15 +64,15 @@ func TestDoSyncFullRangeFromExternalPeer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
+	syncer, err := NewSyncer[*headertest.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 	)
 	require.NoError(t, err)
 	require.NoError(t, syncer.Start(ctx))
@@ -101,15 +101,15 @@ func TestSyncCatchUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
+	syncer, err := NewSyncer[*headertest.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 		WithTrustingPeriod(time.Minute),
 	)
 	require.NoError(t, err)
@@ -152,15 +152,15 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
+	syncer, err := NewSyncer[*headertest.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 		WithTrustingPeriod(time.Minute),
 	)
 	require.NoError(t, err)
@@ -219,15 +219,15 @@ func TestSyncer_FindHeadersReturnsCorrectRange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
+	syncer, err := NewSyncer[*headertest.DummyHeader](
 		local.NewExchange(remoteStore),
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 	)
 	require.NoError(t, err)
 
@@ -241,7 +241,7 @@ func TestSyncer_FindHeadersReturnsCorrectRange(t *testing.T) {
 	err = remoteStore.Append(ctx, suite.GenDummyHeaders(9)...)
 	require.NoError(t, err)
 
-	syncer.pending.Add(suite.GetRandomHeader())
+	syncer.pending.Add(suite.NextHeader())
 	require.NoError(t, err)
 	err = syncer.processHeaders(ctx, head, 21)
 	require.NoError(t, err)
@@ -255,15 +255,15 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
 	remoteStore := store.NewTestStore(ctx, t, head)
 	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*test.DummyHeader](
-		&delayedGetter[*test.DummyHeader]{Getter: local.NewExchange(remoteStore)},
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		&delayedGetter[*headertest.DummyHeader]{Getter: local.NewExchange(remoteStore)},
 		localStore,
-		&test.DummySubscriber{},
+		headertest.NewDummySubscriber(),
 	)
 	require.NoError(t, err)
 	err = syncer.Start(ctx)

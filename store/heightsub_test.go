@@ -5,20 +5,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestHeightSub(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	hs := newHeightSub[*test.DummyHeader]()
+	hs := newHeightSub[*headertest.DummyHeader]()
 
 	// assert subscription returns nil for past heights
 	{
-		h := test.RandDummyHeader(t)
+		h := headertest.RandDummyHeader(t)
 		h.Raw.Height = 100
 		hs.SetHeight(99)
 		hs.Pub(h)
@@ -34,9 +33,9 @@ func TestHeightSub(t *testing.T) {
 			// fixes flakiness on CI
 			time.Sleep(time.Millisecond)
 
-			h1 := test.RandDummyHeader(t)
+			h1 := headertest.RandDummyHeader(t)
 			h1.Raw.Height = 101
-			h2 := test.RandDummyHeader(t)
+			h2 := headertest.RandDummyHeader(t)
 			h2.Raw.Height = 102
 			hs.Pub(h1, h2)
 		}()

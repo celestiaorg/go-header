@@ -5,19 +5,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store, err := NewStoreWithHead(ctx, ds, suite.Head())
@@ -48,7 +47,7 @@ func TestStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 
-	ok, err = store.Has(ctx, test.RandBytes(32))
+	ok, err = store.Has(ctx, headertest.RandBytes(32))
 	require.NoError(t, err)
 	assert.False(t, ok)
 
@@ -66,7 +65,7 @@ func TestStore(t *testing.T) {
 
 	// check that the store can be successfully started after previous stop
 	// with all data being flushed.
-	store, err = NewStore[*test.DummyHeader](ds)
+	store, err = NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
 	err = store.Start(ctx)
@@ -88,7 +87,7 @@ func TestStorePendingCacheMiss(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 
@@ -117,10 +116,10 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStore[*test.DummyHeader](ds)
+	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
 	err = store.Start(ctx)

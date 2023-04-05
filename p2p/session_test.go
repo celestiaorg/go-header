@@ -5,11 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/celestiaorg/go-header/test"
 )
 
 func Test_PrepareRequests(t *testing.T) {
@@ -23,7 +22,7 @@ func Test_PrepareRequests(t *testing.T) {
 
 // Test_Validate ensures that headers range is adjacent and valid.
 func Test_Validate(t *testing.T) {
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 	ses := newSession(
 		context.Background(),
@@ -40,7 +39,7 @@ func Test_Validate(t *testing.T) {
 
 // Test_ValidateFails ensures that non-adjacent range will return an error.
 func Test_ValidateFails(t *testing.T) {
-	suite := test.NewTestSuite(t)
+	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 	ses := newSession(
 		context.Background(),

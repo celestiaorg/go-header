@@ -4,18 +4,18 @@ import (
 	"context"
 	"testing"
 
+	"github.com/celestiaorg/go-header/headertest"
 	"github.com/ipfs/go-datastore"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header/store"
-	"github.com/celestiaorg/go-header/test"
 )
 
 func TestExchangeServer_handleRequestTimeout(t *testing.T) {
 	peer := createMocknet(t, 1)
-	s, err := store.NewStore[*test.DummyHeader](datastore.NewMapDatastore())
+	s, err := store.NewStore[*headertest.DummyHeader](datastore.NewMapDatastore())
 	require.NoError(t, err)
-	server, err := NewExchangeServer[*test.DummyHeader](
+	server, err := NewExchangeServer[*headertest.DummyHeader](
 		peer[0],
 		s,
 		WithNetworkID[ServerParameters](networkID),
