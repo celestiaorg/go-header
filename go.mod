@@ -2,9 +2,6 @@ module github.com/celestiaorg/go-header
 
 go 1.20
 
-// TODO:  We should stop replacing this protobuf and move to googles proto because gogo/proto is not maintained anymore
-replace github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
-
 // History unavailable and was rewritten DO NOT USE
 retract v0.1.0
 
