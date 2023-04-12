@@ -62,3 +62,13 @@ lint-imports:
 sort-imports:
 	@goimports-reviser -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/celestia-node" -output stdout ./...
 .PHONY: sort-imports
+
+pb-gen:
+	@echo '--> Generating protobuf'
+	@for dir in $(PB_PKGS); \
+		do for file in `find $$dir -type f -name "*.proto"`; \
+			do protoc -I=. -I=${PB_CORE}/proto/ -I=${PB_GOGO} -I=${PB_CELESTIA_APP}/proto --gogofaster_out=paths=source_relative:. $$file; \
+			echo '-->' $$file; \
+		done; \
+	done;
+.PHONY: pb-gen
