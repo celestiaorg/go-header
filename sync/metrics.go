@@ -2,44 +2,37 @@ package sync
 
 import (
 	"context"
-	"sync/atomic"
 
 	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 )
 
 var meter = global.MeterProvider().Meter("header/sync")
 
 type metrics struct {
-	totalSynced int64
+	totalSynced syncfloat64.Counter
 }
 
+// InitMetrics initializes internal Syncer's metrics.
 func (s *Syncer[H]) InitMetrics() error {
-	s.metrics = &metrics{}
-
-	totalSynced, err := meter.
-		AsyncFloat64().
-		Gauge(
-			"total_synced_headers",
-			instrument.WithDescription("total synced headers"),
-		)
+	totalSynced, err := meter.SyncFloat64().Counter(
+		"total_synced_headers",
+		instrument.WithDescription("Total synced headers with a node run(not preserved after restart))"),
+	)
 	if err != nil {
 		return err
 	}
 
-	return meter.RegisterCallback(
-		[]instrument.Asynchronous{
-			totalSynced,
-		},
-		func(ctx context.Context) {
-			totalSynced.Observe(ctx, float64(atomic.LoadInt64(&s.metrics.totalSynced)))
-		},
-	)
+	s.metrics = &metrics{
+		totalSynced: totalSynced,
+	}
+	return nil
 }
 
-// recordTotalSynced records the total amount of synced headers.
-func (m *metrics) recordTotalSynced(totalSynced int) {
+// incrementSynced increments number of synced headers
+func (m *metrics) incrementSynced(ctx context.Context, synced int) {
 	if m != nil {
-		atomic.AddInt64(&m.totalSynced, int64(totalSynced))
+		m.totalSynced.Add(ctx, float64(synced))
 	}
 }

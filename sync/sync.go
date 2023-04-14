@@ -320,6 +320,6 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 		return err
 	}
 
-	s.metrics.recordTotalSynced(len(headers))
+	s.metrics.incrementSynced(ctx, len(headers))
 	return nil
 }
