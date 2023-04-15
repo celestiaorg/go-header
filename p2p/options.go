@@ -167,3 +167,14 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 		}
 	}
 }
+
+// WithTrustedPeersRequestTimeout is a functional option that configures the
+// `MaxRangeRequestSize` parameter.
+func WithTrustedPeersRequestTimeout[T ClientParameters](timeout time.Duration) Option[T] {
+	return func(p *T) {
+		switch t := any(p).(type) { //nolint:gocritic
+		case *ClientParameters:
+			t.TrustedPeersRequestTimeout = timeout
+		}
+	}
+}
