@@ -120,7 +120,7 @@ func DefaultClientParameters() ClientParameters {
 	return ClientParameters{
 		MaxHeadersPerRangeRequest:  64,
 		RangeRequestTimeout:        time.Second * 8,
-		TrustedPeersRequestTimeout: time.Millisecond * 300,
+		TrustedPeersRequestTimeout: time.Second * 5,
 	}
 }
 
