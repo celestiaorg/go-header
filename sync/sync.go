@@ -52,7 +52,7 @@ type Syncer[H header.Header] struct {
 	Params *Parameters
 }
 
-// NewSyncer creates a new instance of Syncer.
+// NewSyncer creates a new instance of Syncer with default Parameters.
 func NewSyncer[H header.Header](
 	getter header.Getter[H],
 	store header.Store[H],
@@ -63,6 +63,17 @@ func NewSyncer[H header.Header](
 	for _, opt := range opts {
 		opt(&params)
 	}
+
+	return NewSyncerWithParams[H](getter, store, sub, params)
+}
+
+// NewSyncerWithParams creates a new instance of Syncer with the given Parameters.
+func NewSyncerWithParams[H header.Header](
+	getter header.Getter[H],
+	store header.Store[H],
+	sub header.Subscriber[H],
+	params Parameters,
+) (*Syncer[H], error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

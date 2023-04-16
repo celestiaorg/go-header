@@ -37,7 +37,7 @@ type ExchangeServer[H header.Header] struct {
 }
 
 // NewExchangeServer returns a new P2P server that handles inbound
-// header-related requests.
+// header-related requests with default params.
 func NewExchangeServer[H header.Header](
 	host host.Host,
 	store header.Store[H],
@@ -47,6 +47,16 @@ func NewExchangeServer[H header.Header](
 	for _, opt := range opts {
 		opt(&params)
 	}
+	return NewExchangeServerWithParams[H](host, store, params)
+}
+
+// NewExchangeServerWithParams returns a new P2P server that handles inbound
+// header-related requests with the given params.
+func NewExchangeServerWithParams[H header.Header](
+	host host.Host,
+	store header.Store[H],
+	params ServerParameters,
+) (*ExchangeServer[H], error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

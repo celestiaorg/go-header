@@ -52,34 +52,18 @@ type Store[H header.Header] struct {
 	Params Parameters
 }
 
-// NewStore constructs a Store over datastore.
-// The datastore must have a head there otherwise Start will error.
-// For first initialization of Store use NewStoreWithHead.
+// NewStore constructs a Store over Datastore with default Parameters.
 func NewStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H], error) {
-	return newStore[H](ds, opts...)
-}
-
-// NewStoreWithHead initiates a new Store and forcefully sets a given trusted header as head.
-func NewStoreWithHead[H header.Header](
-	ctx context.Context,
-	ds datastore.Batching,
-	head H,
-	opts ...Option,
-) (*Store[H], error) {
-	store, err := newStore[H](ds, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return store, store.Init(ctx, head)
-}
-
-func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H], error) {
 	params := DefaultParameters()
 	for _, opt := range opts {
 		opt(&params)
 	}
 
+	return NewStoreWithParams[H](ds, params)
+}
+
+// NewStoreWithParams constructs a Store over Datastore with the given Parameters.
+func NewStoreWithParams[H header.Header](ds datastore.Batching, params Parameters) (*Store[H], error) {
 	if err := params.Validate(); err != nil {
 		return nil, fmt.Errorf("header/store: store creation failed: %w", err)
 	}
@@ -105,6 +89,21 @@ func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H]
 		heightIndex: index,
 		pending:     newBatch[H](params.WriteBatchSize),
 	}, nil
+}
+
+// NewStoreWithHead instantiates a new Store and initiates it with the given head.
+func NewStoreWithHead[H header.Header](
+	ctx context.Context,
+	ds datastore.Batching,
+	head H,
+	opts ...Option,
+) (*Store[H], error) {
+	store, err := NewStore[H](ds, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, store.Init(ctx, head)
 }
 
 func (s *Store[H]) Init(ctx context.Context, initial H) error {

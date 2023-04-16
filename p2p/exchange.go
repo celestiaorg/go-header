@@ -43,6 +43,7 @@ type Exchange[H header.Header] struct {
 	metrics *metrics
 }
 
+// NewExchange instantiates Exchange client with default ClientParameters.
 func NewExchange[H header.Header](
 	host host.Host,
 	peers peer.IDSlice,
@@ -54,6 +55,16 @@ func NewExchange[H header.Header](
 		opt(&params)
 	}
 
+	return NewExchangeWithParams[H](host, peers, connGater, params)
+}
+
+// NewExchangeWithParams instantiates Exchange client with the given ClientParameters.
+func NewExchangeWithParams[H header.Header](
+	host host.Host,
+	peers peer.IDSlice,
+	connGater *conngater.BasicConnectionGater,
+	params ClientParameters,
+) (*Exchange[H], error) {
 	err := params.Validate()
 	if err != nil {
 		return nil, err
