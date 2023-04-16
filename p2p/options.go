@@ -107,8 +107,6 @@ type ClientParameters struct {
 	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
 	// from another peer.
 	RangeRequestTimeout time.Duration
-	// TrustedPeersRequestTimeout a timeout for any request to a trusted peer.
-	TrustedPeersRequestTimeout time.Duration
 	// networkID is a network that will be used to create a protocol.ID
 	networkID string
 	// chainID is an identifier of the chain.
@@ -120,7 +118,6 @@ func DefaultClientParameters() ClientParameters {
 	return ClientParameters{
 		MaxHeadersPerRangeRequest:  64,
 		RangeRequestTimeout:        time.Second * 8,
-		TrustedPeersRequestTimeout: time.Millisecond * 300,
 	}
 }
 
@@ -137,10 +134,6 @@ func (p *ClientParameters) Validate() error {
 	if p.RangeRequestTimeout == 0 {
 		return fmt.Errorf("invalid request timeout for session: "+
 			"%s. %s: %v", greaterThenZero, providedSuffix, p.RangeRequestTimeout)
-	}
-	if p.TrustedPeersRequestTimeout == 0 {
-		return fmt.Errorf("invalid TrustedPeersRequestTimeout: "+
-			"%s. %s: %v", greaterThenZero, providedSuffix, p.TrustedPeersRequestTimeout)
 	}
 	return nil
 }
