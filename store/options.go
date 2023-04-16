@@ -68,3 +68,12 @@ func WithWriteBatchSize(size int) Option {
 		p.WriteBatchSize = size
 	}
 }
+
+
+// WithParams is a functional option that overrides Parameters.
+func WithParams(new Parameters) Option {
+	return func(old *Parameters) {
+		*old = new
+	}
+}
+
