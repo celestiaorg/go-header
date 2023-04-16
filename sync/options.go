@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// Options is the functional option that is applied to the Syner instance
+// to configure its parameters.
+// TODO(@Wondertan): rename to single Option in some breaking release
 type Options func(*Parameters)
 
 // Parameters is the set of parameters that must be configured for the syncer.
@@ -20,7 +23,7 @@ type Parameters struct {
 	TrustingPeriod time.Duration
 	// blockTime provides a reference point for the Syncer to determine
 	// whether its subjective head is outdated.
-	// Keeping it private, we don't want users to independently configure it.
+	// Keeping it private to disable serialization for it.
 	// default value is set to 0 so syncer will constantly request networking head.
 	blockTime time.Duration
 }
@@ -52,5 +55,12 @@ func WithBlockTime(duration time.Duration) Options {
 func WithTrustingPeriod(duration time.Duration) Options {
 	return func(p *Parameters) {
 		p.TrustingPeriod = duration
+	}
+}
+
+// WithParams is a functional option that overrides Parameters.
+func WithParams(new Parameters) Options {
+	return func(old *Parameters) {
+		*old = new
 	}
 }

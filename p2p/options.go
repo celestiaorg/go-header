@@ -7,6 +7,7 @@ import (
 
 // parameters is an interface that encompasses all params needed for
 // client and server parameters to protect `optional functions` from this package.
+// TODO(@Wondertan): This pattern seems to be overly complicated for the deduplication we get
 type parameters interface {
 	ServerParameters | ClientParameters
 }
@@ -97,6 +98,13 @@ func WithNetworkID[T parameters](networkID string) Option[T] {
 		case *ServerParameters:
 			t.networkID = networkID
 		}
+	}
+}
+
+// WithParams is a functional option that overrides Client/ServerParameters
+func WithParams[T parameters](params T) Option[T] {
+	return func(p *T) {
+		*p = params
 	}
 }
 
