@@ -124,8 +124,8 @@ type ClientParameters struct {
 // DefaultClientParameters returns the default params to configure the store.
 func DefaultClientParameters() ClientParameters {
 	return ClientParameters{
-		MaxHeadersPerRangeRequest:  64,
-		RangeRequestTimeout:        time.Second * 8,
+		MaxHeadersPerRangeRequest: 64,
+		RangeRequestTimeout:       time.Second * 8,
 	}
 }
 
