@@ -59,6 +59,10 @@ func NewExchange[H header.Header](
 		return nil, err
 	}
 
+	if len(peers) == 0 {
+		return nil, fmt.Errorf("no trusted peers")
+	}
+
 	ex := &Exchange[H]{
 		host:       host,
 		protocolID: protocolID(params.networkID),
@@ -104,56 +108,62 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 	return ex.peerTracker.stop(ctx)
 }
 
-// Head requests the latest Header. Note that the Header must be verified thereafter.
-// NOTE:
-// It is fine to continue handling head request if the timeout will be reached.
-// As we are requesting head from multiple trusted peers,
-// we may already have some headers when the timeout will be reached.
+// Head requests the latest Header from trusted peers.
+//
+// The Head must be verified thereafter where possible.
+// We request in parallel all the trusted peers, compare their response
+// and return the highest one.
 func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 	log.Debug("requesting head")
-	// create request
-	req := &p2p_pb.HeaderRequest{
-		Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
-		Amount: 1,
+
+	reqCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		// allocate 90% of callers set deadline for requests
+		// and give leftover to determine the bestHead from gathered responses
+		// this avoids DeadlineExceeded error when any of the peers are unresponsive
+		now := time.Now()
+		sub := deadline.Sub(now) * 9 / 10
+		var cancel context.CancelFunc
+		reqCtx, cancel = context.WithDeadline(ctx, now.Add(sub))
+		defer cancel()
 	}
 
 	var (
-		zero     H
-		headerCh = make(chan H)
+		zero         H
+		trustedPeers = ex.trustedPeers()
+		headerRespCh = make(chan H, len(trustedPeers))
+		headerReq    = &p2p_pb.HeaderRequest{
+			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
+			Amount: 1,
+		}
 	)
-
-	trustedPeers := ex.trustedPeers()
-	// request head from each trusted peer
 	for _, from := range trustedPeers {
 		go func(from peer.ID) {
-			// request ensures that the result slice will have at least one Header
-			headers, err := ex.request(ctx, from, req)
+			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
 				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
-				var zero H
-				headerCh <- zero
+				headerRespCh <- zero
 				return
 			}
-			headerCh <- headers[0]
+			// request ensures that the result slice will have at least one Header
+			headerRespCh <- headers[0]
 		}(from)
 	}
 
-	result := make([]H, 0, len(trustedPeers))
-LOOP:
+	headers := make([]H, 0, len(trustedPeers))
 	for range trustedPeers {
 		select {
-		case h := <-headerCh:
+		case h := <-headerRespCh:
 			if !h.IsZero() {
-				result = append(result, h)
+				headers = append(headers, h)
 			}
 		case <-ctx.Done():
-			break LOOP
-		case <-ex.ctx.Done():
 			return zero, ctx.Err()
+		case <-ex.ctx.Done():
+			return zero, ex.ctx.Err()
 		}
 	}
-
-	return bestHead[H](result)
+	return bestHead[H](headers)
 }
 
 // GetByHeight performs a request for the Header at the given
@@ -242,15 +252,10 @@ func (ex *Exchange[H]) performRequest(
 	}
 
 	trustedPeers := ex.trustedPeers()
-	// TODO: Move this check to constructor(#1671)
-	if len(trustedPeers) == 0 {
-		return nil, fmt.Errorf("no trusted peers")
-	}
 	var reqErr error
 
 	for i := 0; i < requestRetry; i++ {
 		for _, peer := range trustedPeers {
-			// check for contexts
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

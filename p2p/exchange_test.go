@@ -10,6 +10,7 @@ import (
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -34,6 +35,31 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	assert.Equal(t, store.Headers[store.HeadHeight].Height(), header.Height())
 	assert.Equal(t, store.Headers[store.HeadHeight].Hash(), header.Hash())
+}
+
+func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	// we need host with real transport here, so we can test timeouts
+	hosts := quicHosts(t, 3)
+
+	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID()}
+	client := client(ctx, t, hosts[0], trustedPeers)
+
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	_ = server(ctx, t, hosts[1], goodStore)
+
+	badStore := &timedOutStore{timeout: time.Millisecond*500} // simulates peer that does not respond
+	_ = server(ctx, t, hosts[2], badStore)
+
+	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
+	t.Cleanup(cancel)
+
+	// should still succeed with one responder
+	head, err := client.Head(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, head)
 }
 
 func TestExchange_RequestHeader(t *testing.T) {
@@ -448,12 +474,55 @@ func createP2PExAndServer(
 	return ex, store
 }
 
+func quicHosts(t *testing.T, n int) []libhost.Host {
+	hosts := make([]libhost.Host, n)
+	for i := range hosts {
+		swrm := swarm.GenSwarm(t, swarm.OptDisableTCP)
+		hosts[i] = blankhost.NewBlankHost(swrm)
+		for _, host := range hosts[:i] {
+			hosts[i].Peerstore().AddAddrs(host.ID(), host.Network().ListenAddresses(), peerstore.PermanentAddrTTL)
+			host.Peerstore().AddAddrs(hosts[i].ID(), hosts[i].Network().ListenAddresses(), peerstore.PermanentAddrTTL)
+		}
+	}
+
+	return hosts
+}
+
+func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
+	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
+	require.NoError(t, err)
+	err = client.Start(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := client.Stop(ctx)
+		require.NoError(t, err)
+	})
+	return client
+}
+
+func server(ctx context.Context, t *testing.T, host libhost.Host, store header.Store[*headertest.DummyHeader]) *ExchangeServer[*headertest.DummyHeader] {
+	server, err := NewExchangeServer[*headertest.DummyHeader](host, store)
+	require.NoError(t, err)
+	err = server.Start(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := server.Stop(ctx)
+		require.NoError(t, err)
+	})
+	return server
+}
+
 type timedOutStore struct {
 	headertest.Store[*headertest.DummyHeader]
 	timeout time.Duration
 }
 
 func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
-	time.Sleep(t.timeout + 1)
+	time.Sleep(t.timeout + time.Second)
 	return true
+}
+
+func (t *timedOutStore) Head(_ context.Context) (*headertest.DummyHeader, error) {
+	time.Sleep(t.timeout)
+	return nil, header.ErrNoHead
 }
