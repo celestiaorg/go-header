@@ -118,7 +118,7 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 
 	reqCtx := ctx
 	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 90% of callers set deadline for requests
+		// allocate 90% of caller's set deadline for requests
 		// and give leftover to determine the bestHead from gathered responses
 		// this avoids DeadlineExceeded error when any of the peers are unresponsive
 		now := time.Now()
