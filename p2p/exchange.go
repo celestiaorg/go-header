@@ -118,6 +118,24 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 	log.Debug("requesting head")
 
+	// pool of peers to request from is determined by whether the head of the store is expired or not
+	// if the local chain head is outside the unbonding period, only use TRUSTED PEERS for determining
+	// the head
+	peerset := ex.trustedPeers()
+	if !ex.Params.subjectiveInit {
+		// otherwise, node has a chain head that is NOT outdated so we can actually request random peers in
+		// addition to trusted
+		peers, err := ex.Params.peerstore.Load(ctx)
+		if err != nil { // DISCUSS(team): should we return an error here or just use the trustedPeers?
+			var zero H
+			return zero, err
+		}
+
+		for _, peer := range peers {
+			peerset = append(peerset, peer.ID)
+		}
+	}
+
 	reqCtx := ctx
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 90% of caller's set deadline for requests
@@ -132,14 +150,13 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 
 	var (
 		zero         H
-		trustedPeers = ex.trustedPeers()
-		headerRespCh = make(chan H, len(trustedPeers))
+		headerRespCh = make(chan H, len(peerset))
 		headerReq    = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
 	)
-	for _, from := range trustedPeers {
+	for _, from := range peerset {
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
@@ -152,8 +169,8 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		}(from)
 	}
 
-	headers := make([]H, 0, len(trustedPeers))
-	for range trustedPeers {
+	headers := make([]H, 0, len(peerset))
+	for range peerset {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
@@ -178,12 +195,16 @@ func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error
 	if height == 0 {
 		return zero, fmt.Errorf("specified request height must be greater than 0")
 	}
+	peers, err := ex.Params.peerstore.Load(ctx)
+	if err != nil {
+		return zero, err
+	}
 	// create request
 	req := &p2p_pb.HeaderRequest{
 		Data:   &p2p_pb.HeaderRequest_Origin{Origin: height},
 		Amount: 1,
 	}
-	headers, err := ex.performRequest(ctx, req)
+	headers, err := ex.performRequest(ctx, req, peers)
 	if err != nil {
 		return zero, err
 	}
@@ -227,12 +248,16 @@ func (ex *Exchange[H]) GetVerifiedRange(
 func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	log.Debugw("requesting header", "hash", hash.String())
 	var zero H
+	peers, err := ex.Params.peerstore.Load(ctx)
+	if err != nil {
+		return zero, err
+	}
 	// create request
 	req := &p2p_pb.HeaderRequest{
 		Data:   &p2p_pb.HeaderRequest_Hash{Hash: hash},
 		Amount: 1,
 	}
-	headers, err := ex.performRequest(ctx, req)
+	headers, err := ex.performRequest(ctx, req, peers)
 	if err != nil {
 		return zero, err
 	}
@@ -248,16 +273,16 @@ const requestRetry = 3
 func (ex *Exchange[H]) performRequest(
 	ctx context.Context,
 	req *p2p_pb.HeaderRequest,
+	peers []peer.AddrInfo,
 ) ([]H, error) {
 	if req.Amount == 0 {
 		return make([]H, 0), nil
 	}
 
-	trustedPeers := ex.trustedPeers()
 	var reqErr error
 
 	for i := 0; i < requestRetry; i++ {
-		for _, peer := range trustedPeers {
+		for _, peer := range peers {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -266,7 +291,7 @@ func (ex *Exchange[H]) performRequest(
 			default:
 			}
 
-			h, err := ex.request(ctx, peer, req)
+			h, err := ex.request(ctx, peer.ID, req)
 			if err != nil {
 				reqErr = err
 				log.Debugw("requesting header from trustedPeer failed",
