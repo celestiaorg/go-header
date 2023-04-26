@@ -63,7 +63,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		return storeHead, err
 	}
 	// check if the stored header is not expired and use it
-	if !isExpired(storeHead, s.Params.TrustingPeriod) {
+	if !IsExpired(storeHead, s.Params.TrustingPeriod) {
 		return storeHead, nil
 	}
 	// otherwise, request head from a trusted peer
@@ -80,7 +80,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	default:
 		log.Infow("subjective initialization finished", "height", trustHead.Height())
 		return trustHead, nil
-	case isExpired(trustHead, s.Params.TrustingPeriod):
+	case IsExpired(trustHead, s.Params.TrustingPeriod):
 		log.Warnw("subjective initialization with an expired header", "height", trustHead.Height())
 	case !isRecent(trustHead, s.Params.blockTime):
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
@@ -162,8 +162,8 @@ func (s *Syncer[H]) validateHead(ctx context.Context, new H) pubsub.ValidationRe
 // TODO(@Wondertan): We should request TrustingPeriod from the network's state params or
 //  listen for network params changes to always have a topical value.
 
-// isExpired checks if header is expired against trusting period.
-func isExpired(header header.Header, period time.Duration) bool {
+// IsExpired checks if header is expired against trusting period.
+func IsExpired(header header.Header, period time.Duration) bool {
 	expirationTime := header.Time().Add(period)
 	return !expirationTime.After(time.Now())
 }
