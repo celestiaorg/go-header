@@ -69,6 +69,7 @@ func NewExchange[H header.Header](
 		peerTracker: newPeerTracker(
 			host,
 			connGater,
+			params.peerstore,
 		),
 		Params: params,
 	}
