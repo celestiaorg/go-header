@@ -25,8 +25,20 @@ var (
 	// otherwise it will be removed on the next GC cycle.
 	maxAwaitingTime = time.Hour
 	// gcCycle defines the duration after which the peerTracker starts removing peers.
-	gcCycle = time.Minute * 30
+	gcCycleDefault = time.Minute * 30
 )
+
+type params struct {
+	gcCycle time.Duration
+}
+
+type PTOption func(*params)
+
+func WithGCCycle(gcCycle time.Duration) PTOption {
+	return func(p *params) {
+		p.gcCycle = gcCycle
+	}
+}
 
 type peerTracker struct {
 	host      host.Host
@@ -43,6 +55,7 @@ type peerTracker struct {
 
 	// peerstore is used to store peers that we have already connected to.
 	peerstore peerstore.Peerstore
+	params    *params
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -55,9 +68,10 @@ func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
 	peerstore peerstore.Peerstore,
+	opts ...PTOption,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &peerTracker{
+	pt := &peerTracker{
 		host:              h,
 		connGater:         connGater,
 		disconnectedPeers: make(map[peer.ID]*peerStat),
@@ -66,7 +80,14 @@ func newPeerTracker(
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
+		params:            &params{gcCycle: gcCycleDefault},
 	}
+
+	for _, opt := range opts {
+		opt(pt.params)
+	}
+
+	return pt
 }
 
 func (p *peerTracker) track() {
@@ -165,7 +186,7 @@ func (p *peerTracker) peers() []*peerStat {
 // * disconnected peers which have been disconnected for more than maxAwaitingTime;
 // * connected peers whose scores are less than or equal than defaultScore;
 func (p *peerTracker) gc() {
-	ticker := time.NewTicker(gcCycle)
+	ticker := time.NewTicker(p.params.gcCycle)
 	for {
 		select {
 		case <-p.ctx.Done():
@@ -191,7 +212,10 @@ func (p *peerTracker) gc() {
 				addrInfo := p.host.Network().Peerstore().PeerInfo(peer.peerID)
 				peerlist = append(peerlist, addrInfo)
 			}
-			p.peerstore.Put(context.Background(), peerlist)
+			err := p.peerstore.Put(context.Background(), peerlist)
+			if err != nil {
+				log.Error("Failed to persist updated peer list")
+			}
 
 			p.peerLk.Unlock()
 		}
