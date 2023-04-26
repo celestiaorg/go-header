@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/celestiaorg/go-header/p2p/peerstore"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -40,6 +41,9 @@ type peerTracker struct {
 	// online until pruneDeadline, it will be removed and its score will be lost.
 	disconnectedPeers map[peer.ID]*peerStat
 
+	// peerstore is used to store peers that we have already connected to.
+	peerstore peerstore.Peerstore
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	// done is used to gracefully stop the peerTracker.
@@ -50,6 +54,7 @@ type peerTracker struct {
 func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
+	peerstore peerstore.Peerstore,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &peerTracker{
@@ -57,6 +62,7 @@ func newPeerTracker(
 		connGater:         connGater,
 		disconnectedPeers: make(map[peer.ID]*peerStat),
 		trackedPeers:      make(map[peer.ID]*peerStat),
+		peerstore:         peerstore,
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
@@ -179,6 +185,14 @@ func (p *peerTracker) gc() {
 					delete(p.trackedPeers, id)
 				}
 			}
+
+			peerlist := make([]peer.AddrInfo, 0, len(p.trackedPeers))
+			for _, peer := range p.trackedPeers {
+				addrInfo := p.host.Network().Peerstore().PeerInfo(peer.peerID)
+				peerlist = append(peerlist, addrInfo)
+			}
+			p.peerstore.Put(context.Background(), peerlist)
+
 			p.peerLk.Unlock()
 		}
 	}
