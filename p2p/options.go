@@ -123,6 +123,9 @@ type ClientParameters struct {
 	chainID string
 	// peerstore is a storage for peers.
 	peerstore peerstore.Peerstore
+	// subjective initialization just means that the node has to really trust
+	// the sync target that it sets in order to prevent a long range attack
+	subjectiveInit bool
 }
 
 // DefaultClientParameters returns the default params to configure the store.
@@ -180,6 +183,17 @@ func WithPeerPersistence[T ClientParameters](pstore peerstore.Peerstore) Option[
 		switch t := any(p).(type) { //nolint:gocritic
 		case *ClientParameters:
 			t.peerstore = pstore
+		}
+	}
+}
+
+// WithSubjectiveInitialization is a functional option that configures the
+// `subjectiveInit` parameter.
+func WithSubjectiveInitialization[T ClientParameters](subjectiveInit bool) Option[T] {
+	return func(p *T) {
+		switch t := any(p).(type) { //nolint:gocritic
+		case *ClientParameters:
+			t.subjectiveInit = subjectiveInit
 		}
 	}
 }
