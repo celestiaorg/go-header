@@ -191,7 +191,7 @@ func (p *peerTracker) gc() {
 				addrInfo := p.host.Network().Peerstore().PeerInfo(peer.peerID)
 				peerlist = append(peerlist, addrInfo)
 			}
-			p.peerstore.Put(peerlist)
+			p.peerstore.Put(context.Background(), peerlist)
 
 			p.peerLk.Unlock()
 		}
