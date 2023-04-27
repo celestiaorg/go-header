@@ -12,14 +12,17 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/celestiaorg/go-header/p2p/peerstore"
 )
 
 func TestPeerTracker_GC(t *testing.T) {
 	h := createMocknet(t, 1)
-	gcCycle = time.Millisecond * 200
+	gcCycleDefault = time.Millisecond * 200
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+	mockPeerStore := peerstore.NewMockPeerstore()
+	p := newPeerTracker(h[0], connGater, mockPeerStore)
 	maxAwaitingTime = time.Millisecond
 	pid1 := peer.ID("peer1")
 	pid2 := peer.ID("peer2")
@@ -42,13 +45,17 @@ func TestPeerTracker_GC(t *testing.T) {
 
 	require.Nil(t, p.trackedPeers[pid1])
 	require.Nil(t, p.disconnectedPeers[pid3])
+
+	peers, _ := mockPeerStore.Load(context.Background())
+	require.Equal(t, pid2, p.trackedPeers[pid2].peerID)
+	require.Equal(t, peers[0].ID, p.trackedPeers[pid2].peerID)
 }
 
 func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+	p := newPeerTracker(h[0], connGater, peerstore.NewMockPeerstore())
 	maxAwaitingTime = time.Millisecond
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)
