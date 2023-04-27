@@ -38,7 +38,8 @@ type Exchange[H header.Header] struct {
 	trustedPeers func() peer.IDSlice
 	peerTracker  *peerTracker
 
-	Params ClientParameters
+	Params   ClientParameters
+	headOpts header.HeadOptions
 
 	metrics *metrics
 }
@@ -114,8 +115,27 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // The Head must be verified thereafter where possible.
 // We request in parallel all the trusted peers, compare their response
 // and return the highest one.
-func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
+func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.Option) (H, error) {
 	log.Debug("requesting head")
+
+	for _, opt := range opts {
+		opt(&ex.headOpts)
+	}
+
+	peerset := ex.trustedPeers()
+	if !ex.headOpts.SubjectiveInit {
+		// otherwise, node has a chain head that is NOT outdated so we can actually request random peers in
+		// addition to trusted
+		peers, err := ex.Params.peerstore.Load(ctx)
+		if err != nil { // DISCUSS(team): should we return an error here or just use the trustedPeers?
+			var zero H
+			return zero, err
+		}
+
+		for _, peer := range peers {
+			peerset = append(peerset, peer.ID)
+		}
+	}
 
 	reqCtx := ctx
 	if deadline, ok := ctx.Deadline(); ok {
@@ -131,14 +151,13 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 
 	var (
 		zero         H
-		trustedPeers = ex.trustedPeers()
-		headerRespCh = make(chan H, len(trustedPeers))
+		headerRespCh = make(chan H, len(peerset))
 		headerReq    = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
 	)
-	for _, from := range trustedPeers {
+	for _, from := range peerset {
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
@@ -151,8 +170,8 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		}(from)
 	}
 
-	headers := make([]H, 0, len(trustedPeers))
-	for range trustedPeers {
+	headers := make([]H, 0, len(peerset))
+	for range peerset {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {

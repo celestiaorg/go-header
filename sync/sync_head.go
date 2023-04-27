@@ -24,6 +24,12 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 	if isRecent(sbjHead, s.Params.blockTime) {
 		return sbjHead, nil
 	}
+	// otherwise, request head from a trusted peer
+	opts := make([]header.Option, 0)
+	if isExpired(sbjHead, s.Params.TrustingPeriod) {
+		// if subjective head is expired - request head from a trusted peer without validation
+		opts = append(opts, header.WithSubjectiveInit(true))
+	}
 	// otherwise, request head from a trusted peer, as we assume it is fully synced
 	//
 	// TODO(@Wondertan): Here is another potential networking optimization:
@@ -31,7 +37,7 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 	//  * If now >= TNH && now <= TNH + (THP) header propagation time
 	//    * Wait for header to arrive instead of requesting it
 	//  * This way we don't request as we know the new network header arrives exactly
-	netHead, err := s.getter.Head(ctx)
+	netHead, err := s.getter.Head(ctx, opts...)
 	if err != nil {
 		return netHead, err
 	}

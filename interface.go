@@ -127,5 +127,19 @@ type Getter[H Header] interface {
 // reporting it.
 type Head[H Header] interface {
 	// Head returns the latest known header.
-	Head(context.Context) (H, error)
+	Head(context.Context, ...Option) (H, error)
+}
+
+type Option func(*HeadOptions)
+
+type HeadOptions struct {
+	// subjective initialization just means that the node has to really trust
+	// the sync target that it sets in order to prevent a long range attack
+	SubjectiveInit bool
+}
+
+func WithSubjectiveInit(subjInit bool) Option {
+	return func(o *HeadOptions) {
+		o.SubjectiveInit = subjInit
+	}
 }

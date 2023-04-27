@@ -16,7 +16,7 @@ type syncGetter[H header.Header] struct {
 	head    H
 }
 
-func (se *syncGetter[H]) Head(ctx context.Context) (H, error) {
+func (se *syncGetter[H]) Head(ctx context.Context, opts ...header.Option) (H, error) {
 	// the lock construction here ensures only one routine calling Head at a time
 	// while others wait via Rlock
 	if !se.headLk.TryLock() {
@@ -26,6 +26,6 @@ func (se *syncGetter[H]) Head(ctx context.Context) (H, error) {
 	}
 	defer se.headLk.Unlock()
 
-	se.head, se.headErr = se.Getter.Head(ctx)
+	se.head, se.headErr = se.Getter.Head(ctx, opts...)
 	return se.head, se.headErr
 }

@@ -22,6 +22,8 @@ import (
 	"github.com/celestiaorg/go-header/headertest"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
+
+	pstore "github.com/celestiaorg/go-header/p2p/peerstore"
 )
 
 const networkID = "private"
@@ -457,9 +459,13 @@ func createP2PExAndServer(
 	require.NoError(t, err)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
+	peers := []peer.AddrInfo{tpeer.Peerstore().PeerInfo(tpeer.ID())}
+	mockPeerstore := pstore.NewMockPeerstore()
+	mockPeerstore.Put(context.Background(), peers)
 	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
+		WithPeerPersistence[ClientParameters](mockPeerstore),
 	)
 	require.NoError(t, err)
 	require.NoError(t, ex.Start(context.Background()))
@@ -489,7 +495,8 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 }
 
 func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
-	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
+	client, err := NewExchange[*headertest.DummyHeader](
+		host, trusted, nil, WithPeerPersistence[ClientParameters](pstore.NewMockPeerstore()))
 	require.NoError(t, err)
 	err = client.Start(ctx)
 	require.NoError(t, err)
@@ -522,7 +529,7 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(_ context.Context) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(_ context.Context, opts ...header.Option) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }
