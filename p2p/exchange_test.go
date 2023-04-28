@@ -7,6 +7,7 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/core/event"
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -37,6 +38,69 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	assert.Equal(t, store.Headers[store.HeadHeight].Height(), header.Height())
 	assert.Equal(t, store.Headers[store.HeadHeight].Hash(), header.Hash())
+}
+
+// DISCUSS: This test is flaky! how to improve?
+func TestExchange_RequestHead_WithSubjectiveInitOpt(t *testing.T) {
+	hosts := createMocknet(t, 4)
+	exchg, _ := createP2PExAndServer(t, hosts[0], hosts[1], hosts[2:4]...)
+	// TODO: find better way of creating two additional peers that are not connected to
+	// `createMocknet` starts off with everyone connected to everyone else...
+	for _, h := range hosts[1:4] {
+		err := exchg.peerTracker.host.Network().ClosePeer(h.ID())
+		require.NoError(t, err)
+	}
+
+	subs, err := hosts[1].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	require.NoError(t, err)
+
+	// perform header request
+	_, err = exchg.Head(context.Background(), header.WithSubjectiveInit(true))
+	require.NoError(t, err)
+
+	<-subs.Out() // ignore first disconnection event
+	subscription := <-subs.Out()
+
+	ev := subscription.(event.EvtPeerConnectednessChanged)
+	assert.Equal(t, ev.Connectedness, network.Connected)
+	assert.Equal(t, ev.Peer, hosts[0].ID())
+
+	for _, h := range hosts[2:4] {
+		createP2PExAndServer(t, h, h)
+	}
+
+	// reinitialize the store with peers because
+	// at this point `gc` from peertracker would have overwritten
+	// the peers in the store
+	storedPeers := make([]peer.AddrInfo, 0, 2)
+	for _, h := range hosts[2:4] {
+		storedPeers = append(storedPeers, exchg.host.Peerstore().PeerInfo(h.ID()))
+	}
+
+	err = exchg.Params.peerstore.Put(context.Background(), storedPeers)
+	require.NoError(t, err)
+
+	subs1, err := hosts[2].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	require.NoError(t, err)
+
+	subs2, err := hosts[3].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	require.NoError(t, err)
+
+	// perform header request
+	_, err = exchg.Head(context.Background(), header.WithSubjectiveInit(false))
+	require.NoError(t, err)
+
+	subscription = <-subs1.Out()
+
+	ev = subscription.(event.EvtPeerConnectednessChanged)
+	assert.Equal(t, ev.Connectedness, network.Connected)
+	assert.Equal(t, ev.Peer, hosts[0].ID())
+
+	subscription = <-subs2.Out()
+
+	ev = subscription.(event.EvtPeerConnectednessChanged)
+	assert.Equal(t, ev.Connectedness, network.Connected)
+	assert.Equal(t, ev.Peer, hosts[0].ID())
 }
 
 func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
@@ -449,6 +513,7 @@ func createMocknet(t *testing.T, amount int) []libhost.Host {
 func createP2PExAndServer(
 	t *testing.T,
 	host, tpeer libhost.Host,
+	goodPeers ...libhost.Host,
 ) (*Exchange[*headertest.DummyHeader], *headertest.Store[*headertest.DummyHeader]) {
 	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
 	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](tpeer, store,
@@ -460,6 +525,9 @@ func createP2PExAndServer(
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 	peers := []peer.AddrInfo{tpeer.Peerstore().PeerInfo(tpeer.ID())}
+	for _, p := range goodPeers {
+		peers = append(peers, p.Peerstore().PeerInfo(p.ID()))
+	}
 	mockPeerstore := pstore.NewMockPeerstore()
 	mockPeerstore.Put(context.Background(), peers)
 	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
