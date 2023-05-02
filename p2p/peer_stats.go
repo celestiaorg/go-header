@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gammazero/deque"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -100,21 +101,33 @@ func (ps *peerStats) Pop() any {
 type peerQueue struct {
 	ctx context.Context
 
-	statsLk sync.RWMutex
-	stats   peerStats
+	peerQueueLk sync.RWMutex
+
+	stats peerStats
+	// capacity specifies how many active peers do we have in the queue.
+	// It will be decreased if peer will return errors.
+	capacity int
+
+	// deque contains a set of trusted peers that are needed for the fallback solution.
+	deque *deque.Deque[peer.ID]
 
 	havePeer chan struct{}
 }
 
-func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
+func newPeerQueue(ctx context.Context, stats []*peerStat, trustedPeers []peer.ID) *peerQueue {
 	statsCh := make(chan struct{}, len(stats))
 	pq := &peerQueue{
 		ctx:      ctx,
 		stats:    newPeerStats(),
+		deque:    deque.New[peer.ID](len(trustedPeers)),
 		havePeer: statsCh,
 	}
 	for _, stat := range stats {
 		pq.push(stat)
+	}
+
+	for _, pID := range trustedPeers {
+		pq.deque.PushBack(pID)
 	}
 	return pq
 }
@@ -123,10 +136,12 @@ func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
 // in case if there are no peer available in current session, it blocks until
 // the peer will be pushed in.
 func (p *peerQueue) waitPop(ctx context.Context) *peerStat {
-	// TODO(vgonkivs): implement fallback solution for cases when peer queue is empty.
-	// As we discussed with @Wondertan there could be 2 possible solutions:
-	// * use libp2p.Discovery to find new peers outside peerTracker to request headers;
-	// * implement IWANT/IHAVE messaging system and start requesting ranges from the Peerstore;
+	if p.empty() {
+		stat := &peerStat{peerID: p.deque.PopFront()}
+		p.deque.PushBack(stat.peerID)
+		return stat
+	}
+
 	select {
 	case <-ctx.Done():
 		return &peerStat{}
@@ -134,16 +149,35 @@ func (p *peerQueue) waitPop(ctx context.Context) *peerStat {
 		return &peerStat{}
 	case <-p.havePeer:
 	}
-	p.statsLk.Lock()
-	defer p.statsLk.Unlock()
+	p.peerQueueLk.Lock()
+	defer p.peerQueueLk.Unlock()
 	return heap.Pop(&p.stats).(*peerStat)
 }
 
 // push adds the peer to the queue.
 func (p *peerQueue) push(stat *peerStat) {
-	p.statsLk.Lock()
+	if p.empty() {
+		return
+	}
+
+	p.peerQueueLk.Lock()
 	heap.Push(&p.stats, stat)
-	p.statsLk.Unlock()
+	p.peerQueueLk.Unlock()
 	// notify that the peer is available in the queue, so it can be popped out
 	p.havePeer <- struct{}{}
+}
+
+func (p *peerQueue) decreaseCapacity() {
+	p.peerQueueLk.Lock()
+	defer p.peerQueueLk.Unlock()
+	if p.capacity == 0 {
+		return
+	}
+	p.capacity--
+}
+
+func (p *peerQueue) empty() bool {
+	p.peerQueueLk.Lock()
+	defer p.peerQueueLk.Unlock()
+	return p.capacity == 0
 }

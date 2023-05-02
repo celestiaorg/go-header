@@ -7,6 +7,7 @@ retract v0.1.0
 
 require (
 	github.com/celestiaorg/go-libp2p-messenger v0.2.0
+	github.com/gammazero/deque v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/ipfs/go-datastore v0.6.0

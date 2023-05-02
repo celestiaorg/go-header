@@ -37,7 +37,7 @@ func Test_PeerQueuePopBestPeer(t *testing.T) {
 	}
 
 	// we do not need timeout/cancel functionality here
-	pQueue := newPeerQueue(context.Background(), peersStat)
+	pQueue := newPeerQueue(context.Background(), peersStat, []peer.ID{})
 	for index := 0; index < pQueue.stats.Len(); index++ {
 		stats := heap.Pop(&pQueue.stats).(*peerStat)
 		require.Equal(t, stats, wantStat[index])
@@ -53,7 +53,7 @@ func Test_PeerQueueRemovePeer(t *testing.T) {
 	}
 
 	// we do not need timeout/cancel functionality here
-	pQueue := newPeerQueue(context.Background(), peersStat)
+	pQueue := newPeerQueue(context.Background(), peersStat, []peer.ID{})
 
 	_ = heap.Pop(&pQueue.stats)
 	stat := heap.Pop(&pQueue.stats).(*peerStat)
@@ -62,7 +62,7 @@ func Test_PeerQueueRemovePeer(t *testing.T) {
 
 func Test_StatsUpdateStats(t *testing.T) {
 	// we do not need timeout/cancel functionality here
-	pQueue := newPeerQueue(context.Background(), []*peerStat{})
+	pQueue := newPeerQueue(context.Background(), []*peerStat{}, []peer.ID{})
 	stat := &peerStat{peerID: "peerID", peerScore: 0}
 	heap.Push(&pQueue.stats, stat)
 	testCases := []struct {

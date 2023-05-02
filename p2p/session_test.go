@@ -29,6 +29,7 @@ func Test_Validate(t *testing.T) {
 		context.Background(),
 		nil,
 		&peerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
+		[]peer.ID{},
 		"", time.Second,
 		withValidation(head),
 	)
@@ -46,6 +47,7 @@ func Test_ValidateFails(t *testing.T) {
 		context.Background(),
 		nil,
 		&peerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
+		[]peer.ID{},
 		"", time.Second,
 		withValidation(head),
 	)

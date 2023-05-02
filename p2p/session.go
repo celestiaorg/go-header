@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/celestiaorg/go-header"
@@ -49,6 +50,7 @@ func newSession[H header.Header](
 	ctx context.Context,
 	h host.Host,
 	peerTracker *peerTracker,
+	trustedPeers []peer.ID,
 	protocolID protocol.ID,
 	requestTimeout time.Duration,
 	options ...option[H],
@@ -59,7 +61,7 @@ func newSession[H header.Header](
 		cancel:         cancel,
 		protocolID:     protocolID,
 		host:           h,
-		queue:          newPeerQueue(ctx, peerTracker.peers()),
+		queue:          newPeerQueue(ctx, peerTracker.peers(), trustedPeers),
 		peerTracker:    peerTracker,
 		requestTimeout: requestTimeout,
 	}
@@ -162,6 +164,7 @@ func (s *session[H]) doRequest(
 	h, err := s.processResponse(r)
 	if err != nil {
 		logFn := log.Errorw
+		s.queue.decreaseCapacity()
 
 		switch err {
 		case header.ErrNotFound, errEmptyResponse:
