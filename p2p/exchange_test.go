@@ -7,7 +7,6 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/event"
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -40,67 +39,48 @@ func TestExchange_RequestHead(t *testing.T) {
 	assert.Equal(t, store.Headers[store.HeadHeight].Hash(), header.Hash())
 }
 
-// DISCUSS: This test is flaky! how to improve?
 func TestExchange_RequestHead_WithSubjectiveInitOpt(t *testing.T) {
-	hosts := createMocknet(t, 4)
-	exchg, _ := createP2PExAndServer(t, hosts[0], hosts[1], hosts[2:4]...)
-	// TODO: find better way of creating two additional peers that are not connected to
-	// `createMocknet` starts off with everyone connected to everyone else...
-	for _, h := range hosts[1:4] {
-		err := exchg.peerTracker.host.Network().ClosePeer(h.ID())
-		require.NoError(t, err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
-	subs, err := hosts[1].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
-	require.NoError(t, err)
+	hosts := createMocknet(t, 6)
+
+	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
+	goodPeers := hosts[4:]
+	client := client(ctx, t, hosts[0], trustedPeers, goodPeers...)
+
+	// initialize servers for trusted and good peers with counter store
+	servers := make([]*ExchangeServer[*headertest.DummyHeader], 5)
+	stores := make([]counterStore, 5)
+	for i, h := range hosts[1:] {
+		stores[i] = counterStore{hitCount: 0}
+		servers[i] = server(ctx, t, h, &stores[i])
+	}
 
 	// perform header request
-	_, err = exchg.Head(context.Background(), header.WithSubjectiveInit(true))
+	_, err := client.Head(context.Background(), header.WithSubjectiveInit(true))
 	require.NoError(t, err)
 
-	<-subs.Out() // ignore first disconnection event
-	subscription := <-subs.Out()
-
-	ev := subscription.(event.EvtPeerConnectednessChanged)
-	assert.Equal(t, ev.Connectedness, network.Connected)
-	assert.Equal(t, ev.Peer, hosts[0].ID())
-
-	for _, h := range hosts[2:4] {
-		createP2PExAndServer(t, h, h)
+	// check that only trusted peers were were hit
+	for _, s := range stores[:3] {
+		assert.Equal(t, 1, s.hitCount)
 	}
-
-	// reinitialize the store with peers because
-	// at this point `gc` from peertracker would have overwritten
-	// the peers in the store
-	storedPeers := make([]peer.AddrInfo, 0, 2)
-	for _, h := range hosts[2:4] {
-		storedPeers = append(storedPeers, exchg.host.Peerstore().PeerInfo(h.ID()))
+	for _, s := range stores[3:] {
+		assert.Equal(t, 0, s.hitCount)
 	}
-
-	err = exchg.Params.peerstore.Put(context.Background(), storedPeers)
-	require.NoError(t, err)
-
-	subs1, err := hosts[2].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
-	require.NoError(t, err)
-
-	subs2, err := hosts[3].EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
-	require.NoError(t, err)
 
 	// perform header request
-	_, err = exchg.Head(context.Background(), header.WithSubjectiveInit(false))
+	_, err = client.Head(context.Background(), header.WithSubjectiveInit(false))
 	require.NoError(t, err)
 
-	subscription = <-subs1.Out()
+	// check that all peers were hit
+	for _, s := range stores[:3] {
+		assert.Equal(t, 2, s.hitCount)
+	}
 
-	ev = subscription.(event.EvtPeerConnectednessChanged)
-	assert.Equal(t, ev.Connectedness, network.Connected)
-	assert.Equal(t, ev.Peer, hosts[0].ID())
-
-	subscription = <-subs2.Out()
-
-	ev = subscription.(event.EvtPeerConnectednessChanged)
-	assert.Equal(t, ev.Connectedness, network.Connected)
-	assert.Equal(t, ev.Peer, hosts[0].ID())
+	for _, s := range stores[3:] {
+		assert.Equal(t, 1, s.hitCount)
+	}
 }
 
 func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
@@ -562,9 +542,15 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 	return hosts
 }
 
-func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
+func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID, goodPeers ...libhost.Host) *Exchange[*headertest.DummyHeader] {
+	peers := []peer.AddrInfo{}
+	for _, p := range goodPeers {
+		peers = append(peers, p.Peerstore().PeerInfo(p.ID()))
+	}
+	mockPeerstore := pstore.NewMockPeerstore()
+	mockPeerstore.Put(context.Background(), peers)
 	client, err := NewExchange[*headertest.DummyHeader](
-		host, trusted, nil, WithPeerPersistence[ClientParameters](pstore.NewMockPeerstore()))
+		host, trusted, nil, WithPeerPersistence[ClientParameters](mockPeerstore))
 	require.NoError(t, err)
 	err = client.Start(ctx)
 	require.NoError(t, err)
@@ -600,4 +586,18 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 func (t *timedOutStore) Head(_ context.Context, opts ...header.Option) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
+}
+
+type counterStore struct {
+	headertest.Store[*headertest.DummyHeader]
+	hitCount int
+}
+
+func (c *counterStore) HasAt(ctx context.Context, height uint64) bool {
+	return true
+}
+
+func (c *counterStore) Head(ctx context.Context, opts ...header.Option) (*headertest.DummyHeader, error) {
+	c.hitCount++
+	return &headertest.DummyHeader{}, nil
 }
