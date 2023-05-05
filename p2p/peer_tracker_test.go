@@ -49,6 +49,7 @@ func TestPeerTracker_GC(t *testing.T) {
 	peers, _ := mockPeerStore.Load(context.Background())
 	require.Equal(t, pid2, p.trackedPeers[pid2].peerID)
 	require.Equal(t, peers[0].ID, p.trackedPeers[pid2].peerID)
+	assert.Equal(t, 1, len(p.trackedPeers))
 }
 
 func TestPeerTracker_BlockPeer(t *testing.T) {

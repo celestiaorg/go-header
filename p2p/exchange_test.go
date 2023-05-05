@@ -50,7 +50,7 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
 	_ = server(ctx, t, hosts[1], goodStore)
 
-	badStore := &timedOutStore{timeout: time.Millisecond*500} // simulates peer that does not respond
+	badStore := &timedOutStore{timeout: time.Millisecond * 500} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
 	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)

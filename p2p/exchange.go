@@ -70,7 +70,6 @@ func NewExchange[H header.Header](
 			host,
 			connGater,
 			params.peerstore,
-			WithGCCycle(time.Minute*2),
 		),
 		Params: params,
 	}
