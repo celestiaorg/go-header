@@ -5,12 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celestiaorg/go-header/p2p/peerstore"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+
+	"github.com/celestiaorg/go-header/p2p/peerstore"
 )
 
 const (
@@ -25,20 +26,8 @@ var (
 	// otherwise it will be removed on the next GC cycle.
 	maxAwaitingTime = time.Hour
 	// gcCycle defines the duration after which the peerTracker starts removing peers.
-	gcCycleDefault = time.Minute * 30
+	gcCycleDefault = time.Minute * 1
 )
-
-type params struct {
-	gcCycle time.Duration
-}
-
-type PTOption func(*params)
-
-func WithGCCycle(gcCycle time.Duration) PTOption {
-	return func(p *params) {
-		p.gcCycle = gcCycle
-	}
-}
 
 type peerTracker struct {
 	host      host.Host
@@ -53,9 +42,8 @@ type peerTracker struct {
 	// online until pruneDeadline, it will be removed and its score will be lost.
 	disconnectedPeers map[peer.ID]*peerStat
 
-	// peerstore is used to store peers that we have already connected to.
+	// peerstore is used to store peers periodically.
 	peerstore peerstore.Peerstore
-	params    *params
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -68,10 +56,9 @@ func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
 	peerstore peerstore.Peerstore,
-	opts ...PTOption,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
-	pt := &peerTracker{
+	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
 		disconnectedPeers: make(map[peer.ID]*peerStat),
@@ -80,14 +67,7 @@ func newPeerTracker(
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
-		params:            &params{gcCycle: gcCycleDefault},
 	}
-
-	for _, opt := range opts {
-		opt(pt.params)
-	}
-
-	return pt
 }
 
 func (p *peerTracker) track() {
@@ -186,7 +166,7 @@ func (p *peerTracker) peers() []*peerStat {
 // * disconnected peers which have been disconnected for more than maxAwaitingTime;
 // * connected peers whose scores are less than or equal than defaultScore;
 func (p *peerTracker) gc() {
-	ticker := time.NewTicker(p.params.gcCycle)
+	ticker := time.NewTicker(gcCycleDefault)
 	for {
 		select {
 		case <-p.ctx.Done():
@@ -207,17 +187,23 @@ func (p *peerTracker) gc() {
 				}
 			}
 
-			peerlist := make([]peer.AddrInfo, 0, len(p.trackedPeers))
-			for _, peer := range p.trackedPeers {
-				addrInfo := p.host.Network().Peerstore().PeerInfo(peer.peerID)
+			trackedPeersCopy := make(map[peer.ID]struct{}, len(p.trackedPeers))
+			for id, _ := range p.trackedPeers {
+				trackedPeersCopy[id] = struct{}{}
+			}
+			p.peerLk.Unlock()
+
+			peerlist := make([]peer.AddrInfo, 0, len(trackedPeersCopy))
+			for peerID, _ := range trackedPeersCopy {
+				addrInfo := p.host.Peerstore().PeerInfo(peerID)
 				peerlist = append(peerlist, addrInfo)
 			}
-			err := p.peerstore.Put(context.Background(), peerlist)
-			if err != nil {
-				log.Error("Failed to persist updated peer list")
+			if p.peerstore != nil {
+				err := p.peerstore.Put(p.ctx, peerlist)
+				if err != nil {
+					log.Errorf("Failed to persist updated peer list: $w", err)
+				}
 			}
-
-			p.peerLk.Unlock()
 		}
 	}
 }
