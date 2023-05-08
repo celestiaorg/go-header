@@ -1,9 +1,50 @@
 package peerstore
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
 
-func TestPut(t *testing.T) {
+	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/sync"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPutLoad_OnDisk(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer t.Cleanup(cancel)
+
+	peerstore := NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
+
+	peerlist, err := GenerateRandomPeerlist(10)
+	require.NoError(t, err)
+
+	err = peerstore.Put(ctx, peerlist)
+	require.NoError(t, err)
+
+	retrievedPeerlist, err := peerstore.Load(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, len(peerlist), len(retrievedPeerlist))
+	assert.Equal(t, peerlist, retrievedPeerlist)
 }
 
-func TestLoad(t *testing.T) {
+func TestPutLoad_InMem(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer t.Cleanup(cancel)
+
+	peerstore := NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
+
+	peerlist, err := GenerateRandomPeerlist(10)
+	require.NoError(t, err)
+
+	err = peerstore.Put(ctx, peerlist)
+	require.NoError(t, err)
+
+	retrievedPeerlist, err := peerstore.Load(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, len(peerlist), len(retrievedPeerlist))
+	assert.Equal(t, peerlist, retrievedPeerlist)
 }
