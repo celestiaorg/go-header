@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -188,17 +189,18 @@ func (p *peerTracker) gc() {
 			}
 
 			trackedPeersCopy := make(map[peer.ID]struct{}, len(p.trackedPeers))
-			for id, _ := range p.trackedPeers {
+			for id := range p.trackedPeers {
 				trackedPeersCopy[id] = struct{}{}
 			}
 			p.peerLk.Unlock()
 
 			peerlist := make([]peer.AddrInfo, 0, len(trackedPeersCopy))
-			for peerID, _ := range trackedPeersCopy {
+			for peerID := range trackedPeersCopy {
 				addrInfo := p.host.Peerstore().PeerInfo(peerID)
 				peerlist = append(peerlist, addrInfo)
 			}
 			if p.peerstore != nil {
+				fmt.Println("Storing peerlist", peerlist)
 				err := p.peerstore.Put(p.ctx, peerlist)
 				if err != nil {
 					log.Errorf("Failed to persist updated peer list: $w", err)
