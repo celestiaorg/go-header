@@ -38,8 +38,7 @@ type Exchange[H header.Header] struct {
 	trustedPeers func() peer.IDSlice
 	peerTracker  *peerTracker
 
-	Params   ClientParameters
-	headOpts header.HeadOptions
+	Params ClientParameters
 
 	metrics *metrics
 }
@@ -118,22 +117,25 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.Option) (H, error) {
 	log.Debug("requesting head")
 
+	var reqOpts header.RequestOptions
+
 	for _, opt := range opts {
-		opt(&ex.headOpts)
+		opt(&reqOpts)
 	}
 
 	peerset := ex.trustedPeers()
-	if !ex.headOpts.SubjectiveInit {
+	if !reqOpts.SubjectiveInit {
 		// otherwise, node has a chain head that is NOT outdated so we can actually request random peers in
 		// addition to trusted
-		peers, err := ex.Params.peerstore.Load(ctx)
-		if err != nil { // DISCUSS(team): should we return an error here or just use the trustedPeers?
-			var zero H
-			return zero, err
-		}
-
-		for _, peer := range peers {
-			peerset = append(peerset, peer.ID)
+		if ex.Params.peerstore != nil {
+			peers, err := ex.Params.peerstore.Load(ctx)
+			if err != nil { // DISCUSS(team): should we return an error here or just use the trustedPeers?
+				var zero H
+				return zero, err
+			}
+			for _, peer := range peers {
+				peerset = append(peerset, peer.ID)
+			}
 		}
 	}
 

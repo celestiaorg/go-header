@@ -43,29 +43,37 @@ func TestExchange_RequestHead_WithSubjectiveInitOpt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	hosts := createMocknet(t, 6)
-
+	totalPeers := 6
+	hosts := createMocknet(t, totalPeers)
 	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
 	goodPeers := hosts[4:]
+
 	client := client(ctx, t, hosts[0], trustedPeers, goodPeers...)
 
 	// initialize servers for trusted and good peers with counter store
-	servers := make([]*ExchangeServer[*headertest.DummyHeader], 5)
-	stores := make([]counterStore, 5)
+	servers := make([]*ExchangeServer[*headertest.DummyHeader], totalPeers-1)
+	stores := make([]counterStore, totalPeers-1)
 	for i, h := range hosts[1:] {
 		stores[i] = counterStore{hitCount: 0}
 		servers[i] = server(ctx, t, h, &stores[i])
 	}
 
+	headRequestPerformed := 0
 	// perform header request
 	_, err := client.Head(context.Background(), header.WithSubjectiveInit(true))
 	require.NoError(t, err)
 
+	headRequestPerformed++
+
 	// check that only trusted peers were were hit
 	for _, s := range stores[:3] {
-		assert.Equal(t, 1, s.hitCount)
+		// assert that the trusted peers's counterStore's were hit
+		// exactly headRequestPerformed times
+		assert.Equal(t, headRequestPerformed, s.hitCount)
 	}
 	for _, s := range stores[3:] {
+		// assert that none of the good peers' counterStore's were hit
+		// i.e: exactly 0 times (because WithSubjectiveInit is true)
 		assert.Equal(t, 0, s.hitCount)
 	}
 
@@ -73,13 +81,19 @@ func TestExchange_RequestHead_WithSubjectiveInitOpt(t *testing.T) {
 	_, err = client.Head(context.Background(), header.WithSubjectiveInit(false))
 	require.NoError(t, err)
 
+	headRequestPerformed++
+
 	// check that all peers were hit
 	for _, s := range stores[:3] {
-		assert.Equal(t, 2, s.hitCount)
+		// assert that the trusted peers's counterStore's were hit
+		// exactly headRequestPerformed times
+		assert.Equal(t, headRequestPerformed, s.hitCount)
 	}
 
 	for _, s := range stores[3:] {
-		assert.Equal(t, 1, s.hitCount)
+		// assert that the good peers' counterStore's were hit
+		// exactly headRequestPerformed times minus the times when WithSubjectiveInit was true
+		assert.Equal(t, headRequestPerformed-1, s.hitCount)
 	}
 }
 
@@ -508,7 +522,7 @@ func createP2PExAndServer(
 	for _, p := range goodPeers {
 		peers = append(peers, p.Peerstore().PeerInfo(p.ID()))
 	}
-	mockPeerstore := pstore.NewMockPeerstore()
+	mockPeerstore := pstore.NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
 	mockPeerstore.Put(context.Background(), peers)
 	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
@@ -547,7 +561,7 @@ func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer
 	for _, p := range goodPeers {
 		peers = append(peers, p.Peerstore().PeerInfo(p.ID()))
 	}
-	mockPeerstore := pstore.NewMockPeerstore()
+	mockPeerstore := pstore.NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
 	mockPeerstore.Put(context.Background(), peers)
 	client, err := NewExchange[*headertest.DummyHeader](
 		host, trusted, nil, WithPeerPersistence[ClientParameters](mockPeerstore))

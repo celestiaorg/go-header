@@ -130,16 +130,16 @@ type Head[H Header] interface {
 	Head(context.Context, ...Option) (H, error)
 }
 
-type Option func(*HeadOptions)
+type Option func(*RequestOptions)
 
-type HeadOptions struct {
+type RequestOptions struct {
 	// subjective initialization just means that the node has to really trust
 	// the sync target that it sets in order to prevent a long range attack
 	SubjectiveInit bool
 }
 
 func WithSubjectiveInit(subjInit bool) Option {
-	return func(o *HeadOptions) {
+	return func(o *RequestOptions) {
 		o.SubjectiveInit = subjInit
 	}
 }
