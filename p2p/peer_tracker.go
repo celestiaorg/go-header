@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -200,7 +199,6 @@ func (p *peerTracker) gc() {
 				peerlist = append(peerlist, addrInfo)
 			}
 			if p.peerstore != nil {
-				fmt.Println("Storing peerlist", peerlist)
 				err := p.peerstore.Put(p.ctx, peerlist)
 				if err != nil {
 					log.Errorf("Failed to persist updated peer list: $w", err)

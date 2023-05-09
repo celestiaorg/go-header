@@ -61,7 +61,6 @@ func (s *peerStore) Put(ctx context.Context, peerlist []peer.AddrInfo) error {
 		return fmt.Errorf("peerstore: error writing to datastore: %w", err)
 	}
 
-	log.Info("Stored peerlist successfuly.")
-
+	log.Info("Stored peerlist successfully.")
 	return nil
 }

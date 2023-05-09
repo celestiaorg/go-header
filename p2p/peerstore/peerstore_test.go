@@ -11,26 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPutLoad_OnDisk(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer t.Cleanup(cancel)
-
-	peerstore := NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
-
-	peerlist, err := GenerateRandomPeerlist(10)
-	require.NoError(t, err)
-
-	err = peerstore.Put(ctx, peerlist)
-	require.NoError(t, err)
-
-	retrievedPeerlist, err := peerstore.Load(ctx)
-	require.NoError(t, err)
-
-	assert.Equal(t, len(peerlist), len(retrievedPeerlist))
-	assert.Equal(t, peerlist, retrievedPeerlist)
-}
-
-func TestPutLoad_InMem(t *testing.T) {
+func TestPutLoad(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer t.Cleanup(cancel)
 
