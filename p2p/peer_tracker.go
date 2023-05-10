@@ -75,6 +75,16 @@ func (p *peerTracker) track() {
 		p.done <- struct{}{}
 	}()
 
+	// store peers that are available in the peerstore
+	peers, err := p.peerstore.Load(p.ctx)
+	if err != nil {
+		log.Errorw("loading peers from peerstore", "err", err)
+		log.Debugw("Skipping loading peers from peerstore due to error", "err", err)
+	}
+	for _, peerInfo := range peers {
+		p.connected(peerInfo.ID)
+	}
+
 	// store peers that have been already connected
 	for _, c := range p.host.Network().Conns() {
 		p.connected(c.RemotePeer())
