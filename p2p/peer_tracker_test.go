@@ -84,3 +84,32 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	require.Len(t, connGater.ListBlockedPeers(), 1)
 	require.True(t, connGater.ListBlockedPeers()[0] == h[1].ID())
 }
+
+func TestPeerTracker_Track(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer t.Cleanup(cancel)
+
+	gcCycleDefault = time.Millisecond * 200
+	maxAwaitingTime = time.Millisecond
+
+	totalPeers := 5
+	hosts := createMocknet(t, totalPeers)
+	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
+	require.NoError(t, err)
+
+	mockPeerStore := peerstore.NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
+	peerstoreListSize := 4
+	peerlist, err := peerstore.GenerateRandomPeerlist(peerstoreListSize)
+	require.NoError(t, err)
+	err = mockPeerStore.Put(ctx, peerlist)
+	require.NoError(t, err)
+	p := newPeerTracker(hosts[0], connGater, mockPeerStore)
+
+	go p.track()
+
+	<-time.After(time.Millisecond * 100) // to avoid data races
+
+	p.peerLk.Lock()
+	assert.Equal(t, totalPeers-1+peerstoreListSize, len(p.trackedPeers))
+	p.peerLk.Unlock()
+}
