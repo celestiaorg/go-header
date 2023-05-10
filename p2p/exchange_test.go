@@ -39,64 +39,6 @@ func TestExchange_RequestHead(t *testing.T) {
 	assert.Equal(t, store.Headers[store.HeadHeight].Hash(), header.Hash())
 }
 
-func TestExchange_RequestHead_WithSubjectiveInitOpt(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	totalPeers := 6
-	hosts := createMocknet(t, totalPeers)
-	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
-	goodPeers := hosts[4:]
-
-	client := client(ctx, t, hosts[0], trustedPeers, goodPeers...)
-
-	// initialize servers for trusted and good peers with counter store
-	servers := make([]*ExchangeServer[*headertest.DummyHeader], totalPeers-1)
-	stores := make([]counterStore, totalPeers-1)
-	for i, h := range hosts[1:] {
-		stores[i] = counterStore{hitCount: 0}
-		servers[i] = server(ctx, t, h, &stores[i])
-	}
-
-	headRequestPerformed := 0
-	// perform header request
-	_, err := client.Head(context.Background(), header.WithSubjectiveInit(true))
-	require.NoError(t, err)
-
-	headRequestPerformed++
-
-	// check that only trusted peers were were hit
-	for _, s := range stores[:3] {
-		// assert that the trusted peers's counterStore's were hit
-		// exactly headRequestPerformed times
-		assert.Equal(t, headRequestPerformed, s.hitCount)
-	}
-	for _, s := range stores[3:] {
-		// assert that none of the good peers' counterStore's were hit
-		// i.e: exactly 0 times (because WithSubjectiveInit is true)
-		assert.Equal(t, 0, s.hitCount)
-	}
-
-	// perform header request
-	_, err = client.Head(context.Background(), header.WithSubjectiveInit(false))
-	require.NoError(t, err)
-
-	headRequestPerformed++
-
-	// check that all peers were hit
-	for _, s := range stores[:3] {
-		// assert that the trusted peers's counterStore's were hit
-		// exactly headRequestPerformed times
-		assert.Equal(t, headRequestPerformed, s.hitCount)
-	}
-
-	for _, s := range stores[3:] {
-		// assert that the good peers' counterStore's were hit
-		// exactly headRequestPerformed times minus the times when WithSubjectiveInit was true
-		assert.Equal(t, headRequestPerformed-1, s.hitCount)
-	}
-}
-
 func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -600,18 +542,4 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 func (t *timedOutStore) Head(_ context.Context, opts ...header.Option) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
-}
-
-type counterStore struct {
-	headertest.Store[*headertest.DummyHeader]
-	hitCount int
-}
-
-func (c *counterStore) HasAt(ctx context.Context, height uint64) bool {
-	return true
-}
-
-func (c *counterStore) Head(ctx context.Context, opts ...header.Option) (*headertest.DummyHeader, error) {
-	c.hitCount++
-	return &headertest.DummyHeader{}, nil
 }

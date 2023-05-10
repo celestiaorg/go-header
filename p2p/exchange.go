@@ -117,28 +117,6 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.Option) (H, error) {
 	log.Debug("requesting head")
 
-	var reqOpts header.RequestOptions
-
-	for _, opt := range opts {
-		opt(&reqOpts)
-	}
-
-	peerset := ex.trustedPeers()
-	if !reqOpts.SubjectiveInit {
-		// otherwise, node has a chain head that is NOT outdated so we can actually request random peers in
-		// addition to trusted
-		if ex.Params.peerstore != nil {
-			peers, err := ex.Params.peerstore.Load(ctx)
-			if err != nil { // DISCUSS(team): should we return an error here or just use the trustedPeers?
-				var zero H
-				return zero, err
-			}
-			for _, peer := range peers {
-				peerset = append(peerset, peer.ID)
-			}
-		}
-	}
-
 	reqCtx := ctx
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 90% of caller's set deadline for requests
@@ -153,13 +131,14 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.Option) (H, erro
 
 	var (
 		zero         H
-		headerRespCh = make(chan H, len(peerset))
+		trustedPeers = ex.trustedPeers()
+		headerRespCh = make(chan H, len(trustedPeers))
 		headerReq    = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
 	)
-	for _, from := range peerset {
+	for _, from := range trustedPeers {
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
@@ -172,8 +151,8 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.Option) (H, erro
 		}(from)
 	}
 
-	headers := make([]H, 0, len(peerset))
-	for range peerset {
+	headers := make([]H, 0, len(trustedPeers))
+	for range trustedPeers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
