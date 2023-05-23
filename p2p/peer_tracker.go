@@ -17,7 +17,7 @@ import (
 const (
 	// defaultScore specifies the score for newly connected peers.
 	defaultScore float32 = 1
-	// maxTrackerSize specifies the max amount of peers that can be added to the peerTracker.
+	// maxTrackerSize specifies the max amount of peers that can be added to the PeerTracker.
 	maxPeerTrackerSize = 100
 )
 
@@ -25,11 +25,11 @@ var (
 	// maxAwaitingTime specifies the duration that gives to the disconnected peer to be back online,
 	// otherwise it will be removed on the next GC cycle.
 	maxAwaitingTime = time.Hour
-	// gcCycle defines the duration after which the peerTracker starts removing peers.
+	// gcCycle defines the duration after which the PeerTracker starts removing peers.
 	gcCycleDefault = time.Minute * 1
 )
 
-type peerTracker struct {
+type PeerTracker struct {
 	host      host.Host
 	connGater *conngater.BasicConnectionGater
 
@@ -47,18 +47,18 @@ type peerTracker struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
-	// done is used to gracefully stop the peerTracker.
+	// done is used to gracefully stop the PeerTracker.
 	// It allows to wait until track() and gc() will be stopped.
 	done chan struct{}
 }
 
-func newPeerTracker(
+func NewPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
 	peerstore peerstore.Peerstore,
-) *peerTracker {
+) *PeerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &peerTracker{
+	return &PeerTracker{
 		host:              h,
 		connGater:         connGater,
 		disconnectedPeers: make(map[peer.ID]*peerStat),
@@ -70,7 +70,7 @@ func newPeerTracker(
 	}
 }
 
-func (p *peerTracker) track() {
+func (p *PeerTracker) track() {
 	defer func() {
 		p.done <- struct{}{}
 	}()
@@ -106,7 +106,7 @@ func (p *peerTracker) track() {
 	}
 }
 
-func (p *peerTracker) connected(pID peer.ID) {
+func (p *PeerTracker) connected(pID peer.ID) {
 	if p.host.ID() == pID {
 		return
 	}
@@ -120,8 +120,8 @@ func (p *peerTracker) connected(pID peer.ID) {
 
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
-	// skip adding the peer to avoid overfilling of the peerTracker with unused peers if:
-	// peerTracker reaches the maxTrackerSize and there are more connected peers
+	// skip adding the peer to avoid overfilling of the PeerTracker with unused peers if:
+	// PeerTracker reaches the maxTrackerSize and there are more connected peers
 	// than disconnected peers.
 	if len(p.trackedPeers)+len(p.disconnectedPeers) > maxPeerTrackerSize &&
 		len(p.trackedPeers) > len(p.disconnectedPeers) {
@@ -139,7 +139,7 @@ func (p *peerTracker) connected(pID peer.ID) {
 	p.trackedPeers[pID] = stats
 }
 
-func (p *peerTracker) disconnected(pID peer.ID) {
+func (p *PeerTracker) disconnected(pID peer.ID) {
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
 	stats, ok := p.trackedPeers[pID]
@@ -151,7 +151,7 @@ func (p *peerTracker) disconnected(pID peer.ID) {
 	delete(p.trackedPeers, pID)
 }
 
-func (p *peerTracker) peers() []*peerStat {
+func (p *PeerTracker) peers() []*peerStat {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 	peers := make([]*peerStat, 0, len(p.trackedPeers))
@@ -165,7 +165,7 @@ func (p *peerTracker) peers() []*peerStat {
 // and removes:
 // * disconnected peers which have been disconnected for more than maxAwaitingTime;
 // * connected peers whose scores are less than or equal than defaultScore;
-func (p *peerTracker) gc() {
+func (p *PeerTracker) gc() {
 	ticker := time.NewTicker(gcCycleDefault)
 	for {
 		select {
@@ -201,7 +201,7 @@ func (p *peerTracker) gc() {
 			if p.peerstore != nil {
 				err := p.peerstore.Put(p.ctx, peerlist)
 				if err != nil {
-					log.Errorf("Failed to persist updated peer list: $w", err)
+					log.Errorw("persisting updated peer list", "err", err)
 				}
 			}
 		}
@@ -209,7 +209,7 @@ func (p *peerTracker) gc() {
 }
 
 // stop waits until all background routines will be finished.
-func (p *peerTracker) stop(ctx context.Context) error {
+func (p *PeerTracker) stop(ctx context.Context) error {
 	p.cancel()
 
 	for i := 0; i < cap(p.done); i++ {
@@ -224,7 +224,7 @@ func (p *peerTracker) stop(ctx context.Context) error {
 }
 
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
-func (p *peerTracker) blockPeer(pID peer.ID, reason error) {
+func (p *PeerTracker) blockPeer(pID peer.ID, reason error) {
 	// add peer to the blacklist, so we can't connect to it in the future.
 	err := p.connGater.BlockPeer(pID)
 	if err != nil {

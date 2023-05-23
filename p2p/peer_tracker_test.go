@@ -27,7 +27,7 @@ func TestPeerTracker_GC(t *testing.T) {
 	require.NoError(t, err)
 
 	mockPeerStore := peerstore.NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
-	p := newPeerTracker(h[0], connGater, mockPeerStore)
+	p := NewPeerTracker(h[0], connGater, mockPeerStore)
 
 	peerlist, err := peerstore.GenerateRandomPeerlist(4)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater, nil)
+	p := NewPeerTracker(h[0], connGater, nil)
 	maxAwaitingTime = time.Millisecond
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)

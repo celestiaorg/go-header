@@ -3,8 +3,6 @@ package p2p
 import (
 	"fmt"
 	"time"
-
-	"github.com/celestiaorg/go-header/p2p/peerstore"
 )
 
 // parameters is an interface that encompasses all params needed for
@@ -121,8 +119,6 @@ type ClientParameters struct {
 	networkID string
 	// chainID is an identifier of the chain.
 	chainID string
-	// peerstore is a storage for peers.
-	peerstore peerstore.Peerstore
 }
 
 // DefaultClientParameters returns the default params to configure the store.
@@ -169,17 +165,6 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 		switch t := any(p).(type) { //nolint:gocritic
 		case *ClientParameters:
 			t.chainID = chainID
-		}
-	}
-}
-
-// WithPeerPersistence is a functional option that configures the
-// `peerstore` parameter.
-func WithPeerPersistence[T ClientParameters](pstore peerstore.Peerstore) Option[T] {
-	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
-		case *ClientParameters:
-			t.peerstore = pstore
 		}
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
@@ -36,7 +35,7 @@ type Exchange[H header.Header] struct {
 	host       host.Host
 
 	trustedPeers func() peer.IDSlice
-	peerTracker  *peerTracker
+	peerTracker  *PeerTracker
 
 	Params ClientParameters
 
@@ -46,7 +45,7 @@ type Exchange[H header.Header] struct {
 func NewExchange[H header.Header](
 	host host.Host,
 	peers peer.IDSlice,
-	connGater *conngater.BasicConnectionGater,
+	tracker *PeerTracker,
 	opts ...Option[ClientParameters],
 ) (*Exchange[H], error) {
 	params := DefaultClientParameters()
@@ -64,14 +63,10 @@ func NewExchange[H header.Header](
 	}
 
 	ex := &Exchange[H]{
-		host:       host,
-		protocolID: protocolID(params.networkID),
-		peerTracker: newPeerTracker(
-			host,
-			connGater,
-			params.peerstore,
-		),
-		Params: params,
+		host:        host,
+		protocolID:  protocolID(params.networkID),
+		peerTracker: tracker,
+		Params:      params,
 	}
 
 	ex.trustedPeers = func() peer.IDSlice {
@@ -89,7 +84,7 @@ func (ex *Exchange[H]) Start(context.Context) error {
 	for _, p := range trustedPeers {
 		// Try to pre-connect to trusted peers.
 		// We don't really care if we succeed at this point
-		// and just need any peers in the peerTracker asap
+		// and just need any peers in the PeerTracker asap
 		go func(p peer.ID) {
 			err := ex.host.Connect(ex.ctx, peer.AddrInfo{ID: p})
 			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -105,7 +100,7 @@ func (ex *Exchange[H]) Start(context.Context) error {
 func (ex *Exchange[H]) Stop(ctx context.Context) error {
 	// cancel the session if it exists
 	ex.cancel()
-	// stop the peerTracker
+	// stop the PeerTracker
 	return ex.peerTracker.stop(ctx)
 }
 

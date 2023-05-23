@@ -125,7 +125,7 @@ func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
 func (p *peerQueue) waitPop(ctx context.Context) *peerStat {
 	// TODO(vgonkivs): implement fallback solution for cases when peer queue is empty.
 	// As we discussed with @Wondertan there could be 2 possible solutions:
-	// * use libp2p.Discovery to find new peers outside peerTracker to request headers;
+	// * use libp2p.Discovery to find new peers outside PeerTracker to request headers;
 	// * implement IWANT/IHAVE messaging system and start requesting ranges from the Peerstore;
 	select {
 	case <-ctx.Done():
