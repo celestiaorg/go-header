@@ -175,36 +175,42 @@ func (p *PeerTracker) gc() {
 		case <-ticker.C:
 			p.peerLk.Lock()
 			now := time.Now()
+			// prune expired disconnected peers
 			for id, peer := range p.disconnectedPeers {
 				if peer.pruneDeadline.Before(now) {
 					delete(p.disconnectedPeers, id)
 				}
 			}
-
+			// prune peers with scores below the default and copy remaining
+			// peers for persisted storage if available
+			trackedPeers := make([]peer.ID, 0, len(p.trackedPeers))
 			for id, peer := range p.trackedPeers {
 				if peer.peerScore <= defaultScore {
 					delete(p.trackedPeers, id)
+				} else {
+					trackedPeers = append(trackedPeers, id)
 				}
-			}
-
-			trackedPeersCopy := make(map[peer.ID]struct{}, len(p.trackedPeers))
-			for id := range p.trackedPeers {
-				trackedPeersCopy[id] = struct{}{}
 			}
 			p.peerLk.Unlock()
 
-			peerlist := make([]peer.AddrInfo, 0, len(trackedPeersCopy))
-			for peerID := range trackedPeersCopy {
-				addrInfo := p.host.Peerstore().PeerInfo(peerID)
-				peerlist = append(peerlist, addrInfo)
-			}
-			if p.peerstore != nil {
-				err := p.peerstore.Put(p.ctx, peerlist)
-				if err != nil {
-					log.Errorw("persisting updated peer list", "err", err)
-				}
-			}
+			p.persistPeers(trackedPeers)
 		}
+	}
+}
+
+func (p *PeerTracker) persistPeers(trackedPeers []peer.ID) {
+	if p.peerstore == nil {
+		return
+	}
+
+	peerlist := make([]peer.AddrInfo, 0, len(trackedPeers))
+	for _, peerID := range trackedPeers {
+		addrInfo := p.host.Peerstore().PeerInfo(peerID)
+		peerlist = append(peerlist, addrInfo)
+	}
+	err := p.peerstore.Put(p.ctx, peerlist)
+	if err != nil {
+		log.Errorw("persisting updated peer list", "err", err)
 	}
 }
 
