@@ -42,8 +42,8 @@ func TestPeerTracker_GC(t *testing.T) {
 	// Add peer with high score to test if it won't be GCed (it shouldn't)
 	p.trackedPeers[pid2] = &peerStat{peerID: pid2, peerScore: 10}
 
-	// Add peer such that their prune deadlnie is in the past (after GC cycle time has passed)
-	// to test if they will be prned (they should)
+	// Add peer such that their prune deadline is in the past (after GC cycle time has passed)
+	// to test if they will be pruned (they should)
 	p.disconnectedPeers[pid3] = &peerStat{peerID: pid3, pruneDeadline: time.Now()}
 	// Add peer such that their prune deadline is not the past (after GC cycle time has passed)
 	// to test if they won't be pruned (they shouldn't)
@@ -54,10 +54,8 @@ func TestPeerTracker_GC(t *testing.T) {
 
 	<-time.After(gcCycleDefault + time.Millisecond*20)
 
-	p.peerLk.Lock()
-	assert.True(t, len(p.trackedPeers) > 0)
-	assert.True(t, len(p.disconnectedPeers) > 0)
-	p.peerLk.Unlock()
+	assert.True(t, len(p.getTrackedPeers()) > 0)
+	assert.True(t, len(p.getDisconnectedPeers()) > 0)
 
 	err = p.stop(context.Background())
 	require.NoError(t, err)
