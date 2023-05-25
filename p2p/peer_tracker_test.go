@@ -26,7 +26,7 @@ func TestPeerTracker_GC(t *testing.T) {
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 
-	mockPeerStore := peerstore.NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
+	mockPeerStore := peerstore.NewPeerstore(sync.MutexWrap(datastore.NewMapDatastore()))
 	p := NewPeerTracker(h[0], connGater, mockPeerStore)
 
 	peerlist, err := peerstore.GenerateRandomPeerlist(4)

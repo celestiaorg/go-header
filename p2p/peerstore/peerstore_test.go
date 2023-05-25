@@ -15,7 +15,7 @@ func TestPutLoad(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer t.Cleanup(cancel)
 
-	peerstore := NewPeerStore(sync.MutexWrap(datastore.NewMapDatastore()))
+	peerstore := NewPeerstore(sync.MutexWrap(datastore.NewMapDatastore()))
 
 	peerlist, err := GenerateRandomPeerlist(10)
 	require.NoError(t, err)

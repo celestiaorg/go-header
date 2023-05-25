@@ -18,20 +18,19 @@ var (
 	log = logging.Logger("peerstore")
 )
 
-var _ Peerstore = (*peerStore)(nil)
-
-type peerStore struct {
+// Peerstore is used to store/load peers to/from disk.
+type Peerstore struct {
 	ds datastore.Datastore
 }
 
-// NewPeerStore creates a new peerstore backed by the given datastore which is
-// wrapped with `perssted_peerstore` prefix.
-func NewPeerStore(ds datastore.Datastore) Peerstore {
-	return &peerStore{ds: namespace.Wrap(ds, storePrefix)}
+// NewPeerstore creates a new peerstore backed by the given datastore which is
+// wrapped with `persisted_peerstore` prefix.
+func NewPeerstore(ds datastore.Datastore) *Peerstore {
+	return &Peerstore{ds: namespace.Wrap(ds, storePrefix)}
 }
 
-// Load loads the peerlist from the datastore.
-func (s *peerStore) Load(ctx context.Context) ([]peer.AddrInfo, error) {
+// Load loads the peerlist from datastore.
+func (s *Peerstore) Load(ctx context.Context) ([]peer.AddrInfo, error) {
 	log.Debug("Loading peerlist")
 	bs, err := s.ds.Get(ctx, peersKey)
 	if err != nil {
@@ -49,7 +48,7 @@ func (s *peerStore) Load(ctx context.Context) ([]peer.AddrInfo, error) {
 }
 
 // Put stores the peerlist in the datastore.
-func (s *peerStore) Put(ctx context.Context, peerlist []peer.AddrInfo) error {
+func (s *Peerstore) Put(ctx context.Context, peerlist []peer.AddrInfo) error {
 	log.Debug("Storing peerlist", peerlist)
 
 	bs, err := json.Marshal(peerlist)

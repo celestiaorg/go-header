@@ -43,7 +43,7 @@ type PeerTracker struct {
 	disconnectedPeers map[peer.ID]*peerStat
 
 	// peerstore is used to store peers periodically.
-	peerstore peerstore.Peerstore
+	peerstore *peerstore.Peerstore
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -55,7 +55,7 @@ type PeerTracker struct {
 func NewPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
-	peerstore peerstore.Peerstore,
+	peerstore *peerstore.Peerstore,
 ) *PeerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &PeerTracker{
