@@ -108,16 +108,14 @@ func (p *PeerTracker) track() {
 
 func (p *PeerTracker) getTrackedPeers() map[peer.ID]*peerStat {
 	p.peerLk.RLock()
-	tracked := p.trackedPeers
-	p.peerLk.RUnlock()
-	return tracked
+	defer p.peerLk.RUnlock()
+	return p.trackedPeers
 }
 
 func (p *PeerTracker) getDisconnectedPeers() map[peer.ID]*peerStat {
 	p.peerLk.RLock()
-	disconnected := p.disconnectedPeers
-	p.peerLk.RUnlock()
-	return disconnected
+	defer p.peerLk.RUnlock()
+	return p.disconnectedPeers
 }
 
 func (p *PeerTracker) connected(pID peer.ID) {
