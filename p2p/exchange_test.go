@@ -20,7 +20,6 @@ import (
 
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )

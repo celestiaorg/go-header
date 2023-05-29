@@ -8,11 +8,12 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/go-header/p2p/peerstore"
+	"github.com/celestiaorg/go-header/p2p/persisted_peerstore"
 )
 
 func TestPeerTracker_GC(t *testing.T) {
@@ -26,10 +27,14 @@ func TestPeerTracker_GC(t *testing.T) {
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 
-	mockPeerStore := peerstore.NewPeerstore(sync.MutexWrap(datastore.NewMapDatastore()))
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	addrBook, err := pstoremem.NewPeerstore()
+	require.NoError(t, err)
+
+	mockPeerStore := persisted_peerstore.NewPersistedPeerstore(ds, addrBook)
 	p := NewPeerTracker(h[0], connGater, mockPeerStore)
 
-	peerlist, err := peerstore.GenerateRandomPeerlist(4)
+	peerlist, err := persisted_peerstore.GenerateRandomPeerlist(4)
 	require.NoError(t, err)
 
 	pid1 := peerlist[0].ID

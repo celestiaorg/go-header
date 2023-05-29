@@ -1,4 +1,4 @@
-package peerstore
+package persisted_peerstore
 
 import (
 	"crypto/rand"
