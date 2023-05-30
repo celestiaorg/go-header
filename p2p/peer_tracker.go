@@ -10,8 +10,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
-
-	"github.com/celestiaorg/go-header/p2p/persisted_peerstore"
 )
 
 const (
@@ -42,8 +40,8 @@ type PeerTracker struct {
 	// online until pruneDeadline, it will be removed and its score will be lost.
 	disconnectedPeers map[peer.ID]*peerStat
 
-	// peerstore is used to store peers periodically.
-	peerstore *persisted_peerstore.PersistedPeerstore
+	// pidstore is used to store peers periodically.
+	pidstore PeerIDStore
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -55,7 +53,7 @@ type PeerTracker struct {
 func NewPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
-	peerstore *persisted_peerstore.PersistedPeerstore,
+	pidstore PeerIDStore,
 ) *PeerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &PeerTracker{
@@ -63,7 +61,7 @@ func NewPeerTracker(
 		connGater:         connGater,
 		disconnectedPeers: make(map[peer.ID]*peerStat),
 		trackedPeers:      make(map[peer.ID]*peerStat),
-		peerstore:         peerstore,
+		pidstore:          pidstore,
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
@@ -211,11 +209,11 @@ func (p *PeerTracker) gc() {
 }
 
 func (p *PeerTracker) persistPeers(trackedPeers []peer.ID) {
-	if p.peerstore == nil {
+	if p.pidstore == nil {
 		return
 	}
 
-	err := p.peerstore.Put(p.ctx, trackedPeers)
+	err := p.pidstore.Put(p.ctx, trackedPeers)
 	if err != nil {
 		log.Errorw("persisting updated peer list", "err", err)
 	}
