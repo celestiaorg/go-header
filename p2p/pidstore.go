@@ -1,4 +1,4 @@
-package idstore
+package p2p
 
 import (
 	"context"
