@@ -59,10 +59,6 @@ func NewExchange[H header.Header](
 		return nil, err
 	}
 
-	if len(peers) == 0 {
-		return nil, fmt.Errorf("no trusted peers")
-	}
-
 	ex := &Exchange[H]{
 		host:       host,
 		protocolID: protocolID(params.networkID),
@@ -252,6 +248,10 @@ func (ex *Exchange[H]) performRequest(
 	}
 
 	trustedPeers := ex.trustedPeers()
+	if len(trustedPeers) == 0 {
+		return nil, fmt.Errorf("no trusted peers")
+	}
+
 	var reqErr error
 
 	for i := 0; i < requestRetry; i++ {
