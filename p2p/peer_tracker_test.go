@@ -19,7 +19,7 @@ func TestPeerTracker_GC(t *testing.T) {
 	gcCycle = time.Millisecond * 200
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+	p := NewPeerTracker(h[0], connGater, nil)
 	maxAwaitingTime = time.Millisecond
 	pid1 := peer.ID("peer1")
 	pid2 := peer.ID("peer2")
@@ -48,7 +48,7 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+	p := NewPeerTracker(h[0], connGater, nil)
 	maxAwaitingTime = time.Millisecond
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)
