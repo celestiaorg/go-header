@@ -16,7 +16,8 @@ func DefaultRequestParams() RequestParams {
 	}
 }
 
-// WithSubjectiveInit TODO
+// WithSubjectiveInit sets the SubjectiveInit parameter to true,
+// indicating to the Head method to use the trusted peer set.
 func WithSubjectiveInit(opts *RequestParams) {
 	opts.SubjectiveInit = true
 }
