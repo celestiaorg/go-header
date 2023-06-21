@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,14 +28,61 @@ import (
 const networkID = "private"
 
 func TestExchange_RequestHead(t *testing.T) {
-	hosts := createMocknet(t, 2)
-	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
-	// perform header request
-	header, err := exchg.Head(context.Background())
-	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
-	assert.Equal(t, store.Headers[store.HeadHeight].Height(), header.Height())
-	assert.Equal(t, store.Headers[store.HeadHeight].Hash(), header.Hash())
+	hosts := createMocknet(t, 3)
+	exchg, trustedStore := createP2PExAndServer(t, hosts[0], hosts[1])
+
+	// create new server-side exchange that will act as the tracked peer
+	// it will have a higher chain head than the trusted peer so that the
+	// test can determine which peer was asked
+	trackedStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 10)
+	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](hosts[2], trackedStore,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	err = serverSideEx.Start(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = serverSideEx.Stop(ctx)
+		require.NoError(t, err)
+	})
+
+	var tests = []struct {
+		withSubjInit   bool
+		expectedHeight int64
+		expectedHash   header.Hash
+	}{
+		// routes to trusted peer only
+		{
+			withSubjInit:   true,
+			expectedHeight: trustedStore.HeadHeight,
+			expectedHash:   trustedStore.Headers[trustedStore.HeadHeight].Hash(),
+		},
+		// routes to tracked peers and takes highest chain head
+		{
+			withSubjInit:   false,
+			expectedHeight: trackedStore.HeadHeight,
+			expectedHash:   trackedStore.Headers[trackedStore.HeadHeight].Hash(),
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			var opts []RequestOption
+			if tt.withSubjInit {
+				opts = append(opts, WithSubjectiveInit)
+			}
+
+			header, err := exchg.Head(ctx, opts...)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedHeight, header.Height())
+			assert.Equal(t, tt.expectedHash, header.Hash())
+
+		})
+	}
 }
 
 func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {

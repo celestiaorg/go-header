@@ -106,7 +106,7 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // The Head must be verified thereafter where possible.
 // We request in parallel all the trusted peers, compare their response
 // and return the highest one.
-func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
+func (ex *Exchange[H]) Head(ctx context.Context, reqOpts ...RequestOption) (H, error) {
 	log.Debug("requesting head")
 
 	reqCtx := ctx
@@ -121,16 +121,25 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		defer cancel()
 	}
 
+	reqParams := DefaultRequestParams()
+	for _, opt := range reqOpts {
+		opt(&reqParams)
+	}
+
+	peers := ex.peerTracker.GetPeers()
+	if reqParams.SubjectiveInit || len(peers) < minTrustedHeadResponses {
+		peers = ex.trustedPeers()
+	}
+
 	var (
-		zero         H
-		trustedPeers = ex.trustedPeers()
-		headerRespCh = make(chan H, len(trustedPeers))
-		headerReq    = &p2p_pb.HeaderRequest{
+		zero      H
+		headerReq = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
+		headerRespCh = make(chan H, len(peers))
 	)
-	for _, from := range trustedPeers {
+	for _, from := range peers {
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
@@ -143,8 +152,8 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		}(from)
 	}
 
-	headers := make([]H, 0, len(trustedPeers))
-	for range trustedPeers {
+	headers := make([]H, 0, len(peers))
+	for range peers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
