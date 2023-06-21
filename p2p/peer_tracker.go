@@ -107,11 +107,11 @@ func (p *peerTracker) track() {
 
 func (p *peerTracker) GetPeers() []peer.ID {
 	p.peerLk.RLock()
+	defer p.peerLk.RUnlock()
 	peers := make([]peer.ID, 0, len(p.trackedPeers))
 	for peerID := range p.trackedPeers {
 		peers = append(peers, peerID)
 	}
-	p.peerLk.RUnlock()
 	return peers
 }
 
