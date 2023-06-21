@@ -194,8 +194,9 @@ func (p *PeerTracker) gc() {
 	}
 }
 
+// dumpPeers stores peers to the PeerTracker's PeerIDStore if
+// it exists.
 func (p *PeerTracker) dumpPeers() {
-	// if no pidstore has been provided, short-circuit to avoid allocs
 	if p.pidstore == nil {
 		return
 	}
