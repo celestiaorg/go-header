@@ -31,6 +31,10 @@ func TestExchange_RequestHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	// decrease the minimum number of untrusted peers to request head from
+	// for testing purposes
+	minUntrustedHeadRequests = 2
+
 	hosts := createMocknet(t, 3)
 	exchg, trustedStore := createP2PExAndServer(t, hosts[0], hosts[1])
 

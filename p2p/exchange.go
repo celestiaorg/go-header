@@ -21,10 +21,14 @@ import (
 
 var log = logging.Logger("header/p2p")
 
-// the minimum number of headers of the same height received from trusted peers
-// to determine the network head. If all trusted header will return headers with
-// non-equal height, then the highest header will be chosen.
+// minTrustedHeadResponses is the minimum number of headers of the same height
+// received from trusted peers to determine the network head. If all trusted
+// header will return headers with non-equal height, then the highest header will be chosen.
 const minTrustedHeadResponses = 2
+
+// minUntrustedHeadRequests is the minimum number of head requests to be made to
+// the network in order to determine the network head.
+var minUntrustedHeadRequests = 4
 
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
@@ -127,8 +131,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, reqOpts ...RequestOption) (H, e
 	}
 
 	peers := ex.peerTracker.GetPeers()
-	if reqParams.SubjectiveInit || len(peers) < minTrustedHeadResponses {
+	if reqParams.SubjectiveInit || len(peers) < minUntrustedHeadRequests {
 		peers = ex.trustedPeers()
+	} else {
+		// only query a subset
+		peers = peers[:minUntrustedHeadRequests]
 	}
 
 	var (
