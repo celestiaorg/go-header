@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	storePrefix = datastore.NewKey("headers")
-	headKey     = datastore.NewKey("head")
+	headKey = datastore.NewKey("head")
 )
 
 func heightKey(h uint64) datastore.Key {

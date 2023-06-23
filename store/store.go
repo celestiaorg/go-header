@@ -89,7 +89,7 @@ func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H]
 		return nil, fmt.Errorf("failed to create index cache: %w", err)
 	}
 
-	wrappedStore := namespace.Wrap(ds, storePrefix)
+	wrappedStore := namespace.Wrap(ds, params.StorePrefix)
 	index, err := newHeightIndexer[H](wrappedStore, params.IndexCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create height indexer: %w", err)
