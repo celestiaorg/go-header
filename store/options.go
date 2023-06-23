@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+
+	"github.com/ipfs/go-datastore"
 )
 
 // Option is the functional option that is applied to the store instance
@@ -19,6 +21,9 @@ type Parameters struct {
 	// WriteBatchSize defines the size of the batched header write.
 	// Headers are written in batches not to thrash the underlying Datastore with writes.
 	WriteBatchSize int
+
+	// storePrefix defines the prefix used to wrap the store
+	storePrefix datastore.Key
 }
 
 // DefaultParameters returns the default params to configure the store.
@@ -27,6 +32,7 @@ func DefaultParameters() Parameters {
 		StoreCacheSize: 4096,
 		IndexCacheSize: 16384,
 		WriteBatchSize: 2048,
+		storePrefix:    datastore.NewKey("headers"),
 	}
 }
 
@@ -41,6 +47,9 @@ func (p *Parameters) Validate() error {
 	}
 	if p.WriteBatchSize <= 0 {
 		return fmt.Errorf("invalid batch size:%s", errSuffix)
+	}
+	if len(p.storePrefix.Bytes()) == 0 {
+		return fmt.Errorf("invalid store prefix: prefix cannot be empty")
 	}
 	return nil
 }
@@ -66,6 +75,14 @@ func WithIndexCacheSize(size int) Option {
 func WithWriteBatchSize(size int) Option {
 	return func(p *Parameters) {
 		p.WriteBatchSize = size
+	}
+}
+
+// WithStorePrefix is a functional option that configures the
+// storePrefix parameter
+func WithStorePrefix(prefix string) Option {
+	return func(p *Parameters) {
+		p.storePrefix = datastore.NewKey(prefix)
 	}
 }
 
