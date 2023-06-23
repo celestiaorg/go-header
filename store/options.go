@@ -79,7 +79,7 @@ func WithWriteBatchSize(size int) Option {
 }
 
 // WithStorePrefix is a functional option that configures the
-// StorePrefix parameter
+// storePrefix parameter
 func WithStorePrefix(prefix string) Option {
 	return func(p *Parameters) {
 		p.storePrefix = datastore.NewKey(prefix)
