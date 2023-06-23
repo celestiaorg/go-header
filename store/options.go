@@ -49,7 +49,7 @@ func (p *Parameters) Validate() error {
 		return fmt.Errorf("invalid batch size:%s", errSuffix)
 	}
 	if len(p.storePrefix.Bytes()) == 0 {
-		return fmt.Errorf("invalid store prefix:%s", "prefix cannot be empty")
+		return fmt.Errorf("invalid store prefix: prefix cannot be empty")
 	}
 	return nil
 }
