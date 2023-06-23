@@ -18,10 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
+
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
 )
 
 const networkID = "private"
@@ -122,7 +123,7 @@ func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	tracker := NewPeerTracker(hosts[len(hosts)-1], connGater, nil)
 
 	// create new exchange
-	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, connGater, tracker,
+	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, tracker,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -465,7 +466,7 @@ func createP2PExAndServer(
 
 	tracker := NewPeerTracker(host, connGater, nil)
 
-	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater, tracker,
+	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, tracker,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -503,7 +504,7 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
 	tracker := NewPeerTracker(host, nil, nil)
 
-	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil, tracker)
+	client, err := NewExchange[*headertest.DummyHeader](host, trusted, tracker)
 	require.NoError(t, err)
 
 	err = client.Start(ctx)
