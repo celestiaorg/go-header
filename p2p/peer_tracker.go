@@ -214,10 +214,10 @@ func (p *PeerTracker) dumpPeers() {
 
 	err := p.pidstore.Put(ctx, peers)
 	if err != nil {
-		log.Errorw("failed to store tracked peers to PeerIDStore", "err", err)
+		log.Errorw("failed to dump tracked peers to PeerIDStore", "err", err)
 		return
 	}
-	log.Debugw("stored peers to PeerIDStore", "amount", len(peers))
+	log.Debugw("dumped peers to PeerIDStore", "amount", len(peers))
 }
 
 // stop waits until all background routines will be finished.
