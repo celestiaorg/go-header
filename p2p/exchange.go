@@ -21,10 +21,11 @@ import (
 
 var log = logging.Logger("header/p2p")
 
-// minTrustedHeadResponses is the minimum number of headers of the same height
-// received from trusted peers to determine the network head. If all trusted
-// header will return headers with non-equal height, then the highest header will be chosen.
-const minTrustedHeadResponses = 2
+// minHeadResponses is the minimum number of headers of the same height
+// received from peers to determine the network head. If all trusted peers
+// will return headers with non-equal height, then the highest header will be
+// chosen.
+const minHeadResponses = 2
 
 // minUntrustedHeadRequests is the minimum number of head requests to be made to
 // the network in order to determine the network head.
@@ -362,7 +363,7 @@ func bestHead[H header.Header](result []H) (H, error) {
 
 	// try to find Header with the maximum height that was received at least from 2 peers
 	for _, res := range result {
-		if counter[res.Hash().String()] >= minTrustedHeadResponses {
+		if counter[res.Hash().String()] >= minHeadResponses {
 			return res, nil
 		}
 	}

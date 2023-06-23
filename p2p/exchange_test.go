@@ -53,7 +53,7 @@ func TestExchange_RequestHead(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	var tests = []struct {
+	tests := []struct {
 		withSubjInit   bool
 		expectedHeight int64
 		expectedHash   header.Hash
@@ -84,7 +84,6 @@ func TestExchange_RequestHead(t *testing.T) {
 
 			assert.Equal(t, tt.expectedHeight, header.Height())
 			assert.Equal(t, tt.expectedHash, header.Hash())
-
 		})
 	}
 }
