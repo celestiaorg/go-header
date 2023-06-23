@@ -222,6 +222,9 @@ func (p *PeerTracker) dumpPeers() {
 
 // stop waits until all background routines will be finished.
 func (p *PeerTracker) stop(ctx context.Context) error {
+	// dump remaining tracked peers
+	p.dumpPeers()
+
 	p.cancel()
 
 	for i := 0; i < cap(p.done); i++ {
@@ -231,7 +234,6 @@ func (p *PeerTracker) stop(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-
 	return nil
 }
 
