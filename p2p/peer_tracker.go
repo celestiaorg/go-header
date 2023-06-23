@@ -189,14 +189,14 @@ func (p *PeerTracker) gc() {
 			}
 			p.peerLk.Unlock()
 
-			p.dumpPeers()
+			p.dumpPeers(p.ctx)
 		}
 	}
 }
 
 // dumpPeers stores peers to the PeerTracker's PeerIDStore if
 // it exists.
-func (p *PeerTracker) dumpPeers() {
+func (p *PeerTracker) dumpPeers(ctx context.Context) {
 	if p.pidstore == nil {
 		return
 	}
@@ -209,7 +209,7 @@ func (p *PeerTracker) dumpPeers() {
 	}
 	p.peerLk.RUnlock()
 
-	ctx, cancel := context.WithTimeout(p.ctx, time.Second*5)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
 	err := p.pidstore.Put(ctx, peers)
@@ -222,9 +222,6 @@ func (p *PeerTracker) dumpPeers() {
 
 // stop waits until all background routines will be finished.
 func (p *PeerTracker) stop(ctx context.Context) error {
-	// dump remaining tracked peers
-	p.dumpPeers()
-
 	p.cancel()
 
 	for i := 0; i < cap(p.done); i++ {
@@ -234,6 +231,10 @@ func (p *PeerTracker) stop(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+
+	// dump remaining tracked peers
+	p.dumpPeers(ctx)
+
 	return nil
 }
 
