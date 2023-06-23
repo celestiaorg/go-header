@@ -22,7 +22,7 @@ type Parameters struct {
 	// Headers are written in batches not to thrash the underlying Datastore with writes.
 	WriteBatchSize int
 
-	// StorePrefix defines the prefix used to wrap the store
+	// storePrefix defines the prefix used to wrap the store
 	storePrefix datastore.Key
 }
 
