@@ -28,7 +28,7 @@ func Test_Validate(t *testing.T) {
 	ses := newSession(
 		context.Background(),
 		nil,
-		&PeerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
+		&peerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
 		"", time.Second,
 		withValidation(head),
 	)
@@ -45,7 +45,7 @@ func Test_ValidateFails(t *testing.T) {
 	ses := newSession(
 		context.Background(),
 		nil,
-		&PeerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
+		&peerTracker{trackedPeers: make(map[peer.ID]*peerStat)},
 		"", time.Second,
 		withValidation(head),
 	)

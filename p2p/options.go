@@ -119,6 +119,8 @@ type ClientParameters struct {
 	networkID string
 	// chainID is an identifier of the chain.
 	chainID string
+
+	pidstore PeerIDStore
 }
 
 // DefaultClientParameters returns the default params to configure the store.
@@ -165,6 +167,16 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 		switch t := any(p).(type) { //nolint:gocritic
 		case *ClientParameters:
 			t.chainID = chainID
+		}
+	}
+}
+
+// TODO @renaynay
+func WithPeerIDStore[T ClientParameters](pidstore PeerIDStore) Option[T] {
+	return func(p *T) {
+		switch t := any(p).(type) { //nolint:gocritic
+		case *ClientParameters:
+			t.pidstore = pidstore
 		}
 	}
 }

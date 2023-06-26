@@ -120,10 +120,8 @@ func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 
-	tracker := NewPeerTracker(hosts[len(hosts)-1], connGater, nil)
-
 	// create new exchange
-	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, tracker,
+	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -464,9 +462,7 @@ func createP2PExAndServer(
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 
-	tracker := NewPeerTracker(host, connGater, nil)
-
-	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, tracker,
+	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -502,9 +498,7 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 }
 
 func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
-	tracker := NewPeerTracker(host, nil, nil)
-
-	client, err := NewExchange[*headertest.DummyHeader](host, trusted, tracker)
+	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
 	require.NoError(t, err)
 
 	err = client.Start(ctx)

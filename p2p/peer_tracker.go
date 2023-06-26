@@ -27,7 +27,7 @@ var (
 	gcCycle = time.Minute * 5
 )
 
-type PeerTracker struct {
+type peerTracker struct {
 	host      host.Host
 	connGater *conngater.BasicConnectionGater
 
@@ -51,13 +51,13 @@ type PeerTracker struct {
 	done chan struct{}
 }
 
-func NewPeerTracker(
+func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
 	pidstore PeerIDStore,
-) *PeerTracker {
+) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &PeerTracker{
+	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
 		trackedPeers:      make(map[peer.ID]*peerStat),
@@ -69,7 +69,7 @@ func NewPeerTracker(
 	}
 }
 
-func (p *PeerTracker) track() {
+func (p *peerTracker) track() {
 	defer func() {
 		p.done <- struct{}{}
 	}()
@@ -105,7 +105,7 @@ func (p *PeerTracker) track() {
 	}
 }
 
-func (p *PeerTracker) connected(pID peer.ID) {
+func (p *peerTracker) connected(pID peer.ID) {
 	if p.host.ID() == pID {
 		return
 	}
@@ -138,7 +138,7 @@ func (p *PeerTracker) connected(pID peer.ID) {
 	p.trackedPeers[pID] = stats
 }
 
-func (p *PeerTracker) disconnected(pID peer.ID) {
+func (p *peerTracker) disconnected(pID peer.ID) {
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
 	stats, ok := p.trackedPeers[pID]
@@ -150,7 +150,7 @@ func (p *PeerTracker) disconnected(pID peer.ID) {
 	delete(p.trackedPeers, pID)
 }
 
-func (p *PeerTracker) peers() []*peerStat {
+func (p *peerTracker) peers() []*peerStat {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 	peers := make([]*peerStat, 0, len(p.trackedPeers))
@@ -164,7 +164,7 @@ func (p *PeerTracker) peers() []*peerStat {
 // and removes:
 // * disconnected peers which have been disconnected for more than maxAwaitingTime;
 // * connected peers whose scores are less than or equal than defaultScore;
-func (p *PeerTracker) gc() {
+func (p *peerTracker) gc() {
 	ticker := time.NewTicker(gcCycle)
 	for {
 		select {
@@ -194,9 +194,9 @@ func (p *PeerTracker) gc() {
 	}
 }
 
-// dumpPeers stores peers to the PeerTracker's PeerIDStore if
+// dumpPeers stores peers to the peerTracker's PeerIDStore if
 // it exists.
-func (p *PeerTracker) dumpPeers(ctx context.Context) {
+func (p *peerTracker) dumpPeers(ctx context.Context) {
 	if p.pidstore == nil {
 		return
 	}
@@ -221,7 +221,7 @@ func (p *PeerTracker) dumpPeers(ctx context.Context) {
 }
 
 // stop waits until all background routines will be finished.
-func (p *PeerTracker) stop(ctx context.Context) error {
+func (p *peerTracker) stop(ctx context.Context) error {
 	p.cancel()
 
 	for i := 0; i < cap(p.done); i++ {
@@ -239,7 +239,7 @@ func (p *PeerTracker) stop(ctx context.Context) error {
 }
 
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
-func (p *PeerTracker) blockPeer(pID peer.ID, reason error) {
+func (p *peerTracker) blockPeer(pID peer.ID, reason error) {
 	// add peer to the blacklist, so we can't connect to it in the future.
 	err := p.connGater.BlockPeer(pID)
 	if err != nil {

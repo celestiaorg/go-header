@@ -33,7 +33,7 @@ type session[H header.Header] struct {
 	protocolID protocol.ID
 	queue      *peerQueue
 	// peerTracker contains discovered peers with records that describes their activity.
-	peerTracker *PeerTracker
+	peerTracker *peerTracker
 
 	// Otherwise, it will be nil.
 	// `from` is set when additional validation for range is needed.
@@ -48,7 +48,7 @@ type session[H header.Header] struct {
 func newSession[H header.Header](
 	ctx context.Context,
 	h host.Host,
-	peerTracker *PeerTracker,
+	peerTracker *peerTracker,
 	protocolID protocol.ID,
 	requestTimeout time.Duration,
 	options ...option[H],
