@@ -171,7 +171,8 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 	}
 }
 
-// TODO @renaynay
+// WithPeerIDStore is a functional option that sets a peerIDStore to be used
+// inside the peerTracker.
 func WithPeerIDStore[T ClientParameters](pidstore PeerIDStore) Option[T] {
 	return func(p *T) {
 		switch t := any(p).(type) { //nolint:gocritic

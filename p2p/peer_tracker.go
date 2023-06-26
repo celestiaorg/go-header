@@ -195,7 +195,7 @@ func (p *peerTracker) gc() {
 }
 
 // dumpPeers stores peers to the peerTracker's PeerIDStore if
-// it exists.
+// present.
 func (p *peerTracker) dumpPeers(ctx context.Context) {
 	if p.pidstore == nil {
 		return

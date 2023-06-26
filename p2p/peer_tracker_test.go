@@ -2,8 +2,6 @@ package p2p
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -11,8 +9,8 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	testpeer "github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,16 +107,7 @@ func (d *dummyPIDStore) Load(ctx context.Context) ([]peer.ID, error) {
 func generateRandomPeerlist(t *testing.T, length int) []peer.ID {
 	peerlist := make([]peer.ID, length)
 	for i := range peerlist {
-		key, err := rsa.GenerateKey(rand.Reader, 2096)
-		require.NoError(t, err)
-
-		_, pubkey, err := crypto.KeyPairFromStdKey(key)
-		require.NoError(t, err)
-
-		peerID, err := peer.IDFromPublicKey(pubkey)
-		require.NoError(t, err)
-
-		peerlist[i] = peerID
+		peerlist[i] = testpeer.RandPeerIDFatal(t)
 	}
 	return peerlist
 }
