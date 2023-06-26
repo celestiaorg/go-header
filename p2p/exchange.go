@@ -46,7 +46,7 @@ type Exchange[H header.Header] struct {
 func NewExchange[H header.Header](
 	host host.Host,
 	peers peer.IDSlice,
-	connGater *conngater.BasicConnectionGater,
+	gater *conngater.BasicConnectionGater,
 	opts ...Option[ClientParameters],
 ) (*Exchange[H], error) {
 	params := DefaultClientParameters()
@@ -60,13 +60,10 @@ func NewExchange[H header.Header](
 	}
 
 	ex := &Exchange[H]{
-		host:       host,
-		protocolID: protocolID(params.networkID),
-		peerTracker: newPeerTracker(
-			host,
-			connGater,
-		),
-		Params: params,
+		host:        host,
+		protocolID:  protocolID(params.networkID),
+		peerTracker: newPeerTracker(host, gater, params.pidstore),
+		Params:      params,
 	}
 
 	ex.trustedPeers = func() peer.IDSlice {

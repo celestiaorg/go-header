@@ -18,10 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-libp2p-messenger/serde"
+
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
-	"github.com/celestiaorg/go-libp2p-messenger/serde"
 )
 
 const networkID = "private"
@@ -50,7 +51,7 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
 	_ = server(ctx, t, hosts[1], goodStore)
 
-	badStore := &timedOutStore{timeout: time.Millisecond*500} // simulates peer that does not respond
+	badStore := &timedOutStore{timeout: time.Millisecond * 500} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
 	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
@@ -118,6 +119,7 @@ func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), int(header.MaxRangeRequestSize))
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
+
 	// create new exchange
 	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
@@ -449,28 +451,35 @@ func createP2PExAndServer(
 	host, tpeer libhost.Host,
 ) (*Exchange[*headertest.DummyHeader], *headertest.Store[*headertest.DummyHeader]) {
 	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+
 	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](tpeer, store,
 		WithNetworkID[ServerParameters](networkID),
 	)
 	require.NoError(t, err)
 	err = serverSideEx.Start(context.Background())
 	require.NoError(t, err)
+
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
+
 	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
 	require.NoError(t, err)
 	require.NoError(t, ex.Start(context.Background()))
+
 	time.Sleep(time.Millisecond * 100) // give peerTracker time to add a trusted peer
+
 	ex.peerTracker.peerLk.Lock()
 	ex.peerTracker.trackedPeers[tpeer.ID()] = &peerStat{peerID: tpeer.ID(), peerScore: 100.0}
 	ex.peerTracker.peerLk.Unlock()
+
 	t.Cleanup(func() {
 		serverSideEx.Stop(context.Background()) //nolint:errcheck
 		ex.Stop(context.Background())           //nolint:errcheck
 	})
+
 	return ex, store
 }
 
@@ -491,12 +500,14 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
 	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
 	require.NoError(t, err)
+
 	err = client.Start(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := client.Stop(ctx)
 		require.NoError(t, err)
 	})
+
 	return client
 }
 

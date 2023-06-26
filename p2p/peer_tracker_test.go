@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -9,22 +10,34 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
+	testpeer "github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPeerTracker_GC(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
 	h := createMocknet(t, 1)
+
 	gcCycle = time.Millisecond * 200
+
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+
+	pidstore := newDummyPIDStore()
+	p := newPeerTracker(h[0], connGater, pidstore)
+
 	maxAwaitingTime = time.Millisecond
-	pid1 := peer.ID("peer1")
-	pid2 := peer.ID("peer2")
-	pid3 := peer.ID("peer3")
-	pid4 := peer.ID("peer4")
+
+	peerlist := generateRandomPeerlist(t, 4)
+	pid1 := peerlist[0]
+	pid2 := peerlist[1]
+	pid3 := peerlist[2]
+	pid4 := peerlist[3]
+
 	p.trackedPeers[pid1] = &peerStat{peerID: pid1, peerScore: 0.5}
 	p.trackedPeers[pid2] = &peerStat{peerID: pid2, peerScore: 10}
 	p.disconnectedPeers[pid3] = &peerStat{peerID: pid3, pruneDeadline: time.Now()}
@@ -35,22 +48,66 @@ func TestPeerTracker_GC(t *testing.T) {
 	go p.track()
 	go p.gc()
 
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Millisecond * 500)
 
-	err = p.stop(context.Background())
+	err = p.stop(ctx)
 	require.NoError(t, err)
 
 	require.Nil(t, p.trackedPeers[pid1])
 	require.Nil(t, p.disconnectedPeers[pid3])
+
+	// ensure good peers were dumped to store
+	peers, err := pidstore.Load(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(peers))
 }
 
 func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater)
+	p := newPeerTracker(h[0], connGater, nil)
 	maxAwaitingTime = time.Millisecond
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)
 	require.True(t, connGater.ListBlockedPeers()[0] == h[1].ID())
+}
+
+type dummyPIDStore struct {
+	ds  datastore.Datastore
+	key datastore.Key
+}
+
+func newDummyPIDStore() PeerIDStore {
+	return &dummyPIDStore{
+		key: datastore.NewKey("peers"),
+		ds:  sync.MutexWrap(datastore.NewMapDatastore()),
+	}
+}
+
+func (d *dummyPIDStore) Put(ctx context.Context, peers []peer.ID) error {
+	bin, err := json.Marshal(peers)
+	if err != nil {
+		return err
+	}
+	return d.ds.Put(ctx, d.key, bin)
+}
+
+func (d *dummyPIDStore) Load(ctx context.Context) ([]peer.ID, error) {
+	bin, err := d.ds.Get(ctx, d.key)
+	if err != nil {
+		return nil, err
+	}
+
+	var peers []peer.ID
+	err = json.Unmarshal(bin, &peers)
+	return peers, err
+}
+
+func generateRandomPeerlist(t *testing.T, length int) []peer.ID {
+	peerlist := make([]peer.ID, length)
+	for i := range peerlist {
+		peerlist[i] = testpeer.RandPeerIDFatal(t)
+	}
+	return peerlist
 }

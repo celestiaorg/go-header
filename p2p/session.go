@@ -35,8 +35,8 @@ type session[H header.Header] struct {
 	// peerTracker contains discovered peers with records that describes their activity.
 	peerTracker *peerTracker
 
-	// `from` is set when additional validation for range is needed.
 	// Otherwise, it will be nil.
+	// `from` is set when additional validation for range is needed.
 	from           H
 	requestTimeout time.Duration
 

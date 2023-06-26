@@ -24,7 +24,7 @@ var (
 	// otherwise it will be removed on the next GC cycle.
 	maxAwaitingTime = time.Hour
 	// gcCycle defines the duration after which the peerTracker starts removing peers.
-	gcCycle = time.Minute * 30
+	gcCycle = time.Minute * 5
 )
 
 type peerTracker struct {
@@ -37,8 +37,12 @@ type peerTracker struct {
 	// so we can guarantee that peerQueue will only contain active peers
 	trackedPeers map[peer.ID]*peerStat
 	// disconnectedPeers contains disconnected peers. In case if peer does not return
-	// online until pruneDeadline, it will be removed and its score will be lost.
+	// online until pruneDeadline, it will be removed and its score will be lost
 	disconnectedPeers map[peer.ID]*peerStat
+
+	// an optional interface used to periodically dump
+	// good peers during garbage collection
+	pidstore PeerIDStore
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -50,13 +54,15 @@ type peerTracker struct {
 func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
+	pidstore PeerIDStore,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
-		disconnectedPeers: make(map[peer.ID]*peerStat),
 		trackedPeers:      make(map[peer.ID]*peerStat),
+		disconnectedPeers: make(map[peer.ID]*peerStat),
+		pidstore:          pidstore,
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
@@ -167,7 +173,9 @@ func (p *peerTracker) gc() {
 			return
 		case <-ticker.C:
 			p.peerLk.Lock()
+
 			now := time.Now()
+
 			for id, peer := range p.disconnectedPeers {
 				if peer.pruneDeadline.Before(now) {
 					delete(p.disconnectedPeers, id)
@@ -180,8 +188,36 @@ func (p *peerTracker) gc() {
 				}
 			}
 			p.peerLk.Unlock()
+
+			p.dumpPeers(p.ctx)
 		}
 	}
+}
+
+// dumpPeers stores peers to the peerTracker's PeerIDStore if
+// present.
+func (p *peerTracker) dumpPeers(ctx context.Context) {
+	if p.pidstore == nil {
+		return
+	}
+
+	peers := make([]peer.ID, 0, len(p.trackedPeers))
+
+	p.peerLk.RLock()
+	for id := range p.trackedPeers {
+		peers = append(peers, id)
+	}
+	p.peerLk.RUnlock()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	err := p.pidstore.Put(ctx, peers)
+	if err != nil {
+		log.Errorw("failed to dump tracked peers to PeerIDStore", "err", err)
+		return
+	}
+	log.Debugw("dumped peers to PeerIDStore", "amount", len(peers))
 }
 
 // stop waits until all background routines will be finished.
@@ -195,6 +231,9 @@ func (p *peerTracker) stop(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+
+	// dump remaining tracked peers
+	p.dumpPeers(ctx)
 
 	return nil
 }
