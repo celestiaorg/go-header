@@ -111,7 +111,7 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // The Head must be verified thereafter where possible.
 // We request in parallel all the trusted peers, compare their response
 // and return the highest one.
-func (ex *Exchange[H]) Head(ctx context.Context, opts ...RequestOption) (H, error) {
+func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.RequestOption) (H, error) {
 	log.Debug("requesting head")
 
 	reqCtx := ctx
@@ -126,7 +126,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...RequestOption) (H, erro
 		defer cancel()
 	}
 
-	reqParams := DefaultRequestParams()
+	reqParams := header.DefaultRequestParams()
 	for _, opt := range opts {
 		opt(&reqParams)
 	}

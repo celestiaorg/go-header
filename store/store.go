@@ -158,7 +158,7 @@ func (s *Store[H]) Height() uint64 {
 	return s.heightSub.Height()
 }
 
-func (s *Store[H]) Head(ctx context.Context) (H, error) {
+func (s *Store[H]) Head(ctx context.Context, _ ...header.RequestOption) (H, error) {
 	head, err := s.GetByHeight(ctx, s.heightSub.Height())
 	if err == nil {
 		return head, nil

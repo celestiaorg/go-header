@@ -74,9 +74,9 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var opts []RequestOption
+			var opts []header.RequestOption
 			if tt.withSubjInit {
-				opts = append(opts, WithSubjectiveInit)
+				opts = append(opts, header.WithSubjectiveInit)
 			}
 
 			header, err := exchg.Head(ctx, opts...)
@@ -583,7 +583,7 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(_ context.Context) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(context.Context, ...header.RequestOption) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }

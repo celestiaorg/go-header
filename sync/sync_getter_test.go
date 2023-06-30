@@ -47,7 +47,7 @@ type fakeGetter[H header.Header] struct {
 	hits atomic.Uint32
 }
 
-func (f *fakeGetter[H]) Head(ctx context.Context) (h H, err error) {
+func (f *fakeGetter[H]) Head(ctx context.Context, _ ...header.RequestOption) (h H, err error) {
 	f.hits.Add(1)
 	select {
 	case <-time.After(time.Millisecond * 100):
