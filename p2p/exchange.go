@@ -131,7 +131,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.RequestOption) (
 		opt(&reqParams)
 	}
 
-	peers := ex.peerTracker.GetPeers()
+	peers := ex.peerTracker.getPeers()
 	if reqParams.SubjectiveInit || len(peers) < numUntrustedHeadRequests {
 		peers = ex.trustedPeers()
 	} else {

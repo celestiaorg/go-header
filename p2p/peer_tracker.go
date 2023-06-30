@@ -105,7 +105,8 @@ func (p *peerTracker) track() {
 	}
 }
 
-func (p *peerTracker) GetPeers() []peer.ID {
+// getPeers returns the tracker's currently tracked peers.
+func (p *peerTracker) getPeers() []peer.ID {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 	peers := make([]peer.ID, 0, len(p.trackedPeers))
