@@ -24,7 +24,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.RequestOption) (H, err
 	if isRecent(sbjHead, s.Params.blockTime) {
 		return sbjHead, nil
 	}
-	// otherwise, request head from a trusted peer, as we assume it is fully synced
+	// otherwise, request head from the network
 	//
 	// TODO(@Wondertan): Here is another potential networking optimization:
 	//  * From sbjHead's timestamp and current time predict the time to the next header(TNH)
@@ -75,7 +75,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	if !isExpired(storeHead, s.Params.TrustingPeriod) {
 		return storeHead, nil
 	}
-	// otherwise, request head from a trusted peer
+	// otherwise, request head from a trusted peer via subjective initialization
 	log.Infow("stored head header expired", "height", storeHead.Height())
 	// single-flight protection
 	// ensure only one Head is requested at the time
