@@ -33,7 +33,7 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	// decrease the minimum number of untrusted peers to request head from
 	// for testing purposes
-	minUntrustedHeadRequests = 2
+	numUntrustedHeadRequests = 2
 
 	hosts := createMocknet(t, 3)
 	exchg, trustedStore := createP2PExAndServer(t, hosts[0], hosts[1])
