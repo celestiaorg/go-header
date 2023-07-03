@@ -20,11 +20,11 @@ There are 4 main components in the header package:
 ## Table of Contents
 
 - [Go Header](#go-header)
-  - [Table of Contents](#table-of-contents)
-  - [Minimum requirements](#minimum-requirements)
-  - [Installation](#installation)
-  - [Package-specific documentation](#package-specific-documentation)
-  - [Code of Conduct](#code-of-conduct)
+- [Table of Contents](#table-of-contents)
+- [Minimum requirements](#minimum-requirements)
+- [Installation](#installation)
+- [Package-specific documentation](#package-specific-documentation)
+- [Code of Conduct](#code-of-conduct)
 
 ## Minimum requirements
 
