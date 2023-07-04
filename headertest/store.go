@@ -48,7 +48,7 @@ func (m *Store[H]) Height() uint64 {
 	return uint64(m.HeadHeight)
 }
 
-func (m *Store[H]) Head(context.Context, ...header.RequestOption) (H, error) {
+func (m *Store[H]) Head(context.Context, ...header.HeadOption) (H, error) {
 	return m.Headers[m.HeadHeight], nil
 }
 

@@ -127,5 +127,5 @@ type Getter[H Header] interface {
 // reporting it.
 type Head[H Header] interface {
 	// Head returns the latest known header.
-	Head(context.Context, ...RequestOption) (H, error)
+	Head(context.Context, ...HeadOption) (H, error)
 }

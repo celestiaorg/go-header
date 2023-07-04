@@ -41,7 +41,7 @@ func TestExchange_RequestHead(t *testing.T) {
 	// create new server-side exchange that will act as the tracked peer
 	// it will have a higher chain head than the trusted peer so that the
 	// test can determine which peer was asked
-	trackedStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 10)
+	trackedStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 50)
 	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](hosts[2], trackedStore,
 		WithNetworkID[ServerParameters](networkID),
 	)
@@ -74,9 +74,9 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var opts []header.RequestOption
-			if tt.withSubjInit {
-				opts = append(opts, header.WithSubjectiveInit)
+			var opts []header.HeadOption
+			if !tt.withSubjInit {
+				opts = append(opts, header.WithDisabledSubjectiveInit)
 			}
 
 			header, err := exchg.Head(ctx, opts...)
@@ -583,7 +583,7 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(context.Context, ...header.RequestOption) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(context.Context, ...header.HeadOption) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }

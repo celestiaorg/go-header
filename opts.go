@@ -1,23 +1,24 @@
 package header
 
-type RequestOption func(opts *RequestParams)
+type HeadOption func(opts *HeadRequestParams)
 
-// RequestParams contains options to be used for header Exchange
+// HeadRequestParams contains options to be used for header Exchange
 // requests.
-type RequestParams struct {
+type HeadRequestParams struct {
 	// SubjectiveInit determines whether the Exchange should use
 	// trusted peers for its Head request (true = yes).
 	SubjectiveInit bool
 }
 
-func DefaultRequestParams() RequestParams {
-	return RequestParams{
-		SubjectiveInit: false,
+func DefaultHeadRequestParams() HeadRequestParams {
+	return HeadRequestParams{
+		SubjectiveInit: true,
 	}
 }
 
-// WithSubjectiveInit sets the SubjectiveInit parameter to true,
-// indicating to the Head method to use the trusted peer set.
-func WithSubjectiveInit(opts *RequestParams) {
-	opts.SubjectiveInit = true
+// WithDisabledSubjectiveInit sets the SubjectiveInit parameter to false,
+// indicating to the Head method to use the tracked peerset rather than
+// the trusted peerset (if enough tracked peers are available)
+func WithDisabledSubjectiveInit(opts *HeadRequestParams) {
+	opts.SubjectiveInit = false
 }

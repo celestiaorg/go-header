@@ -26,7 +26,7 @@ func (l *Exchange[H]) Stop(context.Context) error {
 	return nil
 }
 
-func (l *Exchange[H]) Head(ctx context.Context, _ ...header.RequestOption) (H, error) {
+func (l *Exchange[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) {
 	return l.store.Head(ctx)
 }
 
