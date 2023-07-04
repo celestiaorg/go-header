@@ -115,11 +115,11 @@ func (d *DummyHeader) Verify(header header.Header) error {
 	}
 
 	if header.Height() <= d.Height() {
-		return fmt.Errorf("expected new header Height to be larger than old header Time")
+		return fmt.Errorf("expected new header Height %d to be larger than old header Height %d", header.Height(), d.Height())
 	}
 
 	if header.Time().Before(d.Time()) {
-		return fmt.Errorf("expected new header Time to be after old header Time")
+		return fmt.Errorf("expected new header Time %v to be after old header Time %v", header.Time(), d.Time())
 	}
 
 	return nil

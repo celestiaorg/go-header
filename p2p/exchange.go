@@ -132,11 +132,13 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 	}
 
 	peers := ex.peerTracker.getPeers()
-	if reqParams.SubjectiveInit || len(peers) < numUntrustedHeadRequests {
-		peers = ex.trustedPeers()
-	} else {
-		// only query a subset
+	if reqParams.DisableSubjectiveInit != nil && len(peers) >= numUntrustedHeadRequests {
+		// subjective initialisation was disabled, request head from a subset of
+		// tracked peers
 		peers = peers[:numUntrustedHeadRequests]
+	} else {
+		// default to using trusted peers
+		peers = ex.trustedPeers()
 	}
 
 	var (
@@ -154,6 +156,18 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
 				headerRespCh <- zero
 				return
+			}
+			// if tracked (untrusted) peers were requested, verify head
+			if reqParams.DisableSubjectiveInit != nil {
+				err = reqParams.DisableSubjectiveInit.Verify(headers[0])
+				if err != nil {
+					log.Errorw("head request to untrusted peer failed", "untrusted peer", from,
+						"err", err)
+					// bad head was given, block peer
+					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
+					headerRespCh <- zero
+					return
+				}
 			}
 			// request ensures that the result slice will have at least one Header
 			headerRespCh <- headers[0]

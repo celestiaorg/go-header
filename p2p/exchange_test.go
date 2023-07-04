@@ -55,18 +55,21 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	tests := []struct {
 		withSubjInit   bool
+		lastHeader     header.Header
 		expectedHeight int64
 		expectedHash   header.Hash
 	}{
 		// routes to trusted peer only
 		{
 			withSubjInit:   true,
+			lastHeader:     trustedStore.Headers[trustedStore.HeadHeight-1],
 			expectedHeight: trustedStore.HeadHeight,
 			expectedHash:   trustedStore.Headers[trustedStore.HeadHeight].Hash(),
 		},
 		// routes to tracked peers and takes highest chain head
 		{
 			withSubjInit:   false,
+			lastHeader:     trackedStore.Headers[trackedStore.HeadHeight-1],
 			expectedHeight: trackedStore.HeadHeight,
 			expectedHash:   trackedStore.Headers[trackedStore.HeadHeight].Hash(),
 		},
@@ -76,7 +79,7 @@ func TestExchange_RequestHead(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var opts []header.HeadOption
 			if !tt.withSubjInit {
-				opts = append(opts, header.WithDisabledSubjectiveInit)
+				opts = append(opts, header.WithDisabledSubjectiveInit(tt.lastHeader))
 			}
 
 			header, err := exchg.Head(ctx, opts...)

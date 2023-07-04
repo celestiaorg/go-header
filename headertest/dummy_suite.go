@@ -42,6 +42,7 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 	}
 
 	dh := RandDummyHeader(s.t)
+	dh.Raw.Time = s.head.Time().Add(time.Nanosecond)
 	dh.Raw.Height = s.head.Height() + 1
 	dh.Raw.PreviousHash = s.head.Hash()
 	_ = dh.rehash()
