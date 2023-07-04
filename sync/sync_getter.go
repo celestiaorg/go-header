@@ -3,29 +3,50 @@ package sync
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/celestiaorg/go-header"
 )
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time
 type syncGetter[H header.Header] struct {
+	getterLk   sync.RWMutex
+	isGetterLk atomic.Bool
 	header.Getter[H]
-
-	headLk  sync.RWMutex
-	headErr error
-	head    H
 }
 
-func (se *syncGetter[H]) Head(ctx context.Context) (H, error) {
-	// the lock construction here ensures only one routine calling Head at a time
+// Lock locks the getter for single user.
+// Reports 'true' if the lock was held by the current routine.
+// Does not require unlocking on 'false'.
+func (sg *syncGetter[H]) Lock() bool {
+	// the lock construction here ensures only one routine is freed at a time
 	// while others wait via Rlock
-	if !se.headLk.TryLock() {
-		se.headLk.RLock()
-		defer se.headLk.RUnlock()
-		return se.head, se.headErr
+	locked := sg.getterLk.TryLock()
+	if !locked {
+		sg.getterLk.RLock()
+		defer sg.getterLk.RUnlock()
+		return false
 	}
-	defer se.headLk.Unlock()
+	sg.isGetterLk.Store(locked)
+	return locked
+}
 
-	se.head, se.headErr = se.Getter.Head(ctx)
-	return se.head, se.headErr
+// Unlock unlocks the getter.
+func (sg *syncGetter[H]) Unlock() {
+	sg.checkLock("Unlock without preceding Lock on syncGetter")
+	sg.getterLk.Unlock()
+	sg.isGetterLk.Store(false)
+}
+
+// Head must be called with held Lock.
+func (sg *syncGetter[H]) Head(ctx context.Context) (H, error) {
+	sg.checkLock("Head without preceding Lock on syncGetter")
+	return sg.Getter.Head(ctx)
+}
+
+// checkLock ensures api safety
+func (sg *syncGetter[H]) checkLock(msg string) {
+	if !sg.isGetterLk.Load() {
+		panic(msg)
+	}
 }

@@ -26,6 +26,10 @@ func TestSyncGetterHead(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			if !sex.Lock() {
+				return
+			}
+			defer sex.Unlock()
 			h, err := sex.Head(ctx)
 			if h != nil || err != errFakeHead {
 				t.Fail()
