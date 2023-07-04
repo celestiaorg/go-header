@@ -10,9 +10,16 @@ import (
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time
 type syncGetter[H header.Header] struct {
-	getterLk   sync.RWMutex
+	getterLk   sync.Mutex
+	getterCond *sync.Cond
 	isGetterLk atomic.Bool
 	header.Getter[H]
+}
+
+func newSyncGetter[H header.Header](g header.Getter[H]) *syncGetter[H] {
+	getter := syncGetter[H]{Getter: g}
+	getter.getterCond = sync.NewCond(&getter.getterLk)
+	return &getter
 }
 
 // Lock locks the getter for single user.
@@ -21,21 +28,18 @@ type syncGetter[H header.Header] struct {
 func (se *syncGetter[H]) Lock() bool {
 	// the lock construction here ensures only one routine is freed at a time
 	// while others wait via Rlock
-	locked := se.getterLk.TryLock()
+	locked := se.isGetterLk.CompareAndSwap(false, true)
 	if !locked {
-		se.getterLk.RLock()
-		defer se.getterLk.RUnlock()
-		return false
+		se.await()
 	}
-	se.isGetterLk.Store(locked)
 	return locked
 }
 
 // Unlock unlocks the getter.
 func (se *syncGetter[H]) Unlock() {
 	se.checkLock("Unlock without preceding Lock on syncGetter")
-	se.getterLk.Unlock()
 	se.isGetterLk.Store(false)
+	se.getterCond.Broadcast()
 }
 
 // Head must be called with held Lock.
@@ -49,4 +53,10 @@ func (se *syncGetter[H]) checkLock(msg string) {
 	if !se.isGetterLk.Load() {
 		panic(msg)
 	}
+}
+
+func (se *syncGetter[H]) await() {
+	se.getterLk.Lock()
+	se.getterCond.Wait()
+	se.getterLk.Unlock()
 }

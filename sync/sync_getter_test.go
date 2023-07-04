@@ -20,6 +20,7 @@ func TestSyncGetterHead(t *testing.T) {
 
 	fex := &fakeGetter[*headertest.DummyHeader]{}
 	sex := &syncGetter[*headertest.DummyHeader]{Getter: fex}
+	sex.getterCond = sync.NewCond(&sex.getterLk)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {

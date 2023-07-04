@@ -72,7 +72,7 @@ func NewSyncer[H header.Header](
 	return &Syncer[H]{
 		sub:         sub,
 		store:       syncStore[H]{Store: store},
-		getter:      syncGetter[H]{Getter: getter},
+		getter:      *newSyncGetter(getter),
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
 	}, nil
