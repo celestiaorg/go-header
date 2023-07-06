@@ -44,6 +44,8 @@ type Syncer[H header.Header] struct {
 	triggerSync chan struct{}
 	// pending keeps ranges of valid new network headers awaiting to be appended to store
 	pending ranges[H]
+	// incomingMu ensures only one incoming network head candidate is processed at the time
+	incomingMu sync.Mutex
 
 	// controls lifecycle for syncLoop
 	ctx    context.Context

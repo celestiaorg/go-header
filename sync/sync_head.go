@@ -31,6 +31,15 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 	//  * If now >= TNH && now <= TNH + (THP) header propagation time
 	//    * Wait for header to arrive instead of requesting it
 	//  * This way we don't request as we know the new network header arrives exactly
+	//
+	// single-flight protection
+	// ensure only one Head is requested at the time
+	if !s.getter.Lock() {
+		// means that other routine held the lock and set the subjective head for us,
+		// so just recursively get it
+		return s.Head(ctx)
+	}
+	defer s.getter.Unlock()
 	netHead, err := s.getter.Head(ctx)
 	if err != nil {
 		return netHead, err
@@ -68,6 +77,14 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// otherwise, request head from a trusted peer
 	log.Infow("stored head header expired", "height", storeHead.Height())
+	// single-flight protection
+	// ensure only one Head is requested at the time
+	if !s.getter.Lock() {
+		// means that other routine held the lock and set the subjective head for us,
+		// so just recursively get it
+		return s.subjectiveHead(ctx)
+	}
+	defer s.getter.Unlock()
 	trustHead, err := s.getter.Head(ctx)
 	if err != nil {
 		return trustHead, err
@@ -119,6 +136,9 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 // incomingNetworkHead processes new potential network headers.
 // If the header valid, sets as new subjective header.
 func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, netHead H) pubsub.ValidationResult {
+	// ensure there is no racing between network head candidates
+	s.incomingMu.Lock()
+	defer s.incomingMu.Unlock()
 	// first of all, check the validity of the netHead
 	res := s.validateHead(ctx, netHead)
 	if res == pubsub.ValidationAccept {
