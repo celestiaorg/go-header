@@ -23,6 +23,7 @@ type Parameters struct {
 	WriteBatchSize int
 
 	// storePrefix defines the prefix used to wrap the store
+	// OPTIONAL
 	storePrefix datastore.Key
 }
 
@@ -32,7 +33,6 @@ func DefaultParameters() Parameters {
 		StoreCacheSize: 4096,
 		IndexCacheSize: 16384,
 		WriteBatchSize: 2048,
-		storePrefix:    datastore.NewKey("headers"),
 	}
 }
 
@@ -47,9 +47,6 @@ func (p *Parameters) Validate() error {
 	}
 	if p.WriteBatchSize <= 0 {
 		return fmt.Errorf("invalid batch size:%s", errSuffix)
-	}
-	if len(p.storePrefix.Bytes()) == 0 {
-		return fmt.Errorf("invalid store prefix: prefix cannot be empty")
 	}
 	return nil
 }

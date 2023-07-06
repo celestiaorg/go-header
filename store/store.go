@@ -17,6 +17,8 @@ import (
 var log = logging.Logger("header/store")
 
 var (
+	// defaultStorePrefix defines default datastore prefix
+	defaultStorePrefix = datastore.NewKey("headers")
 	// errStoppedStore is returned for attempted operations on a stopped store
 	errStoppedStore = errors.New("stopped store")
 )
@@ -89,7 +91,12 @@ func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H]
 		return nil, fmt.Errorf("failed to create index cache: %w", err)
 	}
 
-	wrappedStore := namespace.Wrap(ds, params.storePrefix)
+	prefix := params.storePrefix
+	if len(prefix.String()) == 0 {
+		prefix = defaultStorePrefix
+	}
+
+	wrappedStore := namespace.Wrap(ds, prefix)
 	index, err := newHeightIndexer[H](wrappedStore, params.IndexCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create height indexer: %w", err)
