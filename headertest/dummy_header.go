@@ -27,6 +27,8 @@ type DummyHeader struct {
 	Raw
 
 	hash header.Hash
+
+	VerifyFailure bool // TODO
 }
 
 func RandDummyHeader(t *testing.T) *DummyHeader {
@@ -39,6 +41,7 @@ func RandDummyHeader(t *testing.T) *DummyHeader {
 			Time:         time.Now().UTC(),
 		},
 		nil,
+		false,
 	}
 	err := dh.rehash()
 	if err != nil {
@@ -100,6 +103,10 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 }
 
 func (d *DummyHeader) Verify(header header.Header) error {
+	if dummy, _ := header.(*DummyHeader); dummy.VerifyFailure {
+		return fmt.Errorf("bad header") // TODO
+	}
+
 	epsilon := 10 * time.Second
 	if header.Time().After(time.Now().Add(epsilon)) {
 		return fmt.Errorf("header Time too far in the future")

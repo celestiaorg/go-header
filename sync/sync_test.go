@@ -285,6 +285,89 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestSync_InvalidSyncTarget tests the possible case that an incoming
+// header passes non-adjacent verification and is set as the sync target
+// but is actually invalid once it is processed via VerifyAdjacent during sync
+func TestSync_InvalidSyncTarget(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
+	localStore := store.NewTestStore(ctx, t, head)
+
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		local.NewExchange[*headertest.DummyHeader](remoteStore),
+		localStore,
+		headertest.NewDummySubscriber(),
+		WithTrustingPeriod(time.Second),
+		WithBlockTime(time.Nanosecond),
+	)
+	require.NoError(t, err)
+
+	headers := suite.GenDummyHeaders(300)
+	// malform the remote store's head so that it can serve
+	// the syncer a "bad" sync target that passes initial validation,
+	// but not verification.
+	maliciousHeader := headers[299]
+	maliciousHeader.VerifyFailure = true
+	err = remoteStore.Append(ctx, headers...)
+	require.NoError(t, err)
+
+	// TODO
+	h, err := syncer.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, maliciousHeader.Height(), h.Height())
+
+	err = syncer.Start(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(time.Millisecond * 100) // TODO flakey?
+
+	shortCtx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
+	err = syncer.SyncWait(shortCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	cancel()
+
+	// TODO
+	require.Equal(t, uint64(maliciousHeader.Height()), syncer.State().ToHeight)
+
+	h, err = localStore.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, maliciousHeader.Height()-1, h.Height())
+
+	// TODO
+	remoteStore.Headers[maliciousHeader.Height()].VerifyFailure = false
+
+	// generate more headers and trigger sync again
+	err = remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
+	require.NoError(t, err)
+
+	// pretend new header is received from network
+	expectedHead, err := remoteStore.Head(ctx)
+	require.NoError(t, err)
+	syncer.incomingNetworkHead(ctx, expectedHead)
+	err = syncer.SyncWait(ctx)
+	require.NoError(t, err)
+
+	// ensure that maliciousHeader height was re-requested and a good one was
+	// found
+	rerequested, err := localStore.GetByHeight(ctx, uint64(maliciousHeader.Height()))
+	require.NoError(t, err)
+	require.False(t, rerequested.VerifyFailure)
+
+	gotHead, err := localStore.Head(ctx)
+	require.NoError(t, err)
+
+	syncHead, err := syncer.Head(ctx)
+	require.NoError(t, err)
+
+	require.Equal(t, expectedHead.Height()-1, gotHead.Height())
+	require.Equal(t, expectedHead.Height(), syncHead.Height())
+}
+
 type delayedGetter[H header.Header] struct {
 	header.Getter[H]
 }
