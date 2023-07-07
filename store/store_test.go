@@ -70,6 +70,10 @@ func TestStore(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, out)
 
+	out, err = store.GetRangeByHeight(ctx, 2, 3)
+	require.Error(t, err)
+	assert.Nil(t, out)
+
 	// check that the store can be successfully started after previous stop
 	// with all data being flushed.
 	store, err = NewStore[*headertest.DummyHeader](ds)

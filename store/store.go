@@ -240,6 +240,11 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 }
 
 func (s *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
+	// as the requested range is non-inclusive in the end[from;to), we need to compare
+	// `from` with `to-1`
+	if from >= to-1 {
+		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to-1)
+	}
 	h, err := s.GetByHeight(ctx, to-1)
 	if err != nil {
 		return nil, err
@@ -264,13 +269,7 @@ func (s *Store[H]) GetVerifiedRange(
 	from H,
 	to uint64,
 ) ([]H, error) {
-	// as the requested range is non-inclusive in both sides(from;to), we need to compare
-	// `from.Height()+1` with `to`
-	requestedHeight := uint64(from.Height() + 1)
-	if requestedHeight >= to {
-		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", requestedHeight, to)
-	}
-	headers, err := s.GetRangeByHeight(ctx, requestedHeight, to)
+	headers, err := s.GetRangeByHeight(ctx, uint64(from.Height()+1), to)
 	if err != nil {
 		return nil, err
 	}
