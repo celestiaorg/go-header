@@ -70,7 +70,12 @@ func TestStore(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, out)
 
-	out, err = store.GetRangeByHeight(ctx, 2, 3)
+	out, err = store.GetVerifiedRange(ctx, h, 4)
+	require.NoError(t, err)
+	assert.NotNil(t, out)
+	assert.Len(t, out, 1)
+
+	out, err = store.GetRangeByHeight(ctx, 2, 2)
 	require.Error(t, err)
 	assert.Nil(t, out)
 
