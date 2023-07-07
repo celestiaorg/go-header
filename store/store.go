@@ -264,10 +264,13 @@ func (s *Store[H]) GetVerifiedRange(
 	from H,
 	to uint64,
 ) ([]H, error) {
-	if uint64(from.Height()) >= to {
-		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from.Height(), to)
+	// as the requested range is non-inclusive in both sides(from;to), we need to compare
+	// `from.Height()+1` with `to`
+	requestedHeight := uint64(from.Height() + 1)
+	if requestedHeight >= to {
+		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", requestedHeight, to)
 	}
-	headers, err := s.GetRangeByHeight(ctx, uint64(from.Height())+1, to)
+	headers, err := s.GetRangeByHeight(ctx, requestedHeight, to)
 	if err != nil {
 		return nil, err
 	}
