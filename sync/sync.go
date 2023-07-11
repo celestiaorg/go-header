@@ -122,7 +122,7 @@ type State struct {
 	FromHeight, ToHeight uint64 // the starting and the ending point of a sync
 	FromHash, ToHash     header.Hash
 	Start, End           time.Time
-	Error                error // the error that might happen within a sync
+	Error                string // the error that might happen within a sync
 }
 
 // Finished returns true if sync is done, false otherwise.
@@ -147,9 +147,9 @@ func (s *Syncer[H]) State() State {
 	head, err := s.store.Head(s.ctx)
 	if err == nil {
 		state.Height = uint64(head.Height())
-	} else if state.Error == nil {
+	} else if state.Error == "" {
 		// don't ignore the error if we can show it in the state
-		state.Error = err
+		state.Error = err.Error()
 	}
 
 	return state
@@ -238,7 +238,9 @@ func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) 
 
 	s.stateLk.Lock()
 	s.state.End = time.Now()
-	s.state.Error = err
+	if err != nil {
+		s.state.Error = err.Error()
+	}
 	s.stateLk.Unlock()
 	return err
 }
