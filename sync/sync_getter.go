@@ -21,14 +21,14 @@ type syncGetter[H header.Header] struct {
 func (sg *syncGetter[H]) Lock() bool {
 	// the lock construction here ensures only one routine is freed at a time
 	// while others wait via Rlock
-	locked := sg.getterLk.TryLock()
-	if !locked {
+	acquiredLock := sg.getterLk.TryLock()
+	if !acquiredLock {
 		sg.getterLk.RLock()
 		defer sg.getterLk.RUnlock()
 		return false
 	}
-	sg.isGetterLk.Store(locked)
-	return locked
+	sg.isGetterLk.Store(acquiredLock)
+	return acquiredLock
 }
 
 // Unlock unlocks the getter.
