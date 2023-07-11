@@ -28,7 +28,9 @@ type DummyHeader struct {
 
 	hash header.Hash
 
-	VerifyFailure bool // TODO
+	// VerifyFailure allows for testing scenarios where a header would fail
+	// verification. When set to true, it forces a failure.
+	VerifyFailure bool
 }
 
 func RandDummyHeader(t *testing.T) *DummyHeader {
@@ -104,7 +106,7 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 
 func (d *DummyHeader) Verify(header header.Header) error {
 	if dummy, _ := header.(*DummyHeader); dummy.VerifyFailure {
-		return fmt.Errorf("bad header") // TODO
+		return fmt.Errorf("header at height %d failed verification", header.Height())
 	}
 
 	epsilon := 10 * time.Second
