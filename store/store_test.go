@@ -149,3 +149,17 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, h)
 }
+
+func TestStoreInit(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	headers := suite.GenDummyHeaders(10)
+	err = store.Init(ctx, headers[len(headers)-1]) // init should work with any height, not only 1
+	require.NoError(t, err)
+}
