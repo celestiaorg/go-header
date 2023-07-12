@@ -243,6 +243,8 @@ func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) 
 	s.state.End = time.Now()
 	if err != nil {
 		s.state.Error = err.Error()
+	} else {
+		s.state.Error = ""
 	}
 	s.stateLk.Unlock()
 	return err
