@@ -357,7 +357,10 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	expectedHead, err := remoteStore.Head(ctx)
 	require.NoError(t, err)
 	syncer.incomingNetworkHead(ctx, expectedHead)
-	// wait for syncer to finish
+
+	// wait for syncer to finish (give it a bit of time to register
+	// new job with new sync target)
+	time.Sleep(100 * time.Millisecond)
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
 
@@ -373,8 +376,8 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	syncHead, err := syncer.Head(ctx)
 	require.NoError(t, err)
 
-	require.Equal(t, expectedHead.Height()-1, storeHead.Height()) // head might not be applied to store yet
 	require.Equal(t, expectedHead.Height(), syncHead.Height())
+	require.Equal(t, expectedHead.Height(), storeHead.Height())
 }
 
 type delayedGetter[H header.Header] struct {
