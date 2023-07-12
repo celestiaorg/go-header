@@ -126,7 +126,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		defer cancel()
 	}
 
-	reqParams := header.DefaultHeadRequestParams()
+	reqParams := header.DefaultHeadParams()
 	for _, opt := range opts {
 		opt(&reqParams)
 	}

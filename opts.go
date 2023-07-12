@@ -1,10 +1,10 @@
 package header
 
-type HeadOption func(opts *HeadRequestParams)
+type HeadOption func(opts *HeadParams)
 
-// HeadRequestParams contains options to be used for header Exchange
+// HeadParams contains options to be used for header Exchange
 // requests.
-type HeadRequestParams struct {
+type HeadParams struct {
 	// DisableSubjectiveInit indicates whether the Exchange should use
 	// trusted peers for its Head request. If nil, trusted peers will
 	// be used. If non-nil, Exchange will ask several peers from its
@@ -12,8 +12,8 @@ type HeadRequestParams struct {
 	DisableSubjectiveInit Header
 }
 
-func DefaultHeadRequestParams() HeadRequestParams {
-	return HeadRequestParams{
+func DefaultHeadParams() HeadParams {
+	return HeadParams{
 		DisableSubjectiveInit: nil,
 	}
 }
@@ -21,8 +21,8 @@ func DefaultHeadRequestParams() HeadRequestParams {
 // WithDisabledSubjectiveInit sets the DisableSubjectiveInit parameter to the
 // given header, indicating to the Head method to use the tracked peerset rather
 // than the trusted peerset (if enough tracked peers are available).
-func WithDisabledSubjectiveInit(verified Header) func(opts *HeadRequestParams) {
-	return func(opts *HeadRequestParams) {
+func WithDisabledSubjectiveInit(verified Header) func(opts *HeadParams) {
+	return func(opts *HeadParams) {
 		opts.DisableSubjectiveInit = verified
 	}
 }
