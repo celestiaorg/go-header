@@ -81,7 +81,7 @@ type trustedGetter[H header.Header] struct {
 	hits int
 }
 
-func (t *trustedGetter[H]) Head(ctx context.Context, option ...header.RequestOption) (H, error) {
+func (t *trustedGetter[H]) Head(ctx context.Context, option ...header.HeadOption) (H, error) {
 	//TODO implement me
 	panic("implement me")
 }
