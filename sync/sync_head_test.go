@@ -103,6 +103,8 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 type wrappedGetter struct {
 	ex header.Exchange[*headertest.DummyHeader]
 
+	// withTrustedHead indicates whether TrustedHead was set by the request
+	// via the WithTrustedHead opt.
 	withTrustedHead bool
 }
 
