@@ -52,10 +52,10 @@ func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
 
 }
 
-// TestSyncer_HeadWithDisabledSubjectiveInit tests whether the syncer
-// requests Head (new sync target) with subjective initialisation disabled when
+// TestSyncer_HeadWithTrustedHead tests whether the syncer
+// requests Head (new sync target) from tracked peers when
 // it already has a subjective head within the unbonding period.
-func TestSyncer_HeadWithDisabledSubjectiveInit(t *testing.T) {
+func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -97,19 +97,19 @@ func TestSyncer_HeadWithDisabledSubjectiveInit(t *testing.T) {
 
 	// ensure the syncer really requested Head from the network
 	// rather than from trusted peers
-	require.True(t, wrappedGetter.disabledSubjectiveInit)
+	require.True(t, wrappedGetter.withTrustedHead)
 }
 
 type wrappedGetter struct {
 	ex header.Exchange[*headertest.DummyHeader]
 
-	disabledSubjectiveInit bool
+	withTrustedHead bool
 }
 
 func newWrappedGetter(ex header.Exchange[*headertest.DummyHeader]) *wrappedGetter {
 	return &wrappedGetter{
-		ex:                     ex,
-		disabledSubjectiveInit: false,
+		ex:              ex,
+		withTrustedHead: false,
 	}
 }
 
@@ -118,8 +118,8 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption) 
 	for _, opt := range options {
 		opt(&params)
 	}
-	if params.DisableSubjectiveInit != nil {
-		t.disabledSubjectiveInit = true
+	if params.TrustedHead != nil {
+		t.withTrustedHead = true
 	}
 	return t.ex.Head(ctx, options...)
 }

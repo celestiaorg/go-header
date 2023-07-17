@@ -40,7 +40,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error)
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
-	netHead, err := s.getter.Head(ctx, header.WithDisabledSubjectiveInit(sbjHead))
+	netHead, err := s.getter.Head(ctx, header.WithTrustedHead(sbjHead))
 	if err != nil {
 		return netHead, err
 	}
