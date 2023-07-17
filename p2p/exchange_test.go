@@ -55,31 +55,31 @@ func TestExchange_RequestHead(t *testing.T) {
 	})
 
 	tests := []struct {
-		withSubjInit   bool
-		lastHeader     header.Header
-		expectedHeight int64
-		expectedHash   header.Hash
+		requestFromTrusted bool
+		lastHeader         header.Header
+		expectedHeight     int64
+		expectedHash       header.Hash
 	}{
 		// routes to trusted peer only
 		{
-			withSubjInit:   true,
-			lastHeader:     trustedStore.Headers[trustedStore.HeadHeight-1],
-			expectedHeight: trustedStore.HeadHeight,
-			expectedHash:   trustedStore.Headers[trustedStore.HeadHeight].Hash(),
+			requestFromTrusted: true,
+			lastHeader:         trustedStore.Headers[trustedStore.HeadHeight-1],
+			expectedHeight:     trustedStore.HeadHeight,
+			expectedHash:       trustedStore.Headers[trustedStore.HeadHeight].Hash(),
 		},
 		// routes to tracked peers and takes highest chain head
 		{
-			withSubjInit:   false,
-			lastHeader:     trackedStore.Headers[trackedStore.HeadHeight-1],
-			expectedHeight: trackedStore.HeadHeight,
-			expectedHash:   trackedStore.Headers[trackedStore.HeadHeight].Hash(),
+			requestFromTrusted: false,
+			lastHeader:         trackedStore.Headers[trackedStore.HeadHeight-1],
+			expectedHeight:     trackedStore.HeadHeight,
+			expectedHash:       trackedStore.Headers[trackedStore.HeadHeight].Hash(),
 		},
 	}
 
 	for i, tt := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var opts []header.HeadOption
-			if !tt.withSubjInit {
+			if !tt.requestFromTrusted {
 				opts = append(opts, header.WithTrustedHead(tt.lastHeader))
 			}
 

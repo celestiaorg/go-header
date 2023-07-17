@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -106,14 +107,22 @@ func (p *peerTracker) track() {
 }
 
 // getPeers returns the tracker's currently tracked peers.
-func (p *peerTracker) getPeers() []peer.ID {
+func (p *peerTracker) getPeers(amount int) ([]peer.ID, error) {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
-	peers := make([]peer.ID, 0, len(p.trackedPeers))
-	for peerID := range p.trackedPeers {
-		peers = append(peers, peerID)
+
+	if len(p.trackedPeers) < amount {
+		return nil, fmt.Errorf("not enough peers in tracker: requested %d, have %d", amount, len(p.trackedPeers))
 	}
-	return peers
+
+	peers := make([]peer.ID, 0, amount)
+	for peer := range p.trackedPeers {
+		if len(peers) == amount {
+			break
+		}
+		peers = append(peers, peer)
+	}
+	return peers, nil
 }
 
 func (p *peerTracker) connected(pID peer.ID) {

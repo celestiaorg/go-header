@@ -131,14 +131,18 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		opt(&reqParams)
 	}
 
-	peers := ex.peerTracker.getPeers()
-	if reqParams.TrustedHead != nil && len(peers) >= numUntrustedHeadRequests {
-		// trusted header was given, request head from a subset of
-		// tracked peers and verify heads against it
-		peers = peers[:numUntrustedHeadRequests]
-	} else {
-		// default to using trusted peers
-		peers = ex.trustedPeers()
+	var (
+		peers           = ex.trustedPeers()
+		useTrackedPeers bool
+	)
+
+	trackedPeers, err := ex.peerTracker.getPeers(numUntrustedHeadRequests)
+	useTrackedPeers = reqParams.TrustedHead != nil && err == nil
+	// if trusted head was given and enough peers are currently in tracker, then
+	// use tracked peers and verify their returned headers against the given trusted
+	// header
+	if useTrackedPeers {
+		peers = trackedPeers
 	}
 
 	var (
@@ -158,7 +162,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 				return
 			}
 			// if tracked (untrusted) peers were requested, verify head
-			if reqParams.TrustedHead != nil {
+			if useTrackedPeers {
 				err = reqParams.TrustedHead.Verify(headers[0])
 				if err != nil {
 					log.Errorw("head request to untrusted peer failed", "untrusted peer", from,
