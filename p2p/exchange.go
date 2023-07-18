@@ -126,7 +126,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		defer cancel()
 	}
 
-	reqParams := header.DefaultHeadParams()
+	reqParams := header.HeadParams{}
 	for _, opt := range opts {
 		opt(&reqParams)
 	}
@@ -138,9 +138,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 
 	trackedPeers, err := ex.peerTracker.getPeers(numUntrustedHeadRequests)
 	useTrackedPeers = reqParams.TrustedHead != nil && err == nil
-	// if trusted head was given and enough peers are currently in tracker, then
-	// use tracked peers and verify their returned headers against the given trusted
-	// header
+	// the TrustedHead field indicates whether the Exchange should use
+	// trusted peers for its Head request. If nil, trusted peers will
+	// be used. If non-nil, Exchange will ask several peers (as long as enough
+	// of them exist in the peer tracker) from its network for their Head and
+	// verify against the given trusted header.
 	if useTrackedPeers {
 		peers = trackedPeers
 	}
