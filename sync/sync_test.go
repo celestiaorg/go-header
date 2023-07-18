@@ -306,7 +306,6 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 		local.NewExchange[*headertest.DummyHeader](remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
-		WithTrustingPeriod(time.Second),
 		WithBlockTime(time.Nanosecond), // force syncer to request more recent sync target
 	)
 	require.NoError(t, err)
