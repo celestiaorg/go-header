@@ -201,11 +201,11 @@ func (p *peerTracker) dumpPeers(ctx context.Context) {
 		return
 	}
 
-	peers := make([]peer.ID, 0, len(p.trackedPeers))
+	peers := make([]peer.AddrInfo, 0, len(p.trackedPeers))
 
 	p.peerLk.RLock()
 	for id := range p.trackedPeers {
-		peers = append(peers, id)
+		peers = append(peers, p.host.Peerstore().PeerInfo(id))
 	}
 	p.peerLk.RUnlock()
 

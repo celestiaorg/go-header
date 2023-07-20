@@ -85,7 +85,7 @@ func newDummyPIDStore() PeerIDStore {
 	}
 }
 
-func (d *dummyPIDStore) Put(ctx context.Context, peers []peer.ID) error {
+func (d *dummyPIDStore) Put(ctx context.Context, peers []peer.AddrInfo) error {
 	bin, err := json.Marshal(peers)
 	if err != nil {
 		return err
@@ -93,13 +93,13 @@ func (d *dummyPIDStore) Put(ctx context.Context, peers []peer.ID) error {
 	return d.ds.Put(ctx, d.key, bin)
 }
 
-func (d *dummyPIDStore) Load(ctx context.Context) ([]peer.ID, error) {
+func (d *dummyPIDStore) Load(ctx context.Context) ([]peer.AddrInfo, error) {
 	bin, err := d.ds.Get(ctx, d.key)
 	if err != nil {
 		return nil, err
 	}
 
-	var peers []peer.ID
+	var peers []peer.AddrInfo
 	err = json.Unmarshal(bin, &peers)
 	return peers, err
 }
