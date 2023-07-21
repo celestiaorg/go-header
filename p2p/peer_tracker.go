@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
+	libpeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 )
 
@@ -36,10 +36,10 @@ type peerTracker struct {
 	// trackedPeers contains active peers that we can request to.
 	// we cache the peer once they disconnect,
 	// so we can guarantee that peerQueue will only contain active peers
-	trackedPeers map[peer.ID]*peerStat
+	trackedPeers map[libpeer.ID]*peerStat
 	// disconnectedPeers contains disconnected peers. In case if peer does not return
 	// online until pruneDeadline, it will be removed and its score will be lost
-	disconnectedPeers map[peer.ID]*peerStat
+	disconnectedPeers map[libpeer.ID]*peerStat
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
@@ -61,13 +61,64 @@ func newPeerTracker(
 	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
-		trackedPeers:      make(map[peer.ID]*peerStat),
-		disconnectedPeers: make(map[peer.ID]*peerStat),
+		trackedPeers:      make(map[libpeer.ID]*peerStat),
+		disconnectedPeers: make(map[libpeer.ID]*peerStat),
 		pidstore:          pidstore,
 		ctx:               ctx,
 		cancel:            cancel,
 		done:              make(chan struct{}, 2),
 	}
+}
+
+// bootstrap will bootstrap the peerTracker with the given trusted peers and will
+// block on the attempt to connect to `waitForNumConns` number of peers if the pidstore
+// returns enough previously-seen peers.
+//
+// NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
+// the peerTracker needs access to the previously-seen peers' AddrInfo on start.
+func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID, waitForNumConns int) error {
+	// bootstrap connections to trusted
+	for _, trust := range trusted {
+		go p.connectToPeer(ctx, trust)
+	}
+
+	// short-circuit if pidstore was not provided
+	if p.pidstore == nil {
+		return nil
+	}
+
+	prevSeen, err := p.pidstore.Load(ctx)
+	if err != nil {
+		return err
+	}
+
+	// if not enough previously-seen peers were returned, just spawn
+	// all connection attempts async.
+	if len(prevSeen) < waitForNumConns {
+		waitForNumConns = 0
+	}
+	for i, peer := range prevSeen {
+		if i < waitForNumConns {
+			// we block on only the attempt to connect to the peer (successful or not)
+			p.connectToPeer(ctx, peer)
+			continue
+		}
+		// otherwise launch async attempt
+		go func(peer libpeer.ID) {
+			p.connectToPeer(ctx, peer)
+		}(peer)
+	}
+	return nil
+}
+
+// connectToPeer attempts to connect to the given peer.
+func (p *peerTracker) connectToPeer(ctx context.Context, peer libpeer.ID) {
+	err := p.host.Connect(ctx, p.host.Peerstore().PeerInfo(peer))
+	if err != nil {
+		log.Debugw("failed to connect to peer", "id", peer.String(), "err", err)
+	}
+	p.connected(peer)
+	log.Debugw("connected to peer", "id", peer.String())
 }
 
 func (p *peerTracker) track() {
@@ -107,7 +158,7 @@ func (p *peerTracker) track() {
 }
 
 // getPeers returns the tracker's currently tracked peers.
-func (p *peerTracker) getPeers(amount int) ([]peer.ID, error) {
+func (p *peerTracker) getPeers(amount int) ([]libpeer.ID, error) {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 
@@ -115,7 +166,7 @@ func (p *peerTracker) getPeers(amount int) ([]peer.ID, error) {
 		return nil, fmt.Errorf("not enough peers in tracker: requested %d, have %d", amount, len(p.trackedPeers))
 	}
 
-	peers := make([]peer.ID, 0, amount)
+	peers := make([]libpeer.ID, 0, amount)
 	for peer := range p.trackedPeers {
 		if len(peers) == amount {
 			break
@@ -125,7 +176,7 @@ func (p *peerTracker) getPeers(amount int) ([]peer.ID, error) {
 	return peers, nil
 }
 
-func (p *peerTracker) connected(pID peer.ID) {
+func (p *peerTracker) connected(pID libpeer.ID) {
 	if p.host.ID() == pID {
 		return
 	}
@@ -158,7 +209,7 @@ func (p *peerTracker) connected(pID peer.ID) {
 	p.trackedPeers[pID] = stats
 }
 
-func (p *peerTracker) disconnected(pID peer.ID) {
+func (p *peerTracker) disconnected(pID libpeer.ID) {
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
 	stats, ok := p.trackedPeers[pID]
@@ -221,7 +272,7 @@ func (p *peerTracker) dumpPeers(ctx context.Context) {
 		return
 	}
 
-	peers := make([]peer.ID, 0, len(p.trackedPeers))
+	peers := make([]libpeer.ID, 0, len(p.trackedPeers))
 
 	p.peerLk.RLock()
 	for id := range p.trackedPeers {
@@ -259,7 +310,7 @@ func (p *peerTracker) stop(ctx context.Context) error {
 }
 
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
-func (p *peerTracker) blockPeer(pID peer.ID, reason error) {
+func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 	// add peer to the blacklist, so we can't connect to it in the future.
 	err := p.connGater.BlockPeer(pID)
 	if err != nil {

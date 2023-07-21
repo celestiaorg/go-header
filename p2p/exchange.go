@@ -3,7 +3,6 @@ package p2p
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -77,23 +76,19 @@ func NewExchange[H header.Header](
 	return ex, nil
 }
 
-func (ex *Exchange[H]) Start(context.Context) error {
+func (ex *Exchange[H]) Start(ctx context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
-	trustedPeers := ex.trustedPeers()
-
-	for _, p := range trustedPeers {
-		// Try to pre-connect to trusted peers.
-		// We don't really care if we succeed at this point
-		// and just need any peers in the peerTracker asap
-		go func(p peer.ID) {
-			err := ex.host.Connect(ex.ctx, peer.AddrInfo{ID: p})
-			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				log.Debugw("err connecting to a bootstrap peer", "err", err, "peer", p)
-			}
-		}(p)
+	// bootstrap the peerTracker with trusted peers as well as previously seen
+	// peers if provided. If previously seen peers were provided, bootstrap
+	// method will block until the given number of connections were attempted
+	// (successful or not).
+	err := ex.peerTracker.bootstrap(ctx, ex.trustedPeers(), numUntrustedHeadRequests)
+	if err != nil {
+		return err
 	}
+
 	go ex.peerTracker.gc()
 	go ex.peerTracker.track()
 	return nil
