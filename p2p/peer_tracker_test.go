@@ -73,6 +73,31 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	require.True(t, connGater.ListBlockedPeers()[0] == h[1].ID())
 }
 
+func TestPeerTracker_Bootstrap(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
+	require.NoError(t, err)
+
+	mn := createMocknet(t, 10)
+
+	// store peers to peerstore
+	prevSeen := make([]peer.ID, 9)
+	for i, peers := range mn[1:] {
+		prevSeen[i] = peers.ID()
+	}
+	pidstore := newDummyPIDStore()
+	// only store 7 peers to pidstore, and use 2 as trusted
+	err = pidstore.Put(ctx, prevSeen[2:])
+	require.NoError(t, err)
+
+	tracker := newPeerTracker(mn[0], connGater, pidstore)
+
+	err = tracker.bootstrap(ctx, prevSeen[:2], numUntrustedHeadRequests)
+	require.NoError(t, err)
+}
+
 type dummyPIDStore struct {
 	ds  datastore.Datastore
 	key datastore.Key
