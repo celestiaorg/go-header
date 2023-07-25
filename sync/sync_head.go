@@ -42,7 +42,7 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 	defer s.getter.Unlock()
 	netHead, err := s.getter.Head(ctx)
 	if err != nil {
-		log.Errorw("requesting head from trusted peer, returning subjective head which may not be recent", "sbjHead", sbjHead.Height(), "err", err)
+		log.Warnw("failed to return head from trusted peer, returning subjective head which may not be recent", "sbjHead", sbjHead.Height(), "err", err)
 		return sbjHead, nil
 	}
 	// process and validate netHead fetched from trusted peers
