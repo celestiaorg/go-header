@@ -66,9 +66,11 @@ func TestSubscriber(t *testing.T) {
 	_, err = p2pSub2.Subscribe()
 	require.NoError(t, err)
 
-	p2pSub1.AddValidator(func(context.Context, *headertest.DummyHeader) pubsub.ValidationResult { //nolint:errcheck
-		return pubsub.ValidationAccept
+	err = p2pSub1.SetVerifier(func(context.Context, *headertest.DummyHeader) error {
+		return nil
 	})
+	require.NoError(t, err)
+
 	subscription, err := p2pSub1.Subscribe()
 	require.NoError(t, err)
 

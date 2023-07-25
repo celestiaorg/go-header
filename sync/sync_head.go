@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-
 	"github.com/celestiaorg/go-header"
 )
 
@@ -49,7 +47,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error)
 	// NOTE: We could trust the netHead like we do during 'automatic subjective initialization'
 	// but in this case our subjective head is not expired, so we should verify netHead
 	// and only if it is valid, set it as new head
-	s.incomingNetworkHead(ctx, netHead)
+	_ = s.incomingNetworkHead(ctx, netHead)
 	// netHead was either accepted or rejected as the new subjective
 	// anyway return most current known subjective head
 	return s.subjectiveHead(ctx)
@@ -136,33 +134,35 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 
 // incomingNetworkHead processes new potential network headers.
 // If the header valid, sets as new subjective header.
-func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, netHead H) pubsub.ValidationResult {
+func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, netHead H) error {
 	// ensure there is no racing between network head candidates
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
 	// first of all, check the validity of the netHead
-	res := s.validateHead(ctx, netHead)
-	if res == pubsub.ValidationAccept {
-		// and set it if valid
-		s.setSubjectiveHead(ctx, netHead)
+	err := s.validateHead(ctx, netHead)
+	if err != nil {
+		return err
 	}
-	return res
+	// and set it if valid
+	s.setSubjectiveHead(ctx, netHead)
+	return nil
 }
 
 // validateHead checks validity of the given header against the subjective head.
-func (s *Syncer[H]) validateHead(ctx context.Context, new H) pubsub.ValidationResult {
+func (s *Syncer[H]) validateHead(ctx context.Context, new H) error {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
-		return pubsub.ValidationIgnore // local error, so ignore
+		// local error, so uncertain
+		return &header.VerifyError{Reason: err, Uncertain: true}
 	}
-	// ignore header if it's from the past
 	if new.Height() <= sbjHead.Height() {
 		log.Warnw("received known network header",
 			"current_height", sbjHead.Height(),
 			"header_height", new.Height(),
 			"header_hash", new.Hash())
-		return pubsub.ValidationIgnore
+		// set uncertain, if it's from the past
+		return &header.VerifyError{Reason: err, Uncertain: true}
 	}
 	// perform verification
 	err = sbjHead.Verify(new)
@@ -174,10 +174,10 @@ func (s *Syncer[H]) validateHead(ctx context.Context, new H) pubsub.ValidationRe
 			"height_of_subjective", sbjHead.Height(),
 			"hash_of_subjective", sbjHead.Hash(),
 			"reason", verErr.Reason)
-		return pubsub.ValidationReject
+		return verErr
 	}
 	// and accept if the header is good
-	return pubsub.ValidationAccept
+	return nil
 }
 
 // TODO(@Wondertan): We should request TrustingPeriod from the network's state params or

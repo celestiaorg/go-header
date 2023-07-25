@@ -83,7 +83,7 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	// register validator for header subscriptions
 	// syncer does not subscribe itself and syncs headers together with validation
-	err := s.sub.AddValidator(s.incomingNetworkHead)
+	err := s.sub.SetVerifier(s.incomingNetworkHead)
 	if err != nil {
 		return err
 	}

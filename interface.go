@@ -20,15 +20,14 @@ type Subscriber[H Header] interface {
 	// Subscribe creates long-living Subscription for validated Headers.
 	// Multiple Subscriptions can be created.
 	Subscribe() (Subscription[H], error)
-	// AddValidator registers a Validator for all Subscriptions.
-	// Registered Validators screen Headers for their validity
-	// before they are sent through Subscriptions.
-	// Multiple validators can be registered.
-	AddValidator(func(context.Context, H) pubsub.ValidationResult) error
+	// SetVerifier registers verification func for all Subscriptions.
+	// Registered func screens incoming headers
+	// before they are forwarded to Subscriptions.
+	// Only one func can be set.
+	SetVerifier(func(context.Context, H) error) error
 }
 
-// Subscription can retrieve the next Header from the
-// network.
+// Subscription listens for new Headers.
 type Subscription[H Header] interface {
 	// NextHeader returns the newest verified and valid Header
 	// in the network.

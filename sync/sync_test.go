@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -123,8 +122,8 @@ func TestSyncCatchUp(t *testing.T) {
 
 	incomingHead := suite.GenDummyHeaders(1)[0]
 	// 3. syncer rcvs header from the future and starts catching-up
-	res := syncer.incomingNetworkHead(ctx, incomingHead)
-	assert.Equal(t, pubsub.ValidationAccept, res)
+	err = syncer.incomingNetworkHead(ctx, incomingHead)
+	require.NoError(t, err)
 
 	time.Sleep(time.Millisecond * 100) // needs some to realize it is syncing
 	err = syncer.SyncWait(ctx)
@@ -273,13 +272,15 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	err = remoteStore.Append(ctx, range1...)
 	require.NoError(t, err)
 
-	res := syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
-	assert.Equal(t, pubsub.ValidationAccept, res)
+	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
+	require.NoError(t, err)
 
 	time.Sleep(time.Millisecond * 10)
 
-	res = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
-	assert.Equal(t, pubsub.ValidationIgnore, res)
+	var verErr *header.VerifyError
+	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
+	assert.ErrorAs(t, err, &verErr)
+	assert.True(t, verErr.Uncertain)
 
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)

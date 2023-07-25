@@ -9,7 +9,6 @@ import (
 
 	"github.com/ipfs/go-datastore"
 	sync2 "github.com/ipfs/go-datastore/sync"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -41,7 +40,7 @@ func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if syncer.incomingNetworkHead(ctx, incoming) == pubsub.ValidationAccept {
+			if syncer.incomingNetworkHead(ctx, incoming) == nil {
 				hits.Add(1)
 			}
 		}()
