@@ -313,28 +313,18 @@ func (ex *Exchange[H]) request(
 		return nil, err
 	}
 
-	headers := make([]H, 0, len(responses))
-	for _, response := range responses {
-		if err = convertStatusCodeToError(response.StatusCode); err != nil {
-			return nil, err
-		}
-		var empty H
-		header := empty.New()
-		err := header.UnmarshalBinary(response.Body)
+	hdrs, err := processResponses[H](responses)
+	if err != nil {
+		return nil, err
+	}
+	for _, hdr := range hdrs {
+		// TODO(@Wondertan): There should be a unified header validation code path
+		err = validateChainID(ex.Params.chainID, hdr.ChainID())
 		if err != nil {
 			return nil, err
 		}
-		err = validateChainID(ex.Params.chainID, header.(H).ChainID())
-		if err != nil {
-			return nil, err
-		}
-		headers = append(headers, header.(H))
 	}
-
-	if len(headers) == 0 {
-		return nil, header.ErrNotFound
-	}
-	return headers, nil
+	return hdrs, nil
 }
 
 // shufflePeers changes the order of trusted peers.

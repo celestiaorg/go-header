@@ -216,34 +216,14 @@ func (s *session[H]) doRequest(
 	s.queue.push(stat)
 }
 
-// processResponse converts HeaderResponse to Header.
+// processResponses converts HeaderResponse to Header.
 func (s *session[H]) processResponse(responses []*p2p_pb.HeaderResponse) ([]H, error) {
-	if len(responses) == 0 {
-		return nil, errEmptyResponse
+	hdrs, err := processResponses[H](responses)
+	if err != nil {
+		return nil, err
 	}
 
-	headers := make([]H, 0)
-	for _, resp := range responses {
-		err := convertStatusCodeToError(resp.StatusCode)
-		if err != nil {
-			return nil, err
-		}
-
-		var empty H
-		header := empty.New()
-		err = header.UnmarshalBinary(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		headers = append(headers, header.(H))
-	}
-
-	if len(headers) == 0 {
-		return nil, header.ErrNotFound
-	}
-
-	err := s.validate(headers)
-	return headers, err
+	return hdrs, s.validate(hdrs)
 }
 
 // validate checks that the received range of headers is adjacent and is valid against the provided
@@ -301,4 +281,37 @@ func prepareRequests(from, amount, headersPerPeer uint64) []*p2p_pb.HeaderReques
 		requests = append(requests, request)
 	}
 	return requests
+}
+
+// processResponses converts HeaderResponses to Headers
+func processResponses[H header.Header](resps []*p2p_pb.HeaderResponse) ([]H, error) {
+	if len(resps) == 0 {
+		return nil, errEmptyResponse
+	}
+
+	hdrs := make([]H, 0)
+	for _, resp := range resps {
+		err := convertStatusCodeToError(resp.StatusCode)
+		if err != nil {
+			return nil, err
+		}
+
+		hdr := header.New[H]()
+		err = hdr.UnmarshalBinary(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		err = hdr.Validate()
+		if err != nil {
+			return nil, err
+		}
+
+		hdrs = append(hdrs, hdr)
+	}
+
+	if len(hdrs) == 0 {
+		return nil, header.ErrNotFound
+	}
+	return hdrs, nil
 }
