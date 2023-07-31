@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/sync/verify"
 )
 
 // Subscriber manages the lifecycle and relationship of header Module
@@ -77,7 +78,7 @@ func (p *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 		// additional unmarhalling
 		msg.ValidatorData = hdr
 
-		var verErr *header.VerifyError
+		var verErr *verify.VerifyError
 		err = val(ctx, hdr)
 		switch {
 		case err == nil:
