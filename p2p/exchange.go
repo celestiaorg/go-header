@@ -80,18 +80,14 @@ func (ex *Exchange[H]) Start(ctx context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
+	go ex.peerTracker.gc()
+	go ex.peerTracker.track()
+
 	// bootstrap the peerTracker with trusted peers as well as previously seen
 	// peers if provided. If previously seen peers were provided, bootstrap
 	// method will block until the given number of connections were attempted
 	// (successful or not).
-	err := ex.peerTracker.bootstrap(ctx, ex.trustedPeers(), numUntrustedHeadRequests)
-	if err != nil {
-		return err
-	}
-
-	go ex.peerTracker.gc()
-	go ex.peerTracker.track()
-	return nil
+	return ex.peerTracker.bootstrap(ctx, ex.trustedPeers())
 }
 
 func (ex *Exchange[H]) Stop(ctx context.Context) error {
@@ -126,20 +122,24 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		opt(&reqParams)
 	}
 
-	var (
-		peers           = ex.trustedPeers()
-		useTrackedPeers bool
-	)
+	peers := ex.trustedPeers()
 
-	trackedPeers, err := ex.peerTracker.getPeers(numUntrustedHeadRequests)
-	useTrackedPeers = reqParams.TrustedHead != nil && err == nil
 	// the TrustedHead field indicates whether the Exchange should use
 	// trusted peers for its Head request. If nil, trusted peers will
-	// be used. If non-nil, Exchange will ask several peers (as long as enough
-	// of them exist in the peer tracker) from its network for their Head and
-	// verify against the given trusted header.
+	// be used. If non-nil, Exchange will ask several peers from its network for
+	// their Head and verify against the given trusted header.
+	useTrackedPeers := reqParams.TrustedHead != nil
 	if useTrackedPeers {
-		peers = trackedPeers
+		trackedPeers := ex.peerTracker.getPeers()
+		switch {
+		case len(trackedPeers) > numUntrustedHeadRequests:
+			peers = trackedPeers[:numUntrustedHeadRequests]
+		case len(trackedPeers) == 0:
+			// in the unlikely case no peers are in tracker, just use trusted
+			// peers
+		default:
+			peers = trackedPeers
+		}
 	}
 
 	var (

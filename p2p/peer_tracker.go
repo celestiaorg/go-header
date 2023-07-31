@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -76,10 +75,10 @@ func newPeerTracker(
 //
 // NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
-func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID, waitForNumConns int) error {
+func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error {
 	// bootstrap connections to trusted
 	for _, trust := range trusted {
-		go p.connectToPeer(ctx, trust)
+		p.connectToPeer(ctx, trust)
 	}
 
 	// short-circuit if pidstore was not provided
@@ -92,21 +91,8 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID, waitF
 		return err
 	}
 
-	// if not enough previously-seen peers were returned, just spawn
-	// all connection attempts async.
-	if len(prevSeen) < waitForNumConns {
-		waitForNumConns = 0
-	}
-	for i, peer := range prevSeen {
-		if i < waitForNumConns {
-			// we block on only the attempt to connect to the peer (successful or not)
-			p.connectToPeer(ctx, peer)
-			continue
-		}
-		// otherwise launch async attempt
-		go func(peer libpeer.ID) {
-			p.connectToPeer(ctx, peer)
-		}(peer)
+	for _, peer := range prevSeen {
+		go p.connectToPeer(ctx, peer)
 	}
 	return nil
 }
@@ -116,8 +102,8 @@ func (p *peerTracker) connectToPeer(ctx context.Context, peer libpeer.ID) {
 	err := p.host.Connect(ctx, p.host.Peerstore().PeerInfo(peer))
 	if err != nil {
 		log.Debugw("failed to connect to peer", "id", peer.String(), "err", err)
+		return
 	}
-	p.connected(peer)
 	log.Debugw("connected to peer", "id", peer.String())
 }
 
@@ -158,22 +144,15 @@ func (p *peerTracker) track() {
 }
 
 // getPeers returns the tracker's currently tracked peers.
-func (p *peerTracker) getPeers(amount int) ([]libpeer.ID, error) {
+func (p *peerTracker) getPeers() []libpeer.ID {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 
-	if len(p.trackedPeers) < amount {
-		return nil, fmt.Errorf("not enough peers in tracker: requested %d, have %d", amount, len(p.trackedPeers))
-	}
-
-	peers := make([]libpeer.ID, 0, amount)
+	peers := make([]libpeer.ID, 0, len(p.trackedPeers))
 	for peer := range p.trackedPeers {
-		if len(peers) == amount {
-			break
-		}
 		peers = append(peers, peer)
 	}
-	return peers, nil
+	return peers
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
