@@ -61,7 +61,7 @@ func (d *DummyHeader) IsZero() bool {
 }
 
 func (d *DummyHeader) ChainID() string {
-	return "private"
+	return d.Raw.ChainID
 }
 
 func (d *DummyHeader) Hash() header.Hash {
@@ -107,19 +107,6 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 func (d *DummyHeader) Verify(header header.Header) error {
 	if dummy, _ := header.(*DummyHeader); dummy.VerifyFailure {
 		return fmt.Errorf("header at height %d failed verification", header.Height())
-	}
-
-	epsilon := 10 * time.Second
-	if header.Time().After(time.Now().Add(epsilon)) {
-		return fmt.Errorf("header Time too far in the future")
-	}
-
-	if header.Height() <= d.Height() {
-		return fmt.Errorf("expected new header Height %d to be larger than old header Height %d", header.Height(), d.Height())
-	}
-
-	if header.Time().Before(d.Time()) {
-		return fmt.Errorf("expected new header Time %v to be after old header Time %v", header.Time(), d.Time())
 	}
 
 	return nil

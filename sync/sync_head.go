@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/sync/verify"
 )
 
 // Head returns the Network Head.
@@ -40,8 +41,8 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error)
 	defer s.getter.Unlock()
 	netHead, err := s.getter.Head(ctx, header.WithTrustedHead(sbjHead))
 	if err != nil {
-		log.Warnw("failed to return head from trusted peer, returning subjective head which may not be recent", "sbjHead", sbjHead.Height(), "err", err)
-		return sbjHead, nil
+		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
+		return s.subjectiveHead(ctx)
 	}
 	// process and validate netHead fetched from trusted peers
 	// NOTE: We could trust the netHead like we do during 'automatic subjective initialization'
@@ -134,54 +135,53 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 
 // incomingNetworkHead processes new potential network headers.
 // If the header valid, sets as new subjective header.
-func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, netHead H) error {
+func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	// ensure there is no racing between network head candidates
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
-	// first of all, check the validity of the netHead
-	err := s.validateHead(ctx, netHead)
-	if err != nil {
+
+	softFailure, err := s.verify(ctx, head)
+	if err != nil && !softFailure {
 		return err
 	}
-	// and set it if valid
-	s.setSubjectiveHead(ctx, netHead)
-	return nil
+
+	// TODO(@Wondertan):
+	//  Implement setSyncTarget and use it for soft failures
+	s.setSubjectiveHead(ctx, head)
+	return err
 }
 
-// validateHead checks validity of the given header against the subjective head.
-func (s *Syncer[H]) validateHead(ctx context.Context, new H) error {
+// verify verifies given network head candidate.
+func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
-		// local error, so uncertain
-		return &header.VerifyError{Reason: err, Uncertain: true}
+		// local error, so soft
+		return true, &verify.VerifyError{Reason: err, SoftFailure: true}
 	}
-	if new.Height() <= sbjHead.Height() {
-		log.Warnw("received known network header",
-			"current_height", sbjHead.Height(),
-			"header_height", new.Height(),
-			"header_hash", new.Hash())
-		// set uncertain, if it's from the past
-		return &header.VerifyError{Reason: err, Uncertain: true}
+
+	var heightThreshold int64
+	if s.Params.TrustingPeriod != 0 && s.Params.blockTime != 0 {
+		heightThreshold = int64(s.Params.TrustingPeriod / s.Params.blockTime)
 	}
-	// perform verification
-	err = sbjHead.Verify(new)
-	var verErr *header.VerifyError
-	if errors.As(err, &verErr) {
+
+	err = verify.Verify(sbjHead, newHead, heightThreshold)
+	if err == nil {
+		return false, nil
+	}
+
+	var verErr *verify.VerifyError
+	if errors.As(err, &verErr) && !verErr.SoftFailure {
 		log.Errorw("invalid network header",
-			"height_of_invalid", new.Height(),
-			"hash_of_invalid", new.Hash(),
+			"height_of_invalid", newHead.Height(),
+			"hash_of_invalid", newHead.Hash(),
 			"height_of_subjective", sbjHead.Height(),
 			"hash_of_subjective", sbjHead.Hash(),
 			"reason", verErr.Reason)
-		return verErr
 	}
-	// and accept if the header is good
-	return nil
-}
 
-// TODO(@Wondertan): We should request TrustingPeriod from the network's state params or
-//  listen for network params changes to always have a topical value.
+	return verErr.SoftFailure, err
+}
 
 // isExpired checks if header is expired against trusting period.
 func isExpired(header header.Header, period time.Duration) bool {

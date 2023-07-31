@@ -45,6 +45,7 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 	dh.Raw.Time = s.head.Time().Add(time.Nanosecond)
 	dh.Raw.Height = s.head.Height() + 1
 	dh.Raw.PreviousHash = s.head.Hash()
+	dh.Raw.ChainID = s.head.ChainID()
 	_ = dh.rehash()
 	s.head = dh
 	return s.head
@@ -57,6 +58,7 @@ func (s *DummySuite) genesis() *DummyHeader {
 			PreviousHash: nil,
 			Height:       1,
 			Time:         time.Now().Add(-10 * time.Second).UTC(),
+			ChainID:      "test",
 		},
 	}
 }
