@@ -140,6 +140,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		default:
 			peers = trackedPeers
 		}
+		log.Debugw("requesting head from tracked peers", "amount", len(peers))
 	}
 
 	var (
@@ -154,7 +155,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
-				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
+				log.Errorw("head request to peer failed", "peer", from, "err", err)
 				headerRespCh <- zero
 				return
 			}
@@ -162,7 +163,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 			if useTrackedPeers {
 				err = reqParams.TrustedHead.Verify(headers[0])
 				if err != nil {
-					log.Errorw("head request to untrusted peer failed", "untrusted peer", from,
+					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
 						"err", err)
 					// bad head was given, block peer
 					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
