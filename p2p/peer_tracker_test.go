@@ -107,9 +107,9 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 	err = tracker.bootstrap(ctx, prevSeen[:2])
 	require.NoError(t, err)
 
-	time.Sleep(time.Millisecond * 100)
-
-	require.Greater(t, len(tracker.peers()), 0)
+	assert.Eventually(t, func() bool {
+		return len(tracker.peers()) > 0
+	}, time.Millisecond*500, time.Millisecond*100)
 }
 
 type dummyPIDStore struct {
