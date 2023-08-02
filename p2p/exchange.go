@@ -84,9 +84,7 @@ func (ex *Exchange[H]) Start(ctx context.Context) error {
 	go ex.peerTracker.track()
 
 	// bootstrap the peerTracker with trusted peers as well as previously seen
-	// peers if provided. If previously seen peers were provided, bootstrap
-	// method will block until the given number of connections were attempted
-	// (successful or not).
+	// peers if provided.
 	return ex.peerTracker.bootstrap(ctx, ex.trustedPeers())
 }
 
@@ -122,30 +120,27 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		opt(&reqParams)
 	}
 
-	peers := ex.trustedPeers()
+	var (
+		zero  H
+		peers = ex.trustedPeers()
+	)
 
 	// the TrustedHead field indicates whether the Exchange should use
 	// trusted peers for its Head request. If nil, trusted peers will
 	// be used. If non-nil, Exchange will ask several peers from its network for
 	// their Head and verify against the given trusted header.
 	useTrackedPeers := reqParams.TrustedHead != nil
+
 	if useTrackedPeers {
-		trackedPeers := ex.peerTracker.getPeers()
-		switch {
-		case len(trackedPeers) > numUntrustedHeadRequests:
-			peers = trackedPeers[:numUntrustedHeadRequests]
-		case len(trackedPeers) == 0:
-			// while we expect tracker to already be populated with at least
-			// trustedPeers, there is an (unlikely) case where Head can be
-			// called before the tracker is populated.
-		default:
-			peers = trackedPeers
+		trackedPeers, err := ex.peerTracker.getPeers(ctx, numUntrustedHeadRequests)
+		if err != nil {
+			return zero, err
 		}
+		peers = trackedPeers
 		log.Debugw("requesting head from tracked peers", "amount", len(peers))
 	}
 
 	var (
-		zero      H
 		headerReq = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,

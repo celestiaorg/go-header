@@ -69,16 +69,16 @@ func newPeerTracker(
 	}
 }
 
-// bootstrap will bootstrap the peerTracker with the given trusted peers and will
-// block on the attempt to connect to `waitForNumConns` number of peers if the pidstore
-// returns enough previously-seen peers.
+// bootstrap will bootstrap the peerTracker with the given trusted peers and if
+// a pidstore was given, will also attempt to bootstrap the tracker with previously
+// seen peers.
 //
 // NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
 func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error {
 	// bootstrap connections to trusted
 	for _, trust := range trusted {
-		p.connectToPeer(ctx, trust)
+		go p.connectToPeer(ctx, trust)
 	}
 
 	// short-circuit if pidstore was not provided
@@ -144,15 +144,44 @@ func (p *peerTracker) track() {
 }
 
 // getPeers returns the tracker's currently tracked peers.
-func (p *peerTracker) getPeers() []libpeer.ID {
+func (p *peerTracker) getPeers(ctx context.Context, num int) ([]libpeer.ID, error) {
 	p.peerLk.RLock()
-	defer p.peerLk.RUnlock()
+	tracked := p.trackedPeers
+	p.peerLk.RUnlock()
 
-	peers := make([]libpeer.ID, 0, len(p.trackedPeers))
-	for peer := range p.trackedPeers {
-		peers = append(peers, peer)
+	if len(tracked) >= num {
+		peers := make([]libpeer.ID, 0, num)
+		for peer := range tracked {
+			peers = append(peers, peer)
+			if len(peers) == num {
+				return peers, nil
+			}
+		}
 	}
-	return peers
+
+	return p.waitForPeers(ctx, num)
+}
+
+// waitForPeers blocks while waiting the given number of peers to be
+// populated in the tracker.
+func (p *peerTracker) waitForPeers(ctx context.Context, num int) ([]libpeer.ID, error) {
+	ticker := time.NewTicker(time.Millisecond * 250)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			p.peerLk.RLock()
+			enoughInTracker := len(p.trackedPeers) >= num
+			p.peerLk.RUnlock()
+
+			if enoughInTracker {
+				return p.getPeers(ctx, num)
+			}
+		}
+	}
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
