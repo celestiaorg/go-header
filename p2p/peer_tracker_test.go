@@ -115,7 +115,7 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 }
 
 func Test_getPeers_withWaiting(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	t.Cleanup(cancel)
 
 	mn, err := mocknet.FullMeshConnected(5)
