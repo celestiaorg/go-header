@@ -135,8 +135,9 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		case len(trackedPeers) > numUntrustedHeadRequests:
 			peers = trackedPeers[:numUntrustedHeadRequests]
 		case len(trackedPeers) == 0:
-			// in the unlikely case no peers are in tracker, just use trusted
-			// peers
+			// while we expect tracker to already be populated with at least
+			// trustedPeers, there is an (unlikely) case where Head can be
+			// called before the tracker is populated.
 		default:
 			peers = trackedPeers
 		}
