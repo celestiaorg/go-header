@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/libp2p/go-libp2p/core/host"
-	syncpkg "sync"
 	"testing"
 	"time"
 
@@ -110,51 +108,8 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
-		return len(tracker.peers()) > 0
+		return len(tracker.getPeers(7)) > 0
 	}, time.Millisecond*500, time.Millisecond*100)
-}
-
-func Test_getPeers_withWaiting(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
-	t.Cleanup(cancel)
-
-	mn, err := mocknet.FullMeshConnected(5)
-	require.NoError(t, err)
-
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
-	tracker := newPeerTracker(mn.Hosts()[0], connGater, nil)
-
-	go tracker.track()
-	go tracker.gc()
-
-	wg := syncpkg.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		peers, err := tracker.getPeers(ctx, 9)
-		require.NoError(t, err)
-		require.Len(t, peers, 9)
-		wg.Done()
-	}()
-
-	num := 5
-	for i := 0; i < num; i++ {
-		h, err := mn.GenPeer()
-		require.NoError(t, err)
-		if h.ID() == mn.Hosts()[0].ID() {
-			// TODO @renaynay: figure out mocknet weirdness allows GenPeer to
-			//  return a peer that has already been generated in mocknet
-			num++
-			continue
-		}
-		_, err = mn.LinkPeers(h.ID(), mn.Hosts()[0].ID())
-		require.NoError(t, err)
-		err = h.Connect(ctx, *host.InfoFromHost(mn.Hosts()[0]))
-		require.NoError(t, err)
-		tracker.connected(h.ID())
-	}
-
-	wg.Wait()
 }
 
 type dummyPIDStore struct {

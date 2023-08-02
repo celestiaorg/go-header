@@ -39,9 +39,6 @@ type peerTracker struct {
 	// disconnectedPeers contains disconnected peers. In case if peer does not return
 	// online until pruneDeadline, it will be removed and its score will be lost
 	disconnectedPeers map[libpeer.ID]*peerStat
-	// newPeer channel will notify listeners of when a new peer is added
-	// to the peerTracker's set of trackedPeers
-	newPeer chan struct{}
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
@@ -65,7 +62,6 @@ func newPeerTracker(
 		connGater:         connGater,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
-		newPeer:           make(chan struct{}, 1),
 		pidstore:          pidstore,
 		ctx:               ctx,
 		cancel:            cancel,
@@ -81,8 +77,15 @@ func newPeerTracker(
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
 func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error {
 	// bootstrap connections to trusted
+	wg := sync.WaitGroup{}
+	wg.Add(len(trusted))
+	defer wg.Wait()
 	for _, trust := range trusted {
-		go p.connectToPeer(ctx, trust)
+		trust := trust
+		go func() {
+			defer wg.Done()
+			p.connectToPeer(ctx, trust)
+		}()
 	}
 
 	// short-circuit if pidstore was not provided
@@ -147,41 +150,19 @@ func (p *peerTracker) track() {
 	}
 }
 
-// getPeers returns the tracker's currently tracked peers.
-func (p *peerTracker) getPeers(ctx context.Context, num int) ([]libpeer.ID, error) {
+// getPeers returns the tracker's currently tracked peers up to the `max`.
+func (p *peerTracker) getPeers(max int) []libpeer.ID {
 	p.peerLk.RLock()
-	if len(p.trackedPeers) >= num {
-		peers := make([]libpeer.ID, 0, num)
-		for peer := range p.trackedPeers {
-			peers = append(peers, peer)
-			if len(peers) == num {
-				p.peerLk.RUnlock()
-				return peers, nil
-			}
+	defer p.peerLk.RUnlock()
+
+	peers := make([]libpeer.ID, 0, max)
+	for peer := range p.trackedPeers {
+		peers = append(peers, peer)
+		if len(peers) == max {
+			break
 		}
 	}
-	p.peerLk.RUnlock()
-
-	return p.waitForPeers(ctx, num)
-}
-
-// waitForPeers blocks while waiting the given number of peers to be
-// populated in the tracker.
-func (p *peerTracker) waitForPeers(ctx context.Context, num int) ([]libpeer.ID, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-p.newPeer:
-			p.peerLk.RLock()
-			enoughInTracker := len(p.trackedPeers) >= num
-			p.peerLk.RUnlock()
-
-			if enoughInTracker {
-				return p.getPeers(ctx, num)
-			}
-		}
-	}
+	return peers
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
@@ -215,11 +196,6 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 		delete(p.disconnectedPeers, pID)
 	}
 	p.trackedPeers[pID] = stats
-
-	select {
-	case p.newPeer <- struct{}{}:
-	default:
-	}
 }
 
 func (p *peerTracker) disconnected(pID libpeer.ID) {

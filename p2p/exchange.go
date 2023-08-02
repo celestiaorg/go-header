@@ -132,12 +132,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 	useTrackedPeers := reqParams.TrustedHead != nil
 
 	if useTrackedPeers {
-		trackedPeers, err := ex.peerTracker.getPeers(ctx, numUntrustedHeadRequests)
-		if err != nil {
-			return zero, err
+		trackedPeers := ex.peerTracker.getPeers(numUntrustedHeadRequests)
+		if len(trackedPeers) > 0 {
+			peers = trackedPeers
+			log.Debugw("requesting head from tracked peers", "amount", len(peers))
 		}
-		peers = trackedPeers
-		log.Debugw("requesting head from tracked peers", "amount", len(peers))
 	}
 
 	var (
