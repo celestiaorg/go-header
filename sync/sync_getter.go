@@ -39,9 +39,9 @@ func (sg *syncGetter[H]) Unlock() {
 }
 
 // Head must be called with held Lock.
-func (sg *syncGetter[H]) Head(ctx context.Context) (H, error) {
+func (sg *syncGetter[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, error) {
 	sg.checkLock("Head without preceding Lock on syncGetter")
-	return sg.Getter.Head(ctx)
+	return sg.Getter.Head(ctx, opts...)
 }
 
 // checkLock ensures api safety

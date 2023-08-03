@@ -15,7 +15,7 @@ import (
 // Known subjective head is considered network head if it is recent enough(now-timestamp<=blocktime)
 // Otherwise, head is requested from a trusted peer and
 // set as the new subjective head, assuming that trusted peer is always fully synced.
-func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
+func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		return sbjHead, err
@@ -24,7 +24,7 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 	if isRecent(sbjHead, s.Params.blockTime) {
 		return sbjHead, nil
 	}
-	// otherwise, request head from a trusted peer, as we assume it is fully synced
+	// otherwise, request head from the network
 	//
 	// TODO(@Wondertan): Here is another potential networking optimization:
 	//  * From sbjHead's timestamp and current time predict the time to the next header(TNH)
@@ -40,7 +40,7 @@ func (s *Syncer[H]) Head(ctx context.Context) (H, error) {
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
-	netHead, err := s.getter.Head(ctx)
+	netHead, err := s.getter.Head(ctx, header.WithTrustedHead(sbjHead))
 	if err != nil {
 		log.Warnw("failed to return head from trusted peer, returning subjective head which may not be recent", "sbjHead", sbjHead.Height(), "err", err)
 		return sbjHead, nil

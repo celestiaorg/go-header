@@ -3,7 +3,6 @@ package p2p
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -21,10 +20,15 @@ import (
 
 var log = logging.Logger("header/p2p")
 
-// the minimum number of headers of the same height received from trusted peers
-// to determine the network head. If all trusted header will return headers with
-// non-equal height, then the highest header will be chosen.
-const minTrustedHeadResponses = 2
+// minHeadResponses is the minimum number of headers of the same height
+// received from peers to determine the network head. If all trusted peers
+// will return headers with non-equal height, then the highest header will be
+// chosen.
+const minHeadResponses = 2
+
+// maxUntrustedHeadRequests is the number of head requests to be made to
+// the network in order to determine the network head.
+var maxUntrustedHeadRequests = 4
 
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
@@ -72,26 +76,16 @@ func NewExchange[H header.Header](
 	return ex, nil
 }
 
-func (ex *Exchange[H]) Start(context.Context) error {
+func (ex *Exchange[H]) Start(ctx context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
-	trustedPeers := ex.trustedPeers()
-
-	for _, p := range trustedPeers {
-		// Try to pre-connect to trusted peers.
-		// We don't really care if we succeed at this point
-		// and just need any peers in the peerTracker asap
-		go func(p peer.ID) {
-			err := ex.host.Connect(ex.ctx, peer.AddrInfo{ID: p})
-			if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				log.Debugw("err connecting to a bootstrap peer", "err", err, "peer", p)
-			}
-		}(p)
-	}
 	go ex.peerTracker.gc()
 	go ex.peerTracker.track()
-	return nil
+
+	// bootstrap the peerTracker with trusted peers as well as previously seen
+	// peers if provided.
+	return ex.peerTracker.bootstrap(ctx, ex.trustedPeers())
 }
 
 func (ex *Exchange[H]) Stop(ctx context.Context) error {
@@ -106,7 +100,7 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // The Head must be verified thereafter where possible.
 // We request in parallel all the trusted peers, compare their response
 // and return the highest one.
-func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
+func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, error) {
 	log.Debug("requesting head")
 
 	reqCtx := ctx
@@ -121,30 +115,61 @@ func (ex *Exchange[H]) Head(ctx context.Context) (H, error) {
 		defer cancel()
 	}
 
+	reqParams := header.HeadParams{}
+	for _, opt := range opts {
+		opt(&reqParams)
+	}
+
+	peers := ex.trustedPeers()
+
+	// the TrustedHead field indicates whether the Exchange should use
+	// trusted peers for its Head request. If nil, trusted peers will
+	// be used. If non-nil, Exchange will ask several peers from its network for
+	// their Head and verify against the given trusted header.
+	useTrackedPeers := reqParams.TrustedHead != nil
+	if useTrackedPeers {
+		trackedPeers := ex.peerTracker.getPeers(maxUntrustedHeadRequests)
+		if len(trackedPeers) > 0 {
+			peers = trackedPeers
+			log.Debugw("requesting head from tracked peers", "amount", len(peers))
+		}
+	}
+
 	var (
-		zero         H
-		trustedPeers = ex.trustedPeers()
-		headerRespCh = make(chan H, len(trustedPeers))
-		headerReq    = &p2p_pb.HeaderRequest{
+		zero      H
+		headerReq = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
+		headerRespCh = make(chan H, len(peers))
 	)
-	for _, from := range trustedPeers {
+	for _, from := range peers {
 		go func(from peer.ID) {
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
-				log.Errorw("head request to trusted peer failed", "trustedPeer", from, "err", err)
+				log.Errorw("head request to peer failed", "peer", from, "err", err)
 				headerRespCh <- zero
 				return
+			}
+			// if tracked (untrusted) peers were requested, verify head
+			if useTrackedPeers {
+				err = reqParams.TrustedHead.Verify(headers[0])
+				if err != nil {
+					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
+						"err", err)
+					// bad head was given, block peer
+					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
+					headerRespCh <- zero
+					return
+				}
 			}
 			// request ensures that the result slice will have at least one Header
 			headerRespCh <- headers[0]
 		}(from)
 	}
 
-	headers := make([]H, 0, len(trustedPeers))
-	for range trustedPeers {
+	headers := make([]H, 0, len(peers))
+	for range peers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
@@ -346,7 +371,7 @@ func bestHead[H header.Header](result []H) (H, error) {
 
 	// try to find Header with the maximum height that was received at least from 2 peers
 	for _, res := range result {
-		if counter[res.Hash().String()] >= minTrustedHeadResponses {
+		if counter[res.Hash().String()] >= minHeadResponses {
 			return res, nil
 		}
 	}

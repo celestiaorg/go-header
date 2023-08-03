@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	testpeer "github.com/libp2p/go-libp2p/core/test"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,6 +72,44 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)
 	require.True(t, connGater.ListBlockedPeers()[0] == h[1].ID())
+}
+
+func TestPeerTracker_Bootstrap(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
+	require.NoError(t, err)
+
+	// mn := createMocknet(t, 10)
+	mn, err := mocknet.FullMeshConnected(10)
+	require.NoError(t, err)
+
+	// store peers to peerstore
+	prevSeen := make([]peer.ID, 9)
+	for i, peer := range mn.Hosts()[1:] {
+		prevSeen[i] = peer.ID()
+
+		// disconnect so they're not already connected on attempt to
+		// connect
+		err = mn.DisconnectPeers(mn.Hosts()[i].ID(), peer.ID())
+		require.NoError(t, err)
+	}
+	pidstore := newDummyPIDStore()
+	// only store 7 peers to pidstore, and use 2 as trusted
+	err = pidstore.Put(ctx, prevSeen[2:])
+	require.NoError(t, err)
+
+	tracker := newPeerTracker(mn.Hosts()[0], connGater, pidstore)
+
+	go tracker.track()
+
+	err = tracker.bootstrap(ctx, prevSeen[:2])
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		return len(tracker.getPeers(7)) > 0
+	}, time.Millisecond*500, time.Millisecond*100)
 }
 
 type dummyPIDStore struct {
