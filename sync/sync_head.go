@@ -42,7 +42,8 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error)
 	defer s.getter.Unlock()
 	netHead, err := s.getter.Head(ctx, header.WithTrustedHead(sbjHead))
 	if err != nil {
-		return netHead, err
+		log.Warnw("failed to return head from trusted peer, returning subjective head which may not be recent", "sbjHead", sbjHead.Height(), "err", err)
+		return sbjHead, nil
 	}
 	// process and validate netHead fetched from trusted peers
 	// NOTE: We could trust the netHead like we do during 'automatic subjective initialization'
