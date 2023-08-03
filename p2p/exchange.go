@@ -26,9 +26,9 @@ var log = logging.Logger("header/p2p")
 // chosen.
 const minHeadResponses = 2
 
-// numUntrustedHeadRequests is the number of head requests to be made to
+// maxUntrustedHeadRequests is the number of head requests to be made to
 // the network in order to determine the network head.
-var numUntrustedHeadRequests = 4
+var maxUntrustedHeadRequests = 4
 
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
@@ -120,19 +120,15 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		opt(&reqParams)
 	}
 
-	var (
-		zero  H
-		peers = ex.trustedPeers()
-	)
+	peers := ex.trustedPeers()
 
 	// the TrustedHead field indicates whether the Exchange should use
 	// trusted peers for its Head request. If nil, trusted peers will
 	// be used. If non-nil, Exchange will ask several peers from its network for
 	// their Head and verify against the given trusted header.
 	useTrackedPeers := reqParams.TrustedHead != nil
-
 	if useTrackedPeers {
-		trackedPeers := ex.peerTracker.getPeers(numUntrustedHeadRequests)
+		trackedPeers := ex.peerTracker.getPeers(maxUntrustedHeadRequests)
 		if len(trackedPeers) > 0 {
 			peers = trackedPeers
 			log.Debugw("requesting head from tracked peers", "amount", len(peers))
@@ -140,6 +136,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 	}
 
 	var (
+		zero      H
 		headerReq = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,

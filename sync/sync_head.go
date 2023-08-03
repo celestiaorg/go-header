@@ -75,7 +75,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	if !isExpired(storeHead, s.Params.TrustingPeriod) {
 		return storeHead, nil
 	}
-	// otherwise, request head from a trusted peer via subjective initialization
+	// otherwise, request head from a trusted peer
 	log.Infow("stored head header expired", "height", storeHead.Height())
 	// single-flight protection
 	// ensure only one Head is requested at the time
