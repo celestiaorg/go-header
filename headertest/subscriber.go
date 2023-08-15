@@ -3,8 +3,6 @@ package headertest
 import (
 	"context"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
-
 	"github.com/celestiaorg/go-header"
 )
 
@@ -16,7 +14,7 @@ func NewDummySubscriber() *Subscriber[*DummyHeader] {
 	return &Subscriber[*DummyHeader]{}
 }
 
-func (mhs *Subscriber[H]) AddValidator(func(context.Context, H) pubsub.ValidationResult) error {
+func (mhs *Subscriber[H]) SetVerifier(func(context.Context, H) error) error {
 	return nil
 }
 

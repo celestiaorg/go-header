@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -52,8 +53,9 @@ func (p *Subscriber[H]) Stop(context.Context) error {
 	return p.topic.Close()
 }
 
-// AddValidator applies basic pubsub validator for the topic.
-func (p *Subscriber[H]) AddValidator(val func(context.Context, H) pubsub.ValidationResult) error {
+// SetVerifier set given verification func as Header PubSub topic validator
+// Does not punish peers if *header.VerifyError is given with Uncertain set to true.
+func (p *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
 		var empty H
 		maybeHead := empty.New()
@@ -65,7 +67,17 @@ func (p *Subscriber[H]) AddValidator(val func(context.Context, H) pubsub.Validat
 			return pubsub.ValidationReject
 		}
 		msg.ValidatorData = maybeHead
-		return val(ctx, maybeHead.(H))
+
+		var verErr *header.VerifyError
+		err = val(ctx, maybeHead.(H))
+		switch {
+		case err == nil:
+			return pubsub.ValidationAccept
+		case errors.As(err, &verErr) && verErr.Uncertain:
+			return pubsub.ValidationIgnore
+		default:
+			return pubsub.ValidationReject
+		}
 	}
 	return p.pubsub.RegisterTopicValidator(p.pubsubTopicID, pval)
 }
