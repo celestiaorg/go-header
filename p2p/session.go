@@ -159,7 +159,7 @@ func (s *session[H]) doRequest(
 		log.Debugw("requesting headers from peer failed", "peer", stat.peerID, "err", err)
 	}
 
-	h, err := s.processResponse(r)
+	h, err := s.processResponses(r)
 	if err != nil {
 		logFn := log.Errorw
 
@@ -217,18 +217,18 @@ func (s *session[H]) doRequest(
 }
 
 // processResponses converts HeaderResponse to Header.
-func (s *session[H]) processResponse(responses []*p2p_pb.HeaderResponse) ([]H, error) {
+func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) ([]H, error) {
 	hdrs, err := processResponses[H](responses)
 	if err != nil {
 		return nil, err
 	}
 
-	return hdrs, s.validate(hdrs)
+	return hdrs, s.verify(hdrs)
 }
 
-// validate checks that the received range of headers is adjacent and is valid against the provided
+// verify checks that the received range of headers is adjacent and is valid against the provided
 // header.
-func (s *session[H]) validate(headers []H) error {
+func (s *session[H]) verify(headers []H) error {
 	// if `s.from` is empty, then additional validation for the header`s range is not needed.
 	if s.from.IsZero() {
 		return nil
