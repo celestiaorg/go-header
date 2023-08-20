@@ -166,12 +166,12 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) 
 
 	var zero H
 	head, err = s.readHead(ctx)
-	switch err {
+	switch {
 	default:
 		return zero, err
-	case datastore.ErrNotFound, header.ErrNotFound:
+	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
 		return zero, header.ErrNoHead
-	case nil:
+	case err == nil:
 		s.heightSub.SetHeight(uint64(head.Height()))
 		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
 		return head, nil

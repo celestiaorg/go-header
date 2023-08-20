@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -10,10 +11,10 @@ import (
 // it initializes the Store by requesting the header with the given hash.
 func Init[H header.Header](ctx context.Context, store header.Store[H], ex header.Exchange[H], hash header.Hash) error {
 	_, err := store.Head(ctx)
-	switch err {
+	switch {
 	default:
 		return err
-	case header.ErrNoHead:
+	case errors.Is(err, header.ErrNoHead):
 		initial, err := ex.Get(ctx, hash)
 		if err != nil {
 			return err
