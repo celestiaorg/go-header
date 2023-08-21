@@ -34,7 +34,7 @@ func Test_Validate(t *testing.T) {
 	)
 
 	headers := suite.GenDummyHeaders(5)
-	err := ses.validate(headers)
+	err := ses.verify(headers)
 	assert.NoError(t, err)
 }
 
@@ -53,6 +53,6 @@ func Test_ValidateFails(t *testing.T) {
 	headers := suite.GenDummyHeaders(5)
 	// break adjacency
 	headers[2] = headers[4]
-	err := ses.validate(headers)
+	err := ses.verify(headers)
 	assert.Error(t, err)
 }

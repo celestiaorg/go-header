@@ -166,12 +166,12 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) 
 
 	var zero H
 	head, err = s.readHead(ctx)
-	switch err {
+	switch {
 	default:
 		return zero, err
-	case datastore.ErrNotFound, header.ErrNotFound:
+	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
 		return zero, header.ErrNoHead
-	case nil:
+	case err == nil:
 		s.heightSub.SetHeight(uint64(head.Height()))
 		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
 		return head, nil
@@ -190,22 +190,21 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 
 	b, err := s.ds.Get(ctx, datastore.NewKey(hash.String()))
 	if err != nil {
-		if err == datastore.ErrNotFound {
+		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
 		}
 
 		return zero, err
 	}
 
-	var empty H
-	h := empty.New()
+	h := header.New[H]()
 	err = h.UnmarshalBinary(b)
 	if err != nil {
 		return zero, err
 	}
 
 	s.cache.Add(h.Hash().String(), h)
-	return h.(H), nil
+	return h, nil
 }
 
 func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
@@ -216,7 +215,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	h, err := s.heightSub.Sub(ctx, height)
-	if err != errElapsedHeight {
+	if !errors.Is(err, errElapsedHeight) {
 		return h, err
 	}
 	// otherwise, the errElapsedHeight is thrown,
@@ -229,7 +228,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
-		if err == datastore.ErrNotFound {
+		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
 		}
 
