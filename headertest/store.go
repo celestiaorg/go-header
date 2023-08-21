@@ -8,11 +8,11 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-type Generator[H header.Header] interface {
+type Generator[H header.Header[H]] interface {
 	NextHeader() H
 }
 
-type Store[H header.Header] struct {
+type Store[H header.Header[H]] struct {
 	Headers    map[int64]H
 	HeadHeight int64
 }
@@ -23,7 +23,7 @@ func NewDummyStore(t *testing.T) *Store[*DummyHeader] {
 }
 
 // NewStore creates a generic mock store supporting different type of Headers based on Generator.
-func NewStore[H header.Header](t *testing.T, gen Generator[H], numHeaders int) *Store[H] {
+func NewStore[H header.Header[H]](t *testing.T, gen Generator[H], numHeaders int) *Store[H] {
 	store := &Store[H]{
 		Headers:    make(map[int64]H),
 		HeadHeight: 0,
@@ -48,7 +48,7 @@ func (m *Store[H]) Height() uint64 {
 	return uint64(m.HeadHeight)
 }
 
-func (m *Store[H]) Head(context.Context, ...header.HeadOption) (H, error) {
+func (m *Store[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 	return m.Headers[m.HeadHeight], nil
 }
 

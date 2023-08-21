@@ -12,13 +12,13 @@ import (
 // TODO(@Wondertan): There should be a more clever way to index heights, than just storing
 // HeightToHash pair... heightIndexer simply stores and cashes mappings between header Height and
 // Hash.
-type heightIndexer[H header.Header] struct {
+type heightIndexer[H header.Header[H]] struct {
 	ds    datastore.Batching
 	cache *lru.ARCCache
 }
 
 // newHeightIndexer creates new heightIndexer.
-func newHeightIndexer[H header.Header](ds datastore.Batching, indexCacheSize int) (*heightIndexer[H], error) {
+func newHeightIndexer[H header.Header[H]](ds datastore.Batching, indexCacheSize int) (*heightIndexer[H], error) {
 	cache, err := lru.NewARC(indexCacheSize)
 	if err != nil {
 		return nil, err

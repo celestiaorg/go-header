@@ -6,12 +6,12 @@ import (
 )
 
 // Header abstracts all methods required to perform header sync.
-type Header interface {
+type Header[H any] interface { // TODO: Ideally, this should be Header[H Header[H]], but GO	does not support recursive type definitions.
 	// New creates new instance of a header.
 	// It exists to overcome limitation of Go's type system.
 	// See:
 	//https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
-	New() Header
+	New() H
 	// IsZero reports whether Header is a zero value of it's concrete type.
 	IsZero() bool
 	// ChainID returns identifier of the chain.
@@ -25,7 +25,7 @@ type Header interface {
 	// Time returns time when header was created.
 	Time() time.Time
 	// Verify validates given untrusted Header against trusted Header.
-	Verify(Header) error
+	Verify(H) error
 	// Validate performs stateless validation to check for missed/incorrect fields.
 	Validate() error
 
@@ -34,6 +34,6 @@ type Header interface {
 }
 
 // New is a generic Header constructor.
-func New[H Header]() (h H) {
-	return h.New().(H)
+func New[H Header[H]]() (h H) {
+	return h.New()
 }

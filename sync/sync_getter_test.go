@@ -43,11 +43,11 @@ func TestSyncGetterHead(t *testing.T) {
 
 var errFakeHead = fmt.Errorf("head")
 
-type fakeGetter[H header.Header] struct {
+type fakeGetter[H header.Header[H]] struct {
 	hits atomic.Uint32
 }
 
-func (f *fakeGetter[H]) Head(ctx context.Context, _ ...header.HeadOption) (h H, err error) {
+func (f *fakeGetter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (h H, err error) {
 	f.hits.Add(1)
 	select {
 	case <-time.After(time.Millisecond * 100):

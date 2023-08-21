@@ -16,6 +16,6 @@ func heightKey(h uint64) datastore.Key {
 	return datastore.NewKey(strconv.Itoa(int(h)))
 }
 
-func headerKey(h header.Header) datastore.Key {
+func headerKey[H header.Header[H]](h H) datastore.Key {
 	return datastore.NewKey(h.Hash().String())
 }

@@ -25,7 +25,7 @@ var (
 
 // ExchangeServer represents the server-side component for
 // responding to inbound header-related requests.
-type ExchangeServer[H header.Header] struct {
+type ExchangeServer[H header.Header[H]] struct {
 	protocolID protocol.ID
 
 	host  host.Host
@@ -39,7 +39,7 @@ type ExchangeServer[H header.Header] struct {
 
 // NewExchangeServer returns a new P2P server that handles inbound
 // header-related requests.
-func NewExchangeServer[H header.Header](
+func NewExchangeServer[H header.Header[H]](
 	host host.Host,
 	store header.Store[H],
 	opts ...Option[ServerParameters],

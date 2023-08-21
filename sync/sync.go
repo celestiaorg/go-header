@@ -30,7 +30,7 @@ var log = logging.Logger("header/sync")
 //   - Sets as the new Subjective Head, which
 //   - if there is a gap between the previous and the new Subjective Head
 //   - Triggers s.syncLoop and saves the Subjective Head in the pending so s.syncLoop can access it
-type Syncer[H header.Header] struct {
+type Syncer[H header.Header[H]] struct {
 	sub     header.Subscriber[H] // to subscribe for new Network Heads
 	store   syncStore[H]         // to store all the headers to
 	getter  syncGetter[H]        // to fetch headers from
@@ -55,7 +55,7 @@ type Syncer[H header.Header] struct {
 }
 
 // NewSyncer creates a new instance of Syncer.
-func NewSyncer[H header.Header](
+func NewSyncer[H header.Header[H]](
 	getter header.Getter[H],
 	store header.Store[H],
 	sub header.Subscriber[H],

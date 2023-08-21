@@ -10,7 +10,7 @@ import (
 // syncStore is a Store wrapper that provides synchronization over writes and reads
 // for Head of underlying Store. Useful for Stores that do not guarantee synchrony between Append
 // and Head method.
-type syncStore[H header.Header] struct {
+type syncStore[H header.Header[H]] struct {
 	header.Store[H]
 
 	head atomic.Pointer[H]

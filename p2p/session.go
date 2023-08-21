@@ -18,9 +18,9 @@ import (
 // response.
 var errEmptyResponse = errors.New("empty response")
 
-type option[H header.Header] func(*session[H])
+type option[H header.Header[H]] func(*session[H])
 
-func withValidation[H header.Header](from H) option[H] {
+func withValidation[H header.Header[H]](from H) option[H] {
 	return func(s *session[H]) {
 		s.from = from
 	}
@@ -28,7 +28,7 @@ func withValidation[H header.Header](from H) option[H] {
 
 // session aims to divide a range of headers
 // into several smaller requests among different peers.
-type session[H header.Header] struct {
+type session[H header.Header[H]] struct {
 	host       host.Host
 	protocolID protocol.ID
 	queue      *peerQueue
@@ -45,7 +45,7 @@ type session[H header.Header] struct {
 	reqCh  chan *p2p_pb.HeaderRequest
 }
 
-func newSession[H header.Header](
+func newSession[H header.Header[H]](
 	ctx context.Context,
 	h host.Host,
 	peerTracker *peerTracker,
@@ -284,7 +284,7 @@ func prepareRequests(from, amount, headersPerPeer uint64) []*p2p_pb.HeaderReques
 }
 
 // processResponses converts HeaderResponses to Headers
-func processResponses[H header.Header](resps []*p2p_pb.HeaderResponse) ([]H, error) {
+func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse) ([]H, error) {
 	if len(resps) == 0 {
 		return nil, errEmptyResponse
 	}

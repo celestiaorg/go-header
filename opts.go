@@ -1,17 +1,17 @@
 package header
 
-type HeadOption func(opts *HeadParams)
+type HeadOption[H Header[H]] func(opts *HeadParams[H])
 
 // HeadParams contains options to be used for Head interface methods
-type HeadParams struct {
+type HeadParams[H Header[H]] struct {
 	// TrustedHead allows the caller of Head to specify a trusted header
 	// against which the underlying implementation of Head can verify against.
-	TrustedHead Header
+	TrustedHead Header[H]
 }
 
 // WithTrustedHead sets the TrustedHead parameter to the given header.
-func WithTrustedHead(verified Header) func(opts *HeadParams) {
-	return func(opts *HeadParams) {
+func WithTrustedHead[H Header[H]] (verified Header[H]) func(opts *HeadParams[H]) {
+	return func(opts *HeadParams[H]) {
 		opts.TrustedHead = verified
 	}
 }

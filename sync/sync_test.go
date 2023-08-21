@@ -381,7 +381,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	require.Equal(t, expectedHead.Height(), storeHead.Height())
 }
 
-type delayedGetter[H header.Header] struct {
+type delayedGetter[H header.Header[H]] struct {
 	header.Getter[H]
 }
 

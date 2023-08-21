@@ -14,7 +14,7 @@ import (
 
 // Subscriber manages the lifecycle and relationship of header Module
 // with the "header-sub" gossipsub topic.
-type Subscriber[H header.Header] struct {
+type Subscriber[H header.Header[H]] struct {
 	pubsubTopicID string
 
 	pubsub *pubsub.PubSub
@@ -24,7 +24,7 @@ type Subscriber[H header.Header] struct {
 
 // NewSubscriber returns a Subscriber that manages the header Module's
 // relationship with the "header-sub" gossipsub topic.
-func NewSubscriber[H header.Header](
+func NewSubscriber[H header.Header[H]](
 	ps *pubsub.PubSub,
 	msgID pubsub.MsgIdFunction,
 	networkID string,
@@ -58,7 +58,8 @@ func (p *Subscriber[H]) Stop(context.Context) error {
 // Does not punish peers if *header.VerifyError is given with Uncertain set to true.
 func (p *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
-		hdr := header.New[H]()
+		var hdr H
+		hdr = hdr.New()
 		err := hdr.UnmarshalBinary(msg.Data)
 		if err != nil {
 			log.Errorw("unmarshalling header",

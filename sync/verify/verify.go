@@ -40,7 +40,7 @@ func (vr *VerifyError) Unwrap() error {
 //
 // If heightThreshold is zero, uses DefaultHeightThreshold.
 // Always returns VerifyError.
-func Verify[H header.Header](trstd, untrstd H, heightThreshold int64) error {
+func Verify[H header.Header[H]](trstd, untrstd H, heightThreshold int64) error {
 	// general mandatory verification
 	err := verify[H](trstd, untrstd, heightThreshold)
 	if err != nil {
@@ -70,7 +70,7 @@ func Verify[H header.Header](trstd, untrstd H, heightThreshold int64) error {
 
 // verify is a little bro of Verify yet performs mandatory Header checks
 // for any Header implementation.
-func verify[H header.Header](trstd, untrstd H, heightThreshold int64) error {
+func verify[H header.Header[H]](trstd, untrstd H, heightThreshold int64) error {
 	if heightThreshold == 0 {
 		heightThreshold = DefaultHeightThreshold
 	}

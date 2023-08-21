@@ -44,7 +44,7 @@ func RandDummyHeader(t *testing.T) *DummyHeader {
 	return dh
 }
 
-func (d *DummyHeader) New() header.Header {
+func (d *DummyHeader) New() *DummyHeader {
 	return new(DummyHeader)
 }
 
@@ -96,8 +96,8 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 	return expirationTime.Before(time.Now())
 }
 
-func (d *DummyHeader) Verify(header header.Header) error {
-	if dummy, _ := header.(*DummyHeader); dummy.VerifyFailure {
+func (d *DummyHeader) Verify(header *DummyHeader) error {
+	if header.VerifyFailure {
 		return ErrDummyVerify
 	}
 
