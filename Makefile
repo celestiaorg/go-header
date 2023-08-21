@@ -17,7 +17,7 @@ deps:
 fmt: sort-imports
 	@find . -name '*.go' -type f -not -path "*.git*" -not -name '*.pb.go' -not -name '*pb_test.go' | xargs gofmt -w -s
 	@find . -name '*.go' -type f -not -path "*.git*"  -not -name '*.pb.go' -not -name '*pb_test.go' | xargs goimports -w -local github.com/celestiaorg
-	@go mod tidy -compat=1.17
+	@go mod tidy
 	@cfmt -w -m=100 ./...
 	@markdownlint --fix --quiet --config .markdownlint.yaml .
 .PHONY: sort-imports
@@ -54,13 +54,13 @@ benchmark:
 lint-imports:
 	@echo "--> Running imports linter"
 	@for file in `find . -type f -name '*.go'`; \
-		do goimports-reviser -list-diff -set-exit-status -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/celestia-node" -output stdout $$file \
+		do goimports-reviser -list-diff -set-exit-status -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/"$(PROJECTNAME)"" -output stdout $$file \
 		 || exit 1;  \
     done;
 .PHONY: lint-imports
 
 sort-imports:
-	@goimports-reviser -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/celestia-node" -output stdout ./...
+	@goimports-reviser -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/"$(PROJECTNAME)"" -output stdout .
 .PHONY: sort-imports
 
 pb-gen:
