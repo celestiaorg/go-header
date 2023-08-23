@@ -15,6 +15,11 @@ func TestVerify(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	trusted := suite.GenDummyHeaders(1)[0]
 
+	next := func() *headertest.DummyHeader {
+		next := *suite.NextHeader()
+		return &next
+	}
+
 	tests := []struct {
 		prepare func() *headertest.DummyHeader
 		err     bool
@@ -28,7 +33,7 @@ func TestVerify(t *testing.T) {
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.VerifyFailure = true
 				return untrusted
 			},
@@ -36,7 +41,7 @@ func TestVerify(t *testing.T) {
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.VerifyFailure = true
 				return untrusted
 			},
@@ -45,7 +50,7 @@ func TestVerify(t *testing.T) {
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				return suite.NextHeader()
+				return next()
 			},
 		},
 	}
@@ -69,71 +74,73 @@ func Test_verify(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	trusted := suite.GenDummyHeaders(1)[0]
 
+	next := func() *headertest.DummyHeader {
+		next := *suite.NextHeader() // copy is required
+		return &next
+	}
+
 	tests := []struct {
 		prepare func() *headertest.DummyHeader
-		err     bool
+		err     error
 	}{
 		{
 			prepare: func() *headertest.DummyHeader {
-				return suite.NextHeader()
+				return next()
 			},
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
 				return nil
 			},
-			err: true,
+			err: errZero,
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.Raw.ChainID = "gtmb"
 				return untrusted
 			},
-			err: true,
+			err: errWrongChain,
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.Raw.Time = untrusted.Raw.Time.Truncate(time.Minute * 10)
 				return untrusted
 			},
-			err: true,
+			err: errUnordered,
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.Raw.Time = untrusted.Raw.Time.Add(time.Minute)
 				return untrusted
 			},
-			err: true,
+			err: errFromFuture,
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.Raw.Height = trusted.Height()
 				return untrusted
 			},
-			err: true,
+			err: errKnown,
 		},
 		{
 			prepare: func() *headertest.DummyHeader {
-				untrusted := suite.NextHeader()
+				untrusted := next()
 				untrusted.Raw.Height += 100000
 				return untrusted
 			},
-			err: true,
+			err: errHeightFromFuture,
 		},
 	}
 
 	for i, test := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			err := verify(trusted, test.prepare(), 0)
-			if test.err {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			assert.ErrorIs(t, err, test.err)
+			t.Log(err)
 		})
 	}
 }

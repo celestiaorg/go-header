@@ -28,7 +28,7 @@ type VerifyError struct {
 }
 
 func (vr *VerifyError) Error() string {
-	return fmt.Sprintf("header: verify: %s", vr.Reason.Error())
+	return fmt.Sprintf("header verification failed: %s", vr.Reason.Error())
 }
 
 func (vr *VerifyError) Unwrap() error {
@@ -76,36 +76,50 @@ func verify[H header.Header](trstd, untrstd H, heightThreshold int64) error {
 	}
 
 	if untrstd.IsZero() {
-		return fmt.Errorf("zero header")
+		return errZero
 	}
 
 	if untrstd.ChainID() != trstd.ChainID() {
-		return fmt.Errorf("wrong header chain id %s, not %s", untrstd.ChainID(), trstd.ChainID())
+		return fmt.Errorf("%w: '%s' != '%s'", errWrongChain, untrstd.ChainID(), trstd.ChainID())
 	}
 
 	if !untrstd.Time().After(trstd.Time()) {
-		return fmt.Errorf("unordered header timestamp %v is before %v", untrstd.Time(), trstd.Time())
+		return fmt.Errorf("%w: timestamp '%s' < current '%s'", errUnordered, formatTime(untrstd.Time()), formatTime(trstd.Time()))
 	}
 
 	now := time.Now()
-	if !untrstd.Time().Before(now.Add(clockDrift)) {
-		return fmt.Errorf("header timestamp %v is from future (now: %v, clock_drift: %v)", untrstd.Time(), now, clockDrift)
+	if untrstd.Time().After(now.Add(clockDrift)) {
+		return fmt.Errorf("%w: timestamp '%s' > now '%s', clock_drift '%v'", errFromFuture, formatTime(untrstd.Time()), formatTime(now), clockDrift)
 	}
 
 	known := untrstd.Height() <= trstd.Height()
 	if known {
-		return fmt.Errorf("known header height %d, current %d", untrstd.Height(), trstd.Height())
+		return fmt.Errorf("%w: '%d' <= current '%d'", errKnown, untrstd.Height(), trstd.Height())
 	}
 	// reject headers with height too far from the future
 	// this is essential for headers failed non-adjacent verification
 	// yet taken as sync target
 	adequateHeight := untrstd.Height()-trstd.Height() < heightThreshold
 	if !adequateHeight {
-		return fmt.Errorf("header height %d is far from future (current: %d, threshold: %d)", untrstd.Height(), trstd.Height(), heightThreshold)
+		return fmt.Errorf("%w: '%d' - current '%d' >= threshold '%d'", errHeightFromFuture, untrstd.Height(), trstd.Height(), heightThreshold)
 	}
 
 	return nil
 }
+
+func formatTime(t time.Time) string {
+	return t.UTC().Format(time.DateTime)
+}
+
+// unexported for testing, but can be exported if needed
+var (
+	errZero             = errors.New("zero header")
+	errWrongChain       = errors.New("wrong chain id")
+	errUnordered        = errors.New("unordered headers")
+	errFromFuture       = errors.New("header is from the future")
+	errKnown            = errors.New("known header")
+	errHeightFromFuture = errors.New("header height is far from future")
+)
 
 // clockDrift defines how much new header's time can drift into
 // the future relative to the now time during verification.
