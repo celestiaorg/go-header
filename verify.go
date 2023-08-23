@@ -91,7 +91,7 @@ var (
 	ErrHeightFromFuture = errors.New("header height is far from future")
 )
 
-// VerifyError is thrown during for Headers failed verification.
+// VerifyError is thrown if a Header failed verification.
 type VerifyError struct {
 	// Reason why verification failed as inner error.
 	Reason error
