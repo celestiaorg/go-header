@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/celestiaorg/go-header"
 )
 
 func TestVerify(t *testing.T) {

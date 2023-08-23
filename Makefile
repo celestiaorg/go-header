@@ -60,7 +60,10 @@ lint-imports:
 .PHONY: lint-imports
 
 sort-imports:
-	@goimports-reviser -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/"$(PROJECTNAME)"" -output stdout .
+	@for file in `find . -type f -name '*.go'`; \
+    		do goimports-reviser -company-prefixes "github.com/celestiaorg"  -project-name "github.com/celestiaorg/"$(PROJECTNAME)"" $$file \
+    		 || exit 1;  \
+        done;
 .PHONY: sort-imports
 
 pb-gen:

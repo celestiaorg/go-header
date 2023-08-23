@@ -19,7 +19,7 @@ func TestHeightSub(t *testing.T) {
 	// assert subscription returns nil for past heights
 	{
 		h := headertest.RandDummyHeader(t)
-		h.Raw.Height = 100
+		h.HeightI = 100
 		hs.SetHeight(99)
 		hs.Pub(h)
 
@@ -35,9 +35,9 @@ func TestHeightSub(t *testing.T) {
 			time.Sleep(time.Millisecond)
 
 			h1 := headertest.RandDummyHeader(t)
-			h1.Raw.Height = 101
+			h1.HeightI = 101
 			h2 := headertest.RandDummyHeader(t)
-			h2.Raw.Height = 102
+			h2.HeightI = 102
 			hs.Pub(h1, h2)
 		}()
 
