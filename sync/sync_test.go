@@ -12,7 +12,6 @@ import (
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
 	"github.com/celestiaorg/go-header/store"
-	"github.com/celestiaorg/go-header/sync/verify"
 )
 
 func TestSyncSimpleRequestingHead(t *testing.T) {
@@ -278,7 +277,7 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
-	var verErr *verify.VerifyError
+	var verErr *header.VerifyError
 	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
 	assert.ErrorAs(t, err, &verErr)
 

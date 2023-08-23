@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-header"
-	"github.com/celestiaorg/go-header/sync/verify"
 )
 
 // Head returns the Network Head.
@@ -157,7 +156,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
 		// local error, so soft
-		return true, &verify.VerifyError{Reason: err, SoftFailure: true}
+		return true, &header.VerifyError{Reason: err, SoftFailure: true}
 	}
 
 	var heightThreshold int64
@@ -165,12 +164,12 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 		heightThreshold = int64(s.Params.TrustingPeriod / s.Params.blockTime)
 	}
 
-	err = verify.Verify(sbjHead, newHead, heightThreshold)
+	err = header.Verify(sbjHead, newHead, heightThreshold)
 	if err == nil {
 		return false, nil
 	}
 
-	var verErr *verify.VerifyError
+	var verErr *header.VerifyError
 	if errors.As(err, &verErr) && !verErr.SoftFailure {
 		log.Errorw("invalid network header",
 			"height_of_invalid", newHead.Height(),

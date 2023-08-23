@@ -1,11 +1,10 @@
 package headertest
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/gob"
-	"fmt"
+	"encoding/json"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -15,16 +14,13 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-type Raw struct {
-	ChainID      string
-	PreviousHash header.Hash
-
-	Height int64
-	Time   time.Time
-}
+var ErrDummyVerify = errors.New("dummy verify error")
 
 type DummyHeader struct {
-	Raw
+	Chainid      string
+	PreviousHash header.Hash
+	HeightI      int64
+	Timestamp    time.Time
 
 	hash header.Hash
 
@@ -37,13 +33,9 @@ func RandDummyHeader(t *testing.T) *DummyHeader {
 	t.Helper()
 
 	dh := &DummyHeader{
-		Raw{
-			PreviousHash: RandBytes(32),
-			Height:       randInt63(),
-			Time:         time.Now().UTC(),
-		},
-		nil,
-		false,
+		PreviousHash: RandBytes(32),
+		HeightI:      randInt63(),
+		Timestamp:    time.Now().UTC(),
 	}
 	err := dh.rehash()
 	if err != nil {
@@ -61,7 +53,7 @@ func (d *DummyHeader) IsZero() bool {
 }
 
 func (d *DummyHeader) ChainID() string {
-	return d.Raw.ChainID
+	return d.Chainid
 }
 
 func (d *DummyHeader) Hash() header.Hash {
@@ -84,15 +76,15 @@ func (d *DummyHeader) rehash() error {
 }
 
 func (d *DummyHeader) Height() int64 {
-	return d.Raw.Height
+	return d.HeightI
 }
 
 func (d *DummyHeader) LastHeader() header.Hash {
-	return d.Raw.PreviousHash
+	return d.PreviousHash
 }
 
 func (d *DummyHeader) Time() time.Time {
-	return d.Raw.Time
+	return d.Timestamp
 }
 
 func (d *DummyHeader) IsRecent(blockTime time.Duration) bool {
@@ -106,7 +98,7 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 
 func (d *DummyHeader) Verify(header header.Header) error {
 	if dummy, _ := header.(*DummyHeader); dummy.VerifyFailure {
-		return fmt.Errorf("header at height %d failed verification", header.Height())
+		return ErrDummyVerify
 	}
 
 	return nil
@@ -117,24 +109,11 @@ func (d *DummyHeader) Validate() error {
 }
 
 func (d *DummyHeader) MarshalBinary() ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(d.Raw)
-	return buf.Bytes(), err
+	return json.Marshal(d)
 }
 
 func (d *DummyHeader) UnmarshalBinary(data []byte) error {
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	err := dec.Decode(&d.Raw)
-	if err != nil {
-		return err
-	}
-	err = d.rehash()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return json.Unmarshal(data, d)
 }
 
 // RandBytes returns slice of n-bytes, or nil in case of error
