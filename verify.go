@@ -8,7 +8,7 @@ import (
 
 // DefaultHeightThreshold defines default height threshold beyond which headers are rejected
 // NOTE: Compared against subjective head which is guaranteed to be non-expired
-const DefaultHeightThreshold int64 = 40000 // ~ 7 days of 15 second headers
+const DefaultHeightThreshold int64 = 80000 // ~ 14 days of 15 second headers
 
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify
