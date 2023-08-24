@@ -42,9 +42,10 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 	}
 
 	dh := RandDummyHeader(s.t)
-	dh.Raw.Time = s.head.Time().Add(time.Nanosecond)
-	dh.Raw.Height = s.head.Height() + 1
-	dh.Raw.PreviousHash = s.head.Hash()
+	dh.Timestamp = s.head.Time().Add(time.Nanosecond)
+	dh.HeightI = s.head.Height() + 1
+	dh.PreviousHash = s.head.Hash()
+	dh.Chainid = s.head.ChainID()
 	_ = dh.rehash()
 	s.head = dh
 	return s.head
@@ -52,11 +53,8 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 
 func (s *DummySuite) genesis() *DummyHeader {
 	return &DummyHeader{
-		hash: nil,
-		Raw: Raw{
-			PreviousHash: nil,
-			Height:       1,
-			Time:         time.Now().Add(-10 * time.Second).UTC(),
-		},
+		HeightI:   1,
+		Timestamp: time.Now().Add(-10 * time.Second).UTC(),
+		Chainid:   "test",
 	}
 }

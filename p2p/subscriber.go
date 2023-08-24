@@ -82,7 +82,7 @@ func (p *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 		switch {
 		case err == nil:
 			return pubsub.ValidationAccept
-		case errors.As(err, &verErr) && verErr.Uncertain:
+		case errors.As(err, &verErr) && verErr.SoftFailure:
 			return pubsub.ValidationIgnore
 		default:
 			return pubsub.ValidationReject

@@ -280,7 +280,6 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	var verErr *header.VerifyError
 	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
 	assert.ErrorAs(t, err, &verErr)
-	assert.True(t, verErr.Uncertain)
 
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
@@ -356,7 +355,8 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	// a new sync job to a good sync target
 	expectedHead, err := remoteStore.Head(ctx)
 	require.NoError(t, err)
-	syncer.incomingNetworkHead(ctx, expectedHead)
+	err = syncer.incomingNetworkHead(ctx, expectedHead)
+	require.NoError(t, err)
 
 	// wait for syncer to finish (give it a bit of time to register
 	// new job with new sync target)

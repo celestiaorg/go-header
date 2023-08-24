@@ -26,7 +26,7 @@ import (
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
-const networkID = "private"
+const networkID = "test" // must match the chain-id in test suite
 
 func TestExchange_RequestHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -393,7 +393,7 @@ func TestExchange_RequestByHashFails(t *testing.T) {
 func TestExchange_HandleHeaderWithDifferentChainID(t *testing.T) {
 	hosts := createMocknet(t, 2)
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
-	exchg.Params.chainID = "test"
+	exchg.Params.chainID = "test1"
 
 	_, err := exchg.Head(context.Background())
 	require.Error(t, err)
