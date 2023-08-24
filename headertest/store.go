@@ -41,8 +41,6 @@ func NewStore[H header.Header[H]](t *testing.T, gen Generator[H], numHeaders int
 }
 
 func (m *Store[H]) Init(context.Context, H) error { return nil }
-func (m *Store[H]) Start(context.Context) error   { return nil }
-func (m *Store[H]) Stop(context.Context) error    { return nil }
 
 func (m *Store[H]) Height() uint64 {
 	return uint64(m.HeadHeight)
