@@ -6,8 +6,9 @@ import (
 )
 
 // Header abstracts all methods required to perform header sync.
-type Header[H any] interface { // TODO: Ideally, this should be Header[H Header[H]], but GO	does not support recursive type
-	// definitions.
+// TODO: Ideally, this should be Header[H Header[H]], but GO does not support recursive type
+// definitions (yet?)
+type Header[H any] interface {
 	// New creates new instance of a header.
 	// It exists to overcome limitation of Go's type system.
 	// See:
