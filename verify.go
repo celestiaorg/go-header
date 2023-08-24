@@ -58,7 +58,7 @@ func verify[H Header](trstd, untrstd H, heightThreshold int64) error {
 		return fmt.Errorf("%w: '%s' != '%s'", ErrWrongChainID, untrstd.ChainID(), trstd.ChainID())
 	}
 
-	if !untrstd.Time().After(trstd.Time()) {
+	if untrstd.Time().Before(trstd.Time()) {
 		return fmt.Errorf("%w: timestamp '%s' < current '%s'", ErrUnorderedTime, formatTime(untrstd.Time()), formatTime(trstd.Time()))
 	}
 
