@@ -34,6 +34,7 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 		localStore,
 		headertest.NewDummySubscriber(),
 		WithBlockTime(time.Second*30),
+		WithRecencyThreshold(time.Second*35), // add 5 second buffer
 		WithTrustingPeriod(time.Microsecond),
 	)
 	require.NoError(t, err)
@@ -72,6 +73,8 @@ func TestDoSyncFullRangeFromExternalPeer(t *testing.T) {
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
+		WithBlockTime(time.Nanosecond),
+		WithRecencyThreshold(time.Nanosecond),
 	)
 	require.NoError(t, err)
 	require.NoError(t, syncer.Start(ctx))
@@ -306,7 +309,8 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 		local.NewExchange[*headertest.DummyHeader](remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
-		WithBlockTime(time.Nanosecond), // force syncer to request more recent sync target
+		WithBlockTime(time.Nanosecond),
+		WithRecencyThreshold(time.Nanosecond), // force syncer to request more recent sync target
 	)
 	require.NoError(t, err)
 
