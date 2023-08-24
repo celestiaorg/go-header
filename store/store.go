@@ -12,7 +12,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/celestiaorg/go-header"
-	"github.com/celestiaorg/go-header/sync/verify"
 )
 
 var log = logging.Logger("header/store")
@@ -333,7 +332,7 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 
 		err = head.Verify(h)
 		if err != nil {
-			var verErr *verify.VerifyError
+			var verErr *header.VerifyError
 			if errors.As(err, &verErr) {
 				log.Errorw("invalid header",
 					"height_of_head", head.Height(),

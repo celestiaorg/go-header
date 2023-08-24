@@ -10,7 +10,7 @@ type HeadParams[H Header[H]] struct {
 }
 
 // WithTrustedHead sets the TrustedHead parameter to the given header.
-func WithTrustedHead[H Header[H]] (verified Header[H]) func(opts *HeadParams[H]) {
+func WithTrustedHead[H Header[H]](verified Header[H]) func(opts *HeadParams[H]) {
 	return func(opts *HeadParams[H]) {
 		opts.TrustedHead = verified
 	}
