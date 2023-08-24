@@ -8,14 +8,14 @@ import (
 
 // DefaultHeightThreshold defines default height threshold beyond which headers are rejected
 // NOTE: Compared against subjective head which is guaranteed to be non-expired
-const DefaultHeightThreshold int64 = 80000 // ~ 14 days of 15 second headers
+const DefaultHeightThreshold uint64 = 80000 // ~ 14 days of 15 second headers
 
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify
 //
 // If heightThreshold is zero, uses DefaultHeightThreshold.
 // Always returns VerifyError.
-func Verify[H Header[H]](trstd, untrstd H, heightThreshold int64) error {
+func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	// general mandatory verification
 	err := verify[H](trstd, untrstd, heightThreshold)
 	if err != nil {
@@ -45,7 +45,7 @@ func Verify[H Header[H]](trstd, untrstd H, heightThreshold int64) error {
 
 // verify is a little bro of Verify yet performs mandatory Header checks
 // for any Header implementation.
-func verify[H Header[H]](trstd, untrstd H, heightThreshold int64) error {
+func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	if heightThreshold == 0 {
 		heightThreshold = DefaultHeightThreshold
 	}

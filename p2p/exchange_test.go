@@ -53,7 +53,7 @@ func TestExchange_RequestHead(t *testing.T) {
 	tests := []struct {
 		requestFromTrusted bool
 		lastHeader         header.Header[*headertest.DummyHeader]
-		expectedHeight     int64
+		expectedHeight     uint64
 		expectedHash       header.Hash
 	}{
 		// routes to trusted peer only
@@ -297,7 +297,7 @@ func Test_bestHead(t *testing.T) {
 	}
 	testCases := []struct {
 		precondition   func() []*headertest.DummyHeader
-		expectedHeight int64
+		expectedHeight uint64
 	}{
 		/*
 			Height -> Amount

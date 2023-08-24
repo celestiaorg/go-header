@@ -159,10 +159,10 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 		return true, &header.VerifyError{Reason: err, SoftFailure: true}
 	}
 
-	var heightThreshold int64
+	var heightThreshold uint64
 	if s.Params.TrustingPeriod != 0 && s.Params.blockTime != 0 {
 		buffer := time.Hour * 6 / s.Params.blockTime // small buffer to account for network delays
-		heightThreshold = int64(s.Params.TrustingPeriod/s.Params.blockTime + buffer)
+		heightThreshold = uint64(s.Params.TrustingPeriod/s.Params.blockTime + buffer)
 	}
 
 	err = header.Verify(sbjHead, newHead, heightThreshold)
