@@ -57,8 +57,7 @@ func (p *Subscriber[H]) Stop(context.Context) error {
 // Does not punish peers if *header.VerifyError is given with Uncertain set to true.
 func (p *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
-		var hdr H
-		hdr = hdr.New()
+		hdr := header.New[H]()
 		err := hdr.UnmarshalBinary(msg.Data)
 		if err != nil {
 			log.Errorw("unmarshalling header",
