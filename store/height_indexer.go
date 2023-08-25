@@ -48,7 +48,7 @@ func (hi *heightIndexer[H]) HashByHeight(ctx context.Context, h uint64) (header.
 // IndexTo saves mapping between header Height and Hash to the given batch.
 func (hi *heightIndexer[H]) IndexTo(ctx context.Context, batch datastore.Batch, headers ...H) error {
 	for _, h := range headers {
-		err := batch.Put(ctx, heightKey(uint64(h.Height())), h.Hash())
+		err := batch.Put(ctx, heightKey(h.Height()), h.Hash())
 		if err != nil {
 			return err
 		}

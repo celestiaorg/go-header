@@ -19,7 +19,7 @@ var ErrDummyVerify = errors.New("dummy verify error")
 type DummyHeader struct {
 	Chainid      string
 	PreviousHash header.Hash
-	HeightI      int64
+	HeightI      uint64
 	Timestamp    time.Time
 
 	hash header.Hash
@@ -34,7 +34,7 @@ func RandDummyHeader(t *testing.T) *DummyHeader {
 
 	dh := &DummyHeader{
 		PreviousHash: RandBytes(32),
-		HeightI:      randInt63(),
+		HeightI:      randUint63(),
 		Timestamp:    time.Now().UTC(),
 	}
 	err := dh.rehash()
@@ -75,7 +75,7 @@ func (d *DummyHeader) rehash() error {
 	return nil
 }
 
-func (d *DummyHeader) Height() int64 {
+func (d *DummyHeader) Height() uint64 {
 	return d.HeightI
 }
 
@@ -128,7 +128,7 @@ func RandBytes(n int) []byte {
 	return buf
 }
 
-func randInt63() int64 {
+func randUint63() uint64 {
 	var buf [8]byte
 
 	_, err := rand.Read(buf[:])
@@ -136,5 +136,5 @@ func randInt63() int64 {
 		return math.MaxInt64
 	}
 
-	return int64(binary.BigEndian.Uint64(buf[:]) & math.MaxInt64)
+	return binary.BigEndian.Uint64(buf[:]) & math.MaxInt64
 }

@@ -70,7 +70,7 @@ func (b *batch[H]) getByHeight(height uint64) H {
 		return zero
 	}
 
-	head := uint64(b.headers[ln-1].Height())
+	head := b.headers[ln-1].Height()
 	base := head - ln
 	if height > head || height <= base {
 		return zero
@@ -85,7 +85,7 @@ func (b *batch[H]) Append(headers ...H) {
 	defer b.lk.Unlock()
 	for _, h := range headers {
 		b.headers = append(b.headers, h)
-		b.heights[h.Hash().String()] = uint64(h.Height())
+		b.heights[h.Hash().String()] = h.Height()
 	}
 }
 

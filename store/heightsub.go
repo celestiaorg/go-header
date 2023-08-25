@@ -82,7 +82,7 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 	}
 
 	height := hs.Height()
-	from, to := uint64(headers[0].Height()), uint64(headers[ln-1].Height())
+	from, to := headers[0].Height(), headers[ln-1].Height()
 	if height+1 != from && height != 0 { // height != 0 is needed to enable init from any height and not only 1
 		log.Fatalf("PLEASE FILE A BUG REPORT: headers given to the heightSub are in the wrong order: expected %d, got %d", height+1, from)
 		return

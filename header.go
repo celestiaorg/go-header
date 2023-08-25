@@ -21,7 +21,7 @@ type Header[H any] interface {
 	// Hash returns hash of a header.
 	Hash() Hash
 	// Height returns the height of a header.
-	Height() int64
+	Height() uint64
 	// LastHeader returns the hash of last header before this header (aka. previous header hash).
 	LastHeader() Hash
 	// Time returns time when header was created.

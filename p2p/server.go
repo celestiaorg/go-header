@@ -175,7 +175,7 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 
 	span.AddEvent("fetched-header-from-store", trace.WithAttributes(
 		attribute.String("hash", header.Hash(hash).String()),
-		attribute.Int64("height", h.Height())),
+		attribute.Int64("height", int64(h.Height()))),
 	)
 	span.SetStatus(codes.Ok, "")
 	return []H{h}, nil
@@ -263,7 +263,7 @@ func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
 
 	span.AddEvent("fetched-head", trace.WithAttributes(
 		attribute.String("hash", head.Hash().String()),
-		attribute.Int64("height", head.Height())),
+		attribute.Int64("height", int64(head.Height()))),
 	)
 	span.SetStatus(codes.Ok, "")
 	return []H{head}, nil

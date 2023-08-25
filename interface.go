@@ -61,8 +61,8 @@ var (
 
 // ErrNonAdjacent is returned when Store is appended with a header not adjacent to the stored head.
 type ErrNonAdjacent struct {
-	Head      int64
-	Attempted int64
+	Head      uint64
+	Attempted uint64
 }
 
 func (ena *ErrNonAdjacent) Error() string {

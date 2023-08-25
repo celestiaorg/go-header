@@ -30,7 +30,7 @@ func WithMetrics[H Header[H]](store Store[H]) error {
 				metric.WithAttributes(
 					attribute.String("err", err.Error())))
 		} else {
-			observer.ObserveInt64(headC, head.Height())
+			observer.ObserveInt64(headC, int64(head.Height()))
 		}
 		return nil
 	}

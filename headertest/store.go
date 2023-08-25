@@ -13,8 +13,8 @@ type Generator[H header.Header[H]] interface {
 }
 
 type Store[H header.Header[H]] struct {
-	Headers    map[int64]H
-	HeadHeight int64
+	Headers    map[uint64]H
+	HeadHeight uint64
 }
 
 // NewDummyStore creates a store for DummyHeader.
@@ -25,7 +25,7 @@ func NewDummyStore(t *testing.T) *Store[*DummyHeader] {
 // NewStore creates a generic mock store supporting different type of Headers based on Generator.
 func NewStore[H header.Header[H]](t *testing.T, gen Generator[H], numHeaders int) *Store[H] {
 	store := &Store[H]{
-		Headers:    make(map[int64]H),
+		Headers:    make(map[uint64]H),
 		HeadHeight: 0,
 	}
 
@@ -61,7 +61,7 @@ func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 }
 
 func (m *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
-	return m.Headers[int64(height)], nil
+	return m.Headers[height], nil
 }
 
 func (m *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
@@ -73,7 +73,7 @@ func (m *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 		return nil, header.ErrNotFound
 	}
 	for i := range headers {
-		headers[i] = m.Headers[int64(from)]
+		headers[i] = m.Headers[from]
 		from++
 	}
 	return headers, nil
@@ -92,7 +92,7 @@ func (m *Store[H]) Has(context.Context, header.Hash) (bool, error) {
 }
 
 func (m *Store[H]) HasAt(_ context.Context, height uint64) bool {
-	return height != 0 && m.HeadHeight >= int64(height)
+	return height != 0 && m.HeadHeight >= height
 }
 
 func (m *Store[H]) Append(ctx context.Context, headers ...H) error {

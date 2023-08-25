@@ -200,7 +200,7 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 
 	lastHead, err := syncer.store.Head(ctx)
 	require.NoError(t, err)
-	require.Equal(t, lastHead.Height(), int64(43))
+	require.Equal(t, lastHead.Height(), uint64(43))
 	exp, err := remoteStore.Head(ctx)
 	require.NoError(t, err)
 
@@ -250,7 +250,7 @@ func TestSyncer_FindHeadersReturnsCorrectRange(t *testing.T) {
 
 	head, err = syncer.store.Head(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, head.Height(), int64(21))
+	assert.Equal(t, head.Height(), uint64(21))
 }
 
 func TestSyncerIncomingDuplicate(t *testing.T) {
