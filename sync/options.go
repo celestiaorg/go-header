@@ -34,8 +34,7 @@ type Parameters struct {
 // DefaultParameters returns the default params to configure the syncer.
 func DefaultParameters() Parameters {
 	return Parameters{
-		TrustingPeriod:   168 * time.Hour,
-		recencyThreshold: time.Second * 20, // this default is based on a block time of 15 seconds
+		TrustingPeriod: 168 * time.Hour,
 	}
 }
 
