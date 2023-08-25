@@ -13,14 +13,14 @@ import (
 // unlike the Store which keeps 'hash -> header' and 'height -> hash'.
 // The approach simplifies implementation for the batch and
 // makes it better optimized for the GetByHeight case which is what we need.
-type batch[H header.Header] struct {
+type batch[H header.Header[H]] struct {
 	lk      sync.RWMutex
 	heights map[string]uint64
 	headers []H
 }
 
 // newBatch creates the batch with the given pre-allocated size.
-func newBatch[H header.Header](size int) *batch[H] {
+func newBatch[H header.Header[H]](size int) *batch[H] {
 	return &batch[H]{
 		heights: make(map[string]uint64, size),
 		headers: make([]H, 0, size),

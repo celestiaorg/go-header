@@ -16,7 +16,7 @@ const (
 // Subscriber encompasses the behavior necessary to
 // subscribe/unsubscribe from new Header events from the
 // network.
-type Subscriber[H Header] interface {
+type Subscriber[H Header[H]] interface {
 	// Subscribe creates long-living Subscription for validated Headers.
 	// Multiple Subscriptions can be created.
 	Subscribe() (Subscription[H], error)
@@ -28,7 +28,7 @@ type Subscriber[H Header] interface {
 }
 
 // Subscription listens for new Headers.
-type Subscription[H Header] interface {
+type Subscription[H Header[H]] interface {
 	// NextHeader returns the newest verified and valid Header
 	// in the network.
 	NextHeader(ctx context.Context) (H, error)
@@ -37,13 +37,13 @@ type Subscription[H Header] interface {
 }
 
 // Broadcaster broadcasts a Header to the network.
-type Broadcaster[H Header] interface {
+type Broadcaster[H Header[H]] interface {
 	Broadcast(ctx context.Context, header H, opts ...pubsub.PubOpt) error
 }
 
 // Exchange encompasses the behavior necessary to request Headers
 // from the network.
-type Exchange[H Header] interface {
+type Exchange[H Header[H]] interface {
 	Getter[H]
 }
 
@@ -71,7 +71,7 @@ func (ena *ErrNonAdjacent) Error() string {
 
 // Store encompasses the behavior necessary to store and retrieve Headers
 // from a node's local storage.
-type Store[H Header] interface {
+type Store[H Header[H]] interface {
 	// Start starts the store.
 	Start(context.Context) error
 
@@ -104,7 +104,7 @@ type Store[H Header] interface {
 
 // Getter contains the behavior necessary for a component to retrieve
 // headers that have been processed during header sync.
-type Getter[H Header] interface {
+type Getter[H Header[H]] interface {
 	Head[H]
 
 	// Get returns the Header corresponding to the given hash.
@@ -124,7 +124,7 @@ type Getter[H Header] interface {
 // Head contains the behavior necessary for a component to retrieve
 // the chain head. Note that "chain head" is subjective to the component
 // reporting it.
-type Head[H Header] interface {
+type Head[H Header[H]] interface {
 	// Head returns the latest known header.
-	Head(context.Context, ...HeadOption) (H, error)
+	Head(context.Context, ...HeadOption[H]) (H, error)
 }

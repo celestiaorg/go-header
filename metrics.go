@@ -12,7 +12,7 @@ import (
 var meter = otel.Meter("header")
 
 // WithMetrics enables Otel metrics to monitor head and total amount of synced headers.
-func WithMetrics[H Header](store Store[H]) error {
+func WithMetrics[H Header[H]](store Store[H]) error {
 	headC, _ := meter.Int64ObservableCounter(
 		"head",
 		metric.WithDescription("Subjective head of the node"),

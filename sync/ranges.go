@@ -9,7 +9,7 @@ import (
 // ranges keeps non-overlapping and non-adjacent header ranges which are used to cache headers (in
 // ascending order). This prevents unnecessary / duplicate network requests for additional headers
 // during sync.
-type ranges[H header.Header] struct {
+type ranges[H header.Header[H]] struct {
 	lk     sync.RWMutex
 	ranges []*headerRange[H]
 }
@@ -86,13 +86,13 @@ func (rs *ranges[H]) First() (*headerRange[H], bool) {
 	}
 }
 
-type headerRange[H header.Header] struct {
+type headerRange[H header.Header[H]] struct {
 	lk      sync.RWMutex
 	headers []H
 	start   uint64
 }
 
-func newRange[H header.Header](h H) *headerRange[H] {
+func newRange[H header.Header[H]](h H) *headerRange[H] {
 	return &headerRange[H]{
 		start:   uint64(h.Height()),
 		headers: []H{h},

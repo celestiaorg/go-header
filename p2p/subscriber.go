@@ -13,7 +13,7 @@ import (
 
 // Subscriber manages the lifecycle and relationship of header Module
 // with the "header-sub" gossipsub topic.
-type Subscriber[H header.Header] struct {
+type Subscriber[H header.Header[H]] struct {
 	pubsubTopicID string
 
 	pubsub *pubsub.PubSub
@@ -23,7 +23,7 @@ type Subscriber[H header.Header] struct {
 
 // NewSubscriber returns a Subscriber that manages the header Module's
 // relationship with the "header-sub" gossipsub topic.
-func NewSubscriber[H header.Header](
+func NewSubscriber[H header.Header[H]](
 	ps *pubsub.PubSub,
 	msgID pubsub.MsgIdFunction,
 	networkID string,

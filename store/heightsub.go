@@ -13,7 +13,7 @@ import (
 var errElapsedHeight = errors.New("elapsed height")
 
 // heightSub provides a minimalistic mechanism to wait till header for a height becomes available.
-type heightSub[H header.Header] struct {
+type heightSub[H header.Header[H]] struct {
 	// height refers to the latest locally available header height
 	// that has been fully verified and inserted into the subjective chain
 	height       atomic.Uint64
@@ -22,7 +22,7 @@ type heightSub[H header.Header] struct {
 }
 
 // newHeightSub instantiates new heightSub.
-func newHeightSub[H header.Header]() *heightSub[H] {
+func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	return &heightSub[H]{
 		heightReqs: make(map[uint64][]chan H),
 	}

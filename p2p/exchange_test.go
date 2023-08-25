@@ -52,7 +52,7 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	tests := []struct {
 		requestFromTrusted bool
-		lastHeader         header.Header
+		lastHeader         header.Header[*headertest.DummyHeader]
 		expectedHeight     int64
 		expectedHash       header.Hash
 	}{
@@ -74,7 +74,7 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			var opts []header.HeadOption
+			var opts []header.HeadOption[*headertest.DummyHeader]
 			if !tt.requestFromTrusted {
 				opts = append(opts, header.WithTrustedHead(tt.lastHeader))
 			}
@@ -583,7 +583,7 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(context.Context, ...header.HeadOption) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(context.Context, ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }

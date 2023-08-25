@@ -24,7 +24,7 @@ var (
 )
 
 // Store implements the Store interface for Headers over Datastore.
-type Store[H header.Header] struct {
+type Store[H header.Header[H]] struct {
 	// header storing
 	//
 	// underlying KV store
@@ -57,12 +57,12 @@ type Store[H header.Header] struct {
 // NewStore constructs a Store over datastore.
 // The datastore must have a head there otherwise Start will error.
 // For first initialization of Store use NewStoreWithHead.
-func NewStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H], error) {
+func NewStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store[H], error) {
 	return newStore[H](ds, opts...)
 }
 
 // NewStoreWithHead initiates a new Store and forcefully sets a given trusted header as head.
-func NewStoreWithHead[H header.Header](
+func NewStoreWithHead[H header.Header[H]](
 	ctx context.Context,
 	ds datastore.Batching,
 	head H,
@@ -76,7 +76,7 @@ func NewStoreWithHead[H header.Header](
 	return store, store.Init(ctx, head)
 }
 
-func newStore[H header.Header](ds datastore.Batching, opts ...Option) (*Store[H], error) {
+func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store[H], error) {
 	params := DefaultParameters()
 	for _, opt := range opts {
 		opt(&params)
@@ -158,7 +158,7 @@ func (s *Store[H]) Height() uint64 {
 	return s.heightSub.Height()
 }
 
-func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) {
+func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	head, err := s.GetByHeight(ctx, s.heightSub.Height())
 	if err == nil {
 		return head, nil

@@ -114,8 +114,8 @@ func newWrappedGetter(ex header.Exchange[*headertest.DummyHeader]) *wrappedGette
 	}
 }
 
-func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption) (*headertest.DummyHeader, error) {
-	params := header.HeadParams{}
+func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+	params := header.HeadParams[*headertest.DummyHeader]{}
 	for _, opt := range options {
 		opt(&params)
 	}

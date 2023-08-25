@@ -7,12 +7,12 @@ import (
 )
 
 // Exchange is a simple Exchange that reads Headers from Store without any networking.
-type Exchange[H header.Header] struct {
+type Exchange[H header.Header[H]] struct {
 	store header.Store[H]
 }
 
 // NewExchange creates a new local Exchange.
-func NewExchange[H header.Header](store header.Store[H]) header.Exchange[H] {
+func NewExchange[H header.Header[H]](store header.Store[H]) header.Exchange[H] {
 	return &Exchange[H]{
 		store: store,
 	}
@@ -26,7 +26,7 @@ func (l *Exchange[H]) Stop(context.Context) error {
 	return nil
 }
 
-func (l *Exchange[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) {
+func (l *Exchange[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	return l.store.Head(ctx)
 }
 

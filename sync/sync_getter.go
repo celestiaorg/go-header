@@ -9,7 +9,7 @@ import (
 )
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time
-type syncGetter[H header.Header] struct {
+type syncGetter[H header.Header[H]] struct {
 	getterLk   sync.RWMutex
 	isGetterLk atomic.Bool
 	header.Getter[H]
@@ -39,7 +39,7 @@ func (sg *syncGetter[H]) Unlock() {
 }
 
 // Head must be called with held Lock.
-func (sg *syncGetter[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, error) {
+func (sg *syncGetter[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
 	sg.checkLock("Head without preceding Lock on syncGetter")
 	return sg.Getter.Head(ctx, opts...)
 }

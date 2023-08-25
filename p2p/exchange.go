@@ -32,7 +32,7 @@ var maxUntrustedHeadRequests = 4
 
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
-type Exchange[H header.Header] struct {
+type Exchange[H header.Header[H]] struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -47,7 +47,7 @@ type Exchange[H header.Header] struct {
 	metrics *metrics
 }
 
-func NewExchange[H header.Header](
+func NewExchange[H header.Header[H]](
 	host host.Host,
 	peers peer.IDSlice,
 	gater *conngater.BasicConnectionGater,
@@ -100,7 +100,7 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // The Head must be verified thereafter where possible.
 // We request in parallel all the trusted peers, compare their response
 // and return the highest one.
-func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, error) {
+func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
 	log.Debug("requesting head")
 
 	reqCtx := ctx
@@ -115,7 +115,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption) (H, 
 		defer cancel()
 	}
 
-	reqParams := header.HeadParams{}
+	reqParams := header.HeadParams[H]{}
 	for _, opt := range opts {
 		opt(&reqParams)
 	}
@@ -344,7 +344,7 @@ func shufflePeers(peers peer.IDSlice) peer.IDSlice {
 // * should be received at least from 2 peers;
 // If neither condition is met, then latest Header will be returned (header of the highest
 // height).
-func bestHead[H header.Header](result []H) (H, error) {
+func bestHead[H header.Header[H]](result []H) (H, error) {
 	if len(result) == 0 {
 		var zero H
 		return zero, header.ErrNotFound

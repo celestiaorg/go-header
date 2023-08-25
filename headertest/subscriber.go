@@ -6,7 +6,7 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-type Subscriber[H header.Header] struct {
+type Subscriber[H header.Header[H]] struct {
 	Headers []H
 }
 

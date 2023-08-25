@@ -11,14 +11,14 @@ import (
 )
 
 // subscription handles retrieving Headers from the header pubsub topic.
-type subscription[H header.Header] struct {
+type subscription[H header.Header[H]] struct {
 	topic        *pubsub.Topic
 	subscription *pubsub.Subscription
 }
 
 // newSubscription creates a new Header event subscription
 // on the given host.
-func newSubscription[H header.Header](topic *pubsub.Topic) (*subscription[H], error) {
+func newSubscription[H header.Header[H]](topic *pubsub.Topic) (*subscription[H], error) {
 	sub, err := topic.Subscribe()
 	if err != nil {
 		return nil, err

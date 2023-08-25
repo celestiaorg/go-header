@@ -13,7 +13,7 @@ import (
 // Known subjective head is considered network head if it is recent enough(now-timestamp<=blocktime)
 // Otherwise, head is requested from a trusted peer and
 // set as the new subjective head, assuming that trusted peer is always fully synced.
-func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error) {
+func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		return sbjHead, err
@@ -38,7 +38,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption) (H, error)
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
-	netHead, err := s.getter.Head(ctx, header.WithTrustedHead(sbjHead))
+	netHead, err := s.getter.Head(ctx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
 		return s.subjectiveHead(ctx)
@@ -162,7 +162,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	var heightThreshold int64
 	if s.Params.TrustingPeriod != 0 && s.Params.blockTime != 0 {
 		buffer := time.Hour * 6 / s.Params.blockTime // small buffer to account for network delays
-		heightThreshold = int64(s.Params.TrustingPeriod / s.Params.blockTime + buffer)
+		heightThreshold = int64(s.Params.TrustingPeriod/s.Params.blockTime + buffer)
 	}
 
 	err = header.Verify(sbjHead, newHead, heightThreshold)
@@ -184,12 +184,12 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 }
 
 // isExpired checks if header is expired against trusting period.
-func isExpired(header header.Header, period time.Duration) bool {
+func isExpired[H header.Header[H]](header H, period time.Duration) bool {
 	expirationTime := header.Time().Add(period)
 	return !expirationTime.After(time.Now())
 }
 
 // isRecent checks if header is recent against the given blockTime.
-func isRecent(header header.Header, blockTime time.Duration) bool {
+func isRecent[H header.Header[H]](header H, blockTime time.Duration) bool {
 	return time.Since(header.Time()) <= blockTime+blockTime/2 // add half block time drift
 }
