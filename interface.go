@@ -72,13 +72,6 @@ func (ena *ErrNonAdjacent) Error() string {
 // Store encompasses the behavior necessary to store and retrieve Headers
 // from a node's local storage.
 type Store[H Header[H]] interface {
-	// Start starts the store.
-	Start(context.Context) error
-
-	// Stop stops the store by preventing further writes
-	// and waiting till the ongoing ones are done.
-	Stop(context.Context) error
-
 	// Getter encompasses all getter methods for headers.
 	Getter[H]
 
