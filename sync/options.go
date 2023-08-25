@@ -26,6 +26,9 @@ type Parameters struct {
 	// Keeping it private to disable serialization for it.
 	// default value is set to 0 so syncer will constantly request networking head.
 	blockTime time.Duration
+	// recencyThreshold describes the time period for which a header is
+	// considered "recent". The default is blockTime + 5 seconds.
+	recencyThreshold time.Duration
 }
 
 // DefaultParameters returns the default params to configure the syncer.
@@ -47,6 +50,14 @@ func (p *Parameters) Validate() error {
 func WithBlockTime(duration time.Duration) Options {
 	return func(p *Parameters) {
 		p.blockTime = duration
+	}
+}
+
+// WithRecencyThreshold is a functional option that configures the
+// `recencyThreshold` parameter.
+func WithRecencyThreshold(threshold time.Duration) Options {
+	return func(p *Parameters) {
+		p.recencyThreshold = threshold
 	}
 }
 

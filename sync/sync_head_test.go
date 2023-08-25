@@ -75,8 +75,8 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 		wrappedGetter,
 		localStore,
 		headertest.NewDummySubscriber(),
-		// forces a request for a new sync target
 		WithBlockTime(time.Nanosecond),
+		WithRecencyThreshold(time.Nanosecond), // forces a request for a new sync target
 		// ensures that syncer's store contains a subjective head that is within
 		// the unbonding period so that the syncer can use a header from the network
 		// as a sync target

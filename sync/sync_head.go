@@ -19,7 +19,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return sbjHead, err
 	}
 	// if subjective header is recent enough (relative to the network's block time) - just use it
-	if isRecent(sbjHead, s.Params.blockTime) {
+	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
 		return sbjHead, nil
 	}
 	// otherwise, request head from the network
@@ -98,7 +98,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		return trustHead, nil
 	case isExpired(trustHead, s.Params.TrustingPeriod):
 		log.Warnw("subjective initialization with an expired header", "height", trustHead.Height())
-	case !isRecent(trustHead, s.Params.blockTime):
+	case !isRecent(trustHead, s.Params.blockTime, s.Params.recencyThreshold):
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
 	}
 	log.Warn("trusted peer is out of sync")
@@ -189,7 +189,10 @@ func isExpired[H header.Header[H]](header H, period time.Duration) bool {
 	return !expirationTime.After(time.Now())
 }
 
-// isRecent checks if header is recent against the given blockTime.
-func isRecent[H header.Header[H]](header H, blockTime time.Duration) bool {
-	return time.Since(header.Time()) <= blockTime+blockTime/2 // add half block time drift
+// isRecent checks if header is recent against the given recency threshold.
+func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Duration) bool {
+	if recencyThreshold == 0 {
+		recencyThreshold = blockTime + blockTime/2 // allow some drift by adding additional buffer of 1/2 of block time
+	}
+	return time.Since(header.Time()) <= recencyThreshold
 }
