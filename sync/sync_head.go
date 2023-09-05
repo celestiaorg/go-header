@@ -161,7 +161,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 
 	var heightThreshold uint64
 	if s.Params.TrustingPeriod != 0 && s.Params.blockTime != 0 {
-		buffer := time.Hour * 6 / s.Params.blockTime // small buffer to account for network delays
+		buffer := time.Hour * 48 / s.Params.blockTime // generous buffer to account for variable block time
 		heightThreshold = uint64(s.Params.TrustingPeriod/s.Params.blockTime + buffer)
 	}
 
