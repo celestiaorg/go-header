@@ -34,7 +34,7 @@ type Parameters struct {
 // DefaultParameters returns the default params to configure the syncer.
 func DefaultParameters() Parameters {
 	return Parameters{
-		TrustingPeriod: 168 * time.Hour,
+		TrustingPeriod: 336 * time.Hour,
 	}
 }
 
