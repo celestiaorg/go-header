@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -39,6 +40,9 @@ type Syncer[H header.Header[H]] struct {
 	// stateLk protects state which represents the current or latest sync
 	stateLk sync.RWMutex
 	state   State
+
+	// sbjHead is TODO document
+	sbjHead atomic.Pointer[H]
 
 	// signals to start syncing
 	triggerSync chan struct{}
@@ -149,7 +153,7 @@ func (s *Syncer[H]) State() State {
 
 	head, err := s.store.Head(s.ctx)
 	if err == nil {
-		state.Height = uint64(head.Height())
+		state.Height = head.Height()
 	} else if state.Error == "" {
 		// don't ignore the error if we can show it in the state
 		state.Error = err.Error()
@@ -180,9 +184,9 @@ func (s *Syncer[H]) syncLoop() {
 
 // sync ensures we are synced from the Store's head up to the new subjective head.
 func (s *Syncer[H]) sync(ctx context.Context) {
-	subjHead, err := s.subjectiveHead(ctx)
+	target, err := s.syncTarget(ctx)
 	if err != nil {
-		log.Errorw("getting subjective head", "err", err)
+		log.Errorw("getting sync target", "err", err)
 		return
 	}
 
@@ -192,10 +196,10 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 		return
 	}
 
-	if storeHead.Height() >= subjHead.Height() {
+	if storeHead.Height() >= target.Height() {
 		log.Warnw("sync attempt to an already synced header",
 			"synced_height", storeHead.Height(),
-			"attempted_height", subjHead.Height(),
+			"attempted_height", target.Height(),
 		)
 		log.Warn("PLEASE REPORT THIS AS A BUG")
 		return // should never happen, but just in case
@@ -204,9 +208,9 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 	from := storeHead.Height() + 1
 	log.Infow("syncing headers",
 		"from", from,
-		"to", subjHead.Height())
+		"to", target.Height())
 
-	err = s.doSync(ctx, storeHead, subjHead)
+	err = s.doSync(ctx, storeHead, target)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			// don't log this error as it is normal case of Syncer being stopped
@@ -215,14 +219,14 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 
 		log.Errorw("syncing headers",
 			"from", from,
-			"to", subjHead.Height(),
+			"to", target.Height(),
 			"err", err)
 		return
 	}
 
 	log.Infow("finished syncing headers",
 		"from", from,
-		"to", subjHead.Height(),
+		"to", target.Height(),
 		"elapsed time", s.state.End.Sub(s.state.Start))
 }
 
@@ -230,14 +234,14 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) {
 	s.stateLk.Lock()
 	s.state.ID++
-	s.state.FromHeight = uint64(fromHead.Height()) + 1
-	s.state.ToHeight = uint64(toHead.Height())
+	s.state.FromHeight = fromHead.Height() + 1
+	s.state.ToHeight = toHead.Height()
 	s.state.FromHash = fromHead.Hash()
 	s.state.ToHash = toHead.Hash()
 	s.state.Start = time.Now()
 	s.stateLk.Unlock()
 
-	err = s.processHeaders(ctx, fromHead, uint64(toHead.Height()))
+	err = s.processHeaders(ctx, fromHead, toHead.Height())
 
 	s.stateLk.Lock()
 	s.state.End = time.Now()
@@ -272,7 +276,7 @@ func (s *Syncer[H]) processHeaders(
 		// check if returned range is not adjacent to `fromHead`
 		if fromHead.Height()+1 != headers[0].Height() {
 			// if so - request missing ones
-			to := uint64(headers[0].Height() - 1)
+			to := headers[0].Height() - 1
 			if err = s.requestHeaders(ctx, fromHead, to); err != nil {
 				return err
 			}
@@ -297,7 +301,7 @@ func (s *Syncer[H]) requestHeaders(
 	fromHead H,
 	to uint64,
 ) error {
-	amount := to - uint64(fromHead.Height())
+	amount := to - fromHead.Height()
 	// start requesting headers until amount remaining will be 0
 	for amount > 0 {
 		size := header.MaxRangeRequestSize
@@ -322,6 +326,43 @@ func (s *Syncer[H]) requestHeaders(
 
 // storeHeaders updates store with new headers and updates current syncStore's Head.
 func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
+	totalHeaders := len(headers)
+
+	var sbjHeadHeight uint64
+	sbjHead := s.sbjHead.Load()
+	// if there's no subjective head stored, syncer has already applied the
+	// subjective head
+	if sbjHead != nil {
+		sh := *sbjHead
+		sbjHeadHeight = sh.Height()
+		// sanity check the height to check whether it's within the range
+		if sbjHeadHeight < headers[0].Height() || sbjHeadHeight > headers[len(headers)-1].Height() {
+			sbjHeadHeight = 0
+		}
+	}
+
+	// if the header is within range, create a segment that *must* be applied
+	// such that the syncer fails if the subjective head cannot be applied
+	if sbjHeadHeight != 0 {
+		segmentSize := sbjHeadHeight - headers[0].Height() + 1
+		mustApplySegment := make([]H, segmentSize)
+		copy(mustApplySegment, headers[:segmentSize])
+		headers = headers[segmentSize:]
+
+		err := s.store.Append(ctx, mustApplySegment...)
+		if err != nil {
+			panic(fmt.Errorf("failed to apply trusted head to synced chain segment, "+
+				"potentially following fork: %w", err))
+		}
+		// if success, then clear subjective head as it's already applied as the store head
+		s.sbjHead.Store(nil)
+	}
+
+	if len(headers) == 0 {
+		s.metrics.recordTotalSynced(totalHeaders)
+		return nil
+	}
+
 	// we don't expect any issues in storing right now, as all headers are now verified.
 	// So, we should return immediately in case an error appears.
 	err := s.store.Append(ctx, headers...)
@@ -329,6 +370,6 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 		return err
 	}
 
-	s.metrics.recordTotalSynced(len(headers))
+	s.metrics.recordTotalSynced(totalHeaders)
 	return nil
 }

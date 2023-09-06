@@ -1,6 +1,7 @@
 package headertest
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -8,8 +9,6 @@ import (
 	"math"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/sha3"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -22,7 +21,7 @@ type DummyHeader struct {
 	HeightI      uint64
 	Timestamp    time.Time
 
-	hash header.Hash
+	HashI header.Hash
 
 	// VerifyFailure allows for testing scenarios where a header would fail
 	// verification. When set to true, it forces a failure.
@@ -40,10 +39,6 @@ func RandDummyHeader(t *testing.T) *DummyHeader {
 		HeightI:      randUint63(),
 		Timestamp:    time.Now().UTC(),
 	}
-	err := dh.rehash()
-	if err != nil {
-		t.Fatal(err)
-	}
 	return dh
 }
 
@@ -60,22 +55,7 @@ func (d *DummyHeader) ChainID() string {
 }
 
 func (d *DummyHeader) Hash() header.Hash {
-	if len(d.hash) == 0 {
-		if err := d.rehash(); err != nil {
-			panic(err)
-		}
-	}
-	return d.hash
-}
-
-func (d *DummyHeader) rehash() error {
-	b, err := d.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	hash := sha3.Sum512(b)
-	d.hash = hash[:]
-	return nil
+	return d.HashI
 }
 
 func (d *DummyHeader) Height() uint64 {
@@ -102,6 +82,14 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 func (d *DummyHeader) Verify(hdr *DummyHeader) error {
 	if hdr.VerifyFailure {
 		return &header.VerifyError{Reason: ErrDummyVerify, SoftFailure: hdr.SoftFailure}
+	}
+
+	// if adjacent, check PreviousHash -- this check is necessary
+	// to mock fork-following scenarios with the dummy header.
+	if header.Height() == d.Height()+1 {
+		if !bytes.Equal(header.PreviousHash, d.Hash()) {
+			return ErrDummyVerify
+		}
 	}
 	return nil
 }

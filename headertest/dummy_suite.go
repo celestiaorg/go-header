@@ -20,6 +20,13 @@ func NewTestSuite(t *testing.T) *DummySuite {
 	}
 }
 
+func NewTestSuiteWithHead(t *testing.T, head *DummyHeader) *DummySuite {
+	return &DummySuite{
+		t:    t,
+		head: head,
+	}
+}
+
 func (s *DummySuite) Head() *DummyHeader {
 	if s.head == nil {
 		s.head = s.genesis()
@@ -46,7 +53,7 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 	dh.HeightI = s.head.Height() + 1
 	dh.PreviousHash = s.head.Hash()
 	dh.Chainid = s.head.ChainID()
-	_ = dh.rehash()
+	dh.HashI = RandBytes(64)
 	s.head = dh
 	return s.head
 }
@@ -56,5 +63,6 @@ func (s *DummySuite) genesis() *DummyHeader {
 		HeightI:   1,
 		Timestamp: time.Now().Add(-10 * time.Second).UTC(),
 		Chainid:   "test",
+		HashI:     RandBytes(64),
 	}
 }

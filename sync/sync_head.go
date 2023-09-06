@@ -53,11 +53,9 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	return s.subjectiveHead(ctx)
 }
 
-// subjectiveHead returns the latest known local header that is not expired(within trusting period).
-// If the header is expired, it is retrieved from a trusted peer without validation;
-// in other words, an automatic subjective initialization is performed.
-func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
-	// pending head is the latest known subjective head and sync target, so try to get it
+// syncTarget returns the highest possible sync target (the latest known header)
+func (s *Syncer[H]) syncTarget(ctx context.Context) (H, error) {
+	// pending head is always the latest known sync target, so try to get it
 	// NOTES:
 	// * Empty when no sync is in progress
 	// * Pending cannot be expired, guaranteed
@@ -65,7 +63,21 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	if !pendHead.IsZero() {
 		return pendHead, nil
 	}
-	// if pending is empty - get the latest stored/synced head
+	// if pending is empty - get the latest known subjective head
+	return s.subjectiveHead(ctx)
+}
+
+// subjectiveHead returns the latest known local header that is not expired(within trusting period).
+// If the header is expired, it is retrieved from a trusted peer without validation;
+// in other words, an automatic subjective initialization is performed.
+func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
+	// first, check syncer's temporary store as it will always contain the latest
+	// subjective head that is not yet applied to the store
+	sbjHead := s.sbjHead.Load()
+	if sbjHead != nil {
+		return *sbjHead, nil
+	}
+	// next, check store to see if subjective head has already been applied
 	storeHead, err := s.store.Head(ctx)
 	if err != nil {
 		return storeHead, err
@@ -91,7 +103,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	// and set it as the new subjective head without validation,
 	// or, in other words, do 'automatic subjective initialization'
 	// NOTE: we avoid validation as the head expired to prevent possibility of the Long-Range Attack
-	s.setSubjectiveHead(ctx, trustHead)
+	s.setSubjectiveHead(ctx, trustHead, true)
 	switch {
 	default:
 		log.Infow("subjective initialization finished", "height", trustHead.Height())
@@ -106,7 +118,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 }
 
 // setSubjectiveHead takes already validated head and sets it as the new sync target.
-func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
+func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H, trusted bool) {
 	// TODO(@Wondertan): Right now, we can only store adjacent headers, instead we should:
 	//  * Allow storing any valid header here in Store
 	//  * Remove ErrNonAdjacent
@@ -126,7 +138,11 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 		// we already synced it up - do nothing
 		return
 	}
-	// and if valid, set it as new subjective head
+	// if trusted, set as subjective head
+	if trusted {
+		s.sbjHead.Store(&netHead)
+	}
+	// and set it as new sync target
 	s.pending.Add(netHead)
 	s.wantSync()
 	log.Infow("new network head", "height", netHead.Height(), "hash", netHead.Hash())
@@ -145,8 +161,12 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	}
 
 	// TODO(@Wondertan):
-	//  Implement setSyncTarget and use it for soft failures
-	s.setSubjectiveHead(ctx, head)
+	//  Implement setSyncTarget and use it for soft failures // TODO @renaynay <-can remove this comment?
+	//
+	// header can be considered as a subjective head if it passes full
+	// verification
+	trusted := !softFailure
+	s.setSubjectiveHead(ctx, head, trusted)
 	return err
 }
 
