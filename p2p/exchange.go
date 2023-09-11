@@ -156,7 +156,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				err = reqParams.TrustedHead.Verify(headers[0])
 				if err != nil {
 					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
-						"err", err)
+						"height", headers[0].Height(), "err", err)
 					// bad head was given, block peer
 					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
 					headerRespCh <- zero
