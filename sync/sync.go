@@ -41,7 +41,8 @@ type Syncer[H header.Header[H]] struct {
 	stateLk sync.RWMutex
 	state   State
 
-	// sbjHead is TODO document
+	// sbjHead is a trusted header that must be applied when processing headers
+	// from a sync job
 	sbjHead atomic.Pointer[H]
 
 	// signals to start syncing
@@ -172,9 +173,11 @@ func (s *Syncer[H]) wantSync() {
 
 // syncLoop controls syncing process.
 func (s *Syncer[H]) syncLoop() {
+	fmt.Println("Spawned")
 	for {
 		select {
 		case <-s.triggerSync:
+			fmt.Println("triggering sync")
 			s.sync(s.ctx)
 		case <-s.ctx.Done():
 			return
@@ -189,6 +192,7 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 		log.Errorw("getting sync target", "err", err)
 		return
 	}
+	fmt.Println("got sync target: ", target.Height())
 
 	storeHead, err := s.store.Head(ctx)
 	if err != nil {
@@ -351,7 +355,7 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 
 		err := s.store.Append(ctx, mustApplySegment...)
 		if err != nil {
-			panic(fmt.Errorf("failed to apply trusted head to synced chain segment, "+
+			log.Fatal(fmt.Errorf("failed to apply trusted head to synced chain segment, "+
 				"potentially following fork: %w", err))
 		}
 		// if success, then clear subjective head as it's already applied as the store head
