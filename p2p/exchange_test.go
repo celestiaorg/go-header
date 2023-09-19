@@ -6,14 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
 	libhost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
-	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	swarm "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/stretchr/testify/assert"
@@ -148,6 +145,14 @@ func TestExchange_RequestVerifiedHeadersFails(t *testing.T) {
 	hosts := createMocknet(t, 2)
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
 	store.Headers[2] = store.Headers[3]
+
+	// replace blacklistPeer with a function that records the peer that was blacklisted
+	var blacklisted peer.ID
+	exchg.peerTracker.blacklistPeer = func(pID peer.ID) error {
+		blacklisted = pID
+		return nil
+	}
+
 	// perform expected request
 	h := store.Headers[1]
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
@@ -156,9 +161,7 @@ func TestExchange_RequestVerifiedHeadersFails(t *testing.T) {
 	assert.Error(t, err)
 
 	// ensure that peer was added to the blacklist
-	peers := exchg.peerTracker.connGater.ListBlockedPeers()
-	require.Len(t, peers, 1)
-	require.True(t, hosts[1].ID() == peers[0])
+	require.Equal(t, hosts[1].ID(), blacklisted)
 }
 
 // TestExchange_RequestFullRangeHeaders requests max amount of headers
@@ -167,11 +170,9 @@ func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	// create mocknet with 5 peers
 	hosts := createMocknet(t, 5)
 	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), int(header.MaxRangeRequestSize))
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
 
 	// create new exchange
-	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, connGater,
+	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, nil,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -509,10 +510,7 @@ func createP2PExAndServer(
 	err = serverSideEx.Start(context.Background())
 	require.NoError(t, err)
 
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
-
-	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, connGater,
+	ex, err := NewExchange[*headertest.DummyHeader](host, []peer.ID{tpeer.ID()}, nil,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
