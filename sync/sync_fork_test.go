@@ -8,12 +8,15 @@ import (
 	"testing"
 )
 
-// TODO
+// TestForkFollowingPrevention tests that syncer will crash if it detects
+// that it is following a fork. This test must be executed as a separate
+// program given the need to capture the crash.
+//
 // 1. syncer gets a valid subjective head
 // 2. triggers sync job
-// 3. syncing from malicious peers who are giving it a fork
+// 3. syncing from malicious "eclipsing" peers who are giving it a fork
 // 4. sync up to subjective head - 1, try to apply subjective head (fails)
-// 5. ensure fork is tossed and Fatal is thrown
+// 5. ensure fork is detected and Fatal is thrown
 func TestForkFollowingPrevention(t *testing.T) {
 	path, err := filepath.Abs("./fork_test/fork.go")
 	require.NoError(t, err)
@@ -23,5 +26,5 @@ func TestForkFollowingPrevention(t *testing.T) {
 	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "exit status 1")
+	require.Equal(t, 1, cmd.ProcessState.ExitCode())
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/celestiaorg/go-header/sync"
 )
 
+// This program is for test purposes only. See TestForkFollowingPrevention
+// for further context.
 func main() {
 	t := &testing.T{}
 
