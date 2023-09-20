@@ -56,20 +56,28 @@ func main() {
 		panic(err)
 	}
 
-	logging.Logger("sync")
-	err = logging.SetLogLevel("sync", "debug")
+	_, err = ee.trustedPeer.GetByHeight(ctx, 100)
 	if err != nil {
 		panic(err)
 	}
+	_, err = ee.eclipsedExchange.GetByHeight(ctx, 100)
+	if err != nil {
+		panic(err)
+	}
+
+	logging.Logger("sync")
 
 	err = syncer.Start(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// this sleep is necessary to allow the syncer to trigger a job
+	// as calling SyncWait prematurely may falsely return without error
+	// as the syncer has not yet registered a sync job.
+	//time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 	syncer.SyncWait(ctx) //nolint:errcheck
-
 }
 
 // eclipsedExchange is an exchange that can serve a good Head to the syncer

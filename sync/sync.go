@@ -173,11 +173,9 @@ func (s *Syncer[H]) wantSync() {
 
 // syncLoop controls syncing process.
 func (s *Syncer[H]) syncLoop() {
-	fmt.Println("Spawned")
 	for {
 		select {
 		case <-s.triggerSync:
-			fmt.Println("triggering sync")
 			s.sync(s.ctx)
 		case <-s.ctx.Done():
 			return
@@ -192,7 +190,6 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 		log.Errorw("getting sync target", "err", err)
 		return
 	}
-	fmt.Println("got sync target: ", target.Height())
 
 	storeHead, err := s.store.Head(ctx)
 	if err != nil {

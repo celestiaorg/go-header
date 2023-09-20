@@ -15,12 +15,13 @@ import (
 // 4. sync up to subjective head - 1, try to apply subjective head (fails)
 // 5. ensure fork is tossed and Fatal is thrown
 func TestForkFollowingPrevention(t *testing.T) {
-
 	path, err := filepath.Abs("./fork_test/fork.go")
 	require.NoError(t, err)
 
 	cmd := exec.Command("go", "run", path)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
 	err = cmd.Run()
-	t.Log("err: ", err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exit status 1")
 }
