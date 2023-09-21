@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	logging "github.com/ipfs/go-log/v2"
 	"testing"
 	"time"
+
+	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
@@ -15,6 +16,9 @@ import (
 
 // This program is for test purposes only. See TestForkFollowingPrevention
 // for further context.
+//
+// This program runs an instance of a syncer against a modified p2p Exchange
+// that is designed to serve it a fork instead of the canonical chain.
 func main() {
 	t := &testing.T{}
 
@@ -24,11 +28,8 @@ func main() {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	maliciousSuite := headertest.NewTestSuiteWithHead(t, head)
-	maliciousHead := maliciousSuite.Head()
-
 	// set up syncer with a malicious peer as its remote peer
-	ee := newEclipsedExchange(ctx, t, head, maliciousHead)
+	ee := newEclipsedExchange(ctx, t, head)
 
 	localStore := store.NewTestStore(ctx, t, head)
 	syncer, err := sync.NewSyncer[*headertest.DummyHeader](
@@ -45,15 +46,24 @@ func main() {
 		panic(err)
 	}
 
-	// give bad headers to the malicious (eclipsing) peer in order
-	// to attempt to get syncer to follow a fork
-	err = ee.appendToEclipsedExchange(ctx, maliciousSuite.GenDummyHeaders(99)...)
+	// generate a good canonical chain
+	canonical := suite.GenDummyHeaders(99)
+
+	// give good headers to the trusted peer in order to return a good subjective head
+	// to the syncer upon its start
+	err = ee.appendToTrusted(ctx, canonical...)
 	if err != nil {
 		panic(err)
 	}
-	// give good headers to the trusted peer in order to return a good subjective head
-	// to the syncer upon its start
-	err = ee.appendToTrusted(ctx, suite.GenDummyHeaders(99)...)
+
+	// generate a fork starting at block height 50 of the canonical chain
+	fork := canonical[:50]
+	maliciousSuite := headertest.NewTestSuiteWithHead(t, fork[len(fork)-1])
+	// generate 50 blocks on the fork
+	fork = append(fork, maliciousSuite.GenDummyHeaders(50)...)
+	// give bad headers to the malicious (eclipsing) peer in order
+	// to attempt to get syncer to follow a fork
+	err = ee.appendToEclipsedExchange(ctx, fork...)
 	if err != nil {
 		panic(err)
 	}
@@ -93,13 +103,12 @@ type eclipsedExchange struct {
 func newEclipsedExchange(
 	ctx context.Context,
 	t *testing.T,
-	head, maliciousHead *headertest.DummyHeader,
+	head *headertest.DummyHeader,
 ) *eclipsedExchange {
 	return &eclipsedExchange{
 		trustedPeer:      store.NewTestStore(ctx, t, head),
-		eclipsedExchange: store.NewTestStore(ctx, t, maliciousHead),
+		eclipsedExchange: store.NewTestStore(ctx, t, head),
 	}
-
 }
 
 // Head returns a good header from the trusted peer.
@@ -113,7 +122,6 @@ func (e *eclipsedExchange) GetVerifiedRange(ctx context.Context, from *headertes
 	return e.eclipsedExchange.GetVerifiedRange(ctx, from, amount)
 }
 
-// TODO document
 func (e *eclipsedExchange) appendToTrusted(ctx context.Context, h ...*headertest.DummyHeader) error {
 	return e.trustedPeer.Append(ctx, h...)
 }

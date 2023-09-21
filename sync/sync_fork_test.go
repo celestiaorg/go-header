@@ -1,11 +1,12 @@
 package sync
 
 import (
-	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestForkFollowingPrevention tests that syncer will crash if it detects

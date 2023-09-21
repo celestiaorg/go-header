@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -13,7 +13,13 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-var ErrDummyVerify = errors.New("dummy verify error")
+type ErrDummyVerify struct {
+	Reason string
+}
+
+func (edv ErrDummyVerify) Error() string {
+	return edv.Reason
+}
 
 type DummyHeader struct {
 	Chainid      string
@@ -88,7 +94,10 @@ func (d *DummyHeader) Verify(hdr *DummyHeader) error {
 	// to mock fork-following scenarios with the dummy header.
 	if header.Height() == d.Height()+1 {
 		if !bytes.Equal(header.PreviousHash, d.Hash()) {
-			return ErrDummyVerify
+			return ErrDummyVerify{
+				Reason: fmt.Sprintf("adjacent verify failure on header at height %d, err: %x != %x",
+					header.Height(), header.PreviousHash, d.Hash()),
+			}
 		}
 	}
 	return nil
