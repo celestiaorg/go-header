@@ -52,7 +52,7 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	tests := []struct {
 		requestFromTrusted bool
-		lastHeader         header.Header[*headertest.DummyHeader]
+		lastHeader         *headertest.DummyHeader
 		expectedHeight     uint64
 		expectedHash       header.Hash
 	}{
@@ -76,7 +76,7 @@ func TestExchange_RequestHead(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var opts []header.HeadOption[*headertest.DummyHeader]
 			if !tt.requestFromTrusted {
-				opts = append(opts, header.WithTrustedHead(tt.lastHeader))
+				opts = append(opts, header.WithTrustedHead[*headertest.DummyHeader](tt.lastHeader))
 			}
 
 			header, err := exchg.Head(ctx, opts...)
@@ -121,13 +121,12 @@ func TestExchange_RequestHead_SoftFailure(t *testing.T) {
 
 	// get first subjective head from trusted peer to initialize the
 	// exchange's store
-	var head header.Header[*headertest.DummyHeader]
-	head, err = exchg.Head(ctx)
+	head, err := exchg.Head(ctx)
 	require.NoError(t, err)
 
 	// now use that trusted head to request a new head from the exchange
 	// from the tracked peer
-	softFailHead, err := exchg.Head(ctx, header.WithTrustedHead(head))
+	softFailHead, err := exchg.Head(ctx, header.WithTrustedHead[*headertest.DummyHeader](head))
 	require.NoError(t, err)
 	assert.Equal(t, trackedStore.HeadHeight, softFailHead.Height())
 }
