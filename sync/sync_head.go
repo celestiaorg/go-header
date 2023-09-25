@@ -73,9 +73,9 @@ func (s *Syncer[H]) syncTarget(ctx context.Context) (H, error) {
 func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	// first, check syncer's temporary store as it will always contain the latest
 	// subjective head that is not yet applied to the store
-	sbjHead := s.sbjHead.Load()
-	if sbjHead != nil {
-		return *sbjHead, nil
+	sbjHead := *s.sbjHead.Load()
+	if !sbjHead.IsZero() {
+		return sbjHead, nil
 	}
 	// next, check store to see if subjective head has already been applied
 	storeHead, err := s.store.Head(ctx)

@@ -74,13 +74,17 @@ func NewSyncer[H header.Header[H]](
 		return nil, err
 	}
 
-	return &Syncer[H]{
+	s := &Syncer[H]{
 		sub:         sub,
 		store:       syncStore[H]{Store: store},
 		getter:      syncGetter[H]{Getter: getter},
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
-	}, nil
+	}
+	// initialize subjective head to zero value
+	s.sbjHead.Store(new(H))
+
+	return s, nil
 }
 
 // Start starts the syncing routine.
@@ -330,12 +334,11 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 	totalHeaders := len(headers)
 
 	var sbjHeadHeight uint64
-	sbjHead := s.sbjHead.Load()
+	sbjHead := *s.sbjHead.Load()
 	// if there's no subjective head stored, syncer has already applied the
 	// subjective head to the store and the syncer has passed it
-	if sbjHead != nil {
-		sh := *sbjHead
-		sbjHeadHeight = sh.Height()
+	if !sbjHead.IsZero() {
+		sbjHeadHeight = sbjHead.Height()
 		// sanity check the height to check whether it's within the range
 		if sbjHeadHeight < headers[0].Height() || sbjHeadHeight > headers[len(headers)-1].Height() {
 			sbjHeadHeight = 0
@@ -356,7 +359,7 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 				"potentially following fork: %w", sbjHeadHeight, err))
 		}
 		// if success, then clear subjective head as it's already applied as the store head
-		s.sbjHead.Store(nil)
+		s.sbjHead.Store(new(H))
 	}
 
 	// we don't expect any issues in storing right now, as all headers are now verified.
