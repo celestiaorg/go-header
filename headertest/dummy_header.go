@@ -27,6 +27,9 @@ type DummyHeader struct {
 	// VerifyFailure allows for testing scenarios where a header would fail
 	// verification. When set to true, it forces a failure.
 	VerifyFailure bool
+	// SoftFailure allows for testing scenarios where a header would fail
+	// verification with SoftFailure set to true
+	SoftFailure bool
 }
 
 func RandDummyHeader(t *testing.T) *DummyHeader {
@@ -96,11 +99,10 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 	return expirationTime.Before(time.Now())
 }
 
-func (d *DummyHeader) Verify(header *DummyHeader) error {
-	if header.VerifyFailure {
-		return ErrDummyVerify
+func (d *DummyHeader) Verify(hdr *DummyHeader) error {
+	if hdr.VerifyFailure {
+		return &header.VerifyError{Reason: ErrDummyVerify, SoftFailure: hdr.SoftFailure}
 	}
-
 	return nil
 }
 

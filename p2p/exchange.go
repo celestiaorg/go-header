@@ -3,6 +3,7 @@ package p2p
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -126,7 +127,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	// trusted peers for its Head request. If nil, trusted peers will
 	// be used. If non-nil, Exchange will ask several peers from its network for
 	// their Head and verify against the given trusted header.
-	useTrackedPeers := reqParams.TrustedHead != nil
+	useTrackedPeers := !reqParams.TrustedHead.IsZero()
 	if useTrackedPeers {
 		trackedPeers := ex.peerTracker.getPeers(maxUntrustedHeadRequests)
 		if len(trackedPeers) > 0 {
@@ -153,14 +154,22 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 			}
 			// if tracked (untrusted) peers were requested, verify head
 			if useTrackedPeers {
-				err = reqParams.TrustedHead.Verify(headers[0])
+				err = header.Verify[H](reqParams.TrustedHead, headers[0], header.DefaultHeightThreshold)
 				if err != nil {
-					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
-						"height", headers[0].Height(), "err", err)
+					var verErr *header.VerifyError
+					if errors.As(err, &verErr) && verErr.SoftFailure {
+						log.Debugw("received head from tracked peer that soft-failed verification",
+							"tracked peer", from, "err", err)
+						headerRespCh <- headers[0]
+						return
+					}
 					// bad head was given, block peer
 					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
+					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
+						"height", headers[0].Height(), "err", err)
 					headerRespCh <- zero
 					return
+
 				}
 			}
 			// request ensures that the result slice will have at least one Header

@@ -52,7 +52,7 @@ func TestExchange_RequestHead(t *testing.T) {
 
 	tests := []struct {
 		requestFromTrusted bool
-		lastHeader         header.Header[*headertest.DummyHeader]
+		lastHeader         *headertest.DummyHeader
 		expectedHeight     uint64
 		expectedHash       header.Hash
 	}{
@@ -76,7 +76,7 @@ func TestExchange_RequestHead(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var opts []header.HeadOption[*headertest.DummyHeader]
 			if !tt.requestFromTrusted {
-				opts = append(opts, header.WithTrustedHead(tt.lastHeader))
+				opts = append(opts, header.WithTrustedHead[*headertest.DummyHeader](tt.lastHeader))
 			}
 
 			header, err := exchg.Head(ctx, opts...)
@@ -86,6 +86,49 @@ func TestExchange_RequestHead(t *testing.T) {
 			assert.Equal(t, tt.expectedHash, header.Hash())
 		})
 	}
+}
+
+// TestExchange_RequestHead_SoftFailure tests that the exchange still processes
+// a Head response that has a SoftFailure.
+func TestExchange_RequestHead_SoftFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	hosts := createMocknet(t, 3)
+	exchg, _ := createP2PExAndServer(t, hosts[0], hosts[1])
+
+	// create a tracked peer
+	suite := headertest.NewTestSuite(t)
+	trackedStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 50)
+	// create a header that will SoftFail verification and append it to tracked
+	// peer's store
+	hdr := suite.GenDummyHeaders(1)[0]
+	hdr.VerifyFailure = true
+	hdr.SoftFailure = true
+	err := trackedStore.Append(ctx, hdr)
+	require.NoError(t, err)
+	// start the tracked peer's server
+	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](hosts[2], trackedStore,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	err = serverSideEx.Start(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = serverSideEx.Stop(ctx)
+		require.NoError(t, err)
+	})
+
+	// get first subjective head from trusted peer to initialize the
+	// exchange's store
+	head, err := exchg.Head(ctx)
+	require.NoError(t, err)
+
+	// now use that trusted head to request a new head from the exchange
+	// from the tracked peer
+	softFailHead, err := exchg.Head(ctx, header.WithTrustedHead[*headertest.DummyHeader](head))
+	require.NoError(t, err)
+	assert.Equal(t, trackedStore.HeadHeight, softFailHead.Height())
 }
 
 func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
