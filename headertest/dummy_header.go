@@ -26,8 +26,7 @@ type DummyHeader struct {
 	PreviousHash header.Hash
 	HeightI      uint64
 	Timestamp    time.Time
-
-	HashI header.Hash
+	HashI        header.Hash
 
 	// VerifyFailure allows for testing scenarios where a header would fail
 	// verification. When set to true, it forces a failure.

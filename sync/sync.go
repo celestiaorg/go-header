@@ -359,11 +359,6 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 		s.sbjHead.Store(nil)
 	}
 
-	if len(headers) == 0 {
-		s.metrics.recordTotalSynced(totalHeaders)
-		return nil
-	}
-
 	// we don't expect any issues in storing right now, as all headers are now verified.
 	// So, we should return immediately in case an error appears.
 	err := s.store.Append(ctx, headers...)
