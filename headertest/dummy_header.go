@@ -14,7 +14,7 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-var DummyHeaderError = errors.New("forced failure")
+var ErrVerificationFailed = errors.New("forced failure")
 
 type DummyHeader struct {
 	Chainid      string
@@ -81,7 +81,7 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 
 func (d *DummyHeader) Verify(hdr *DummyHeader) error {
 	if hdr.VerifyFailure {
-		return &header.VerifyError{Reason: DummyHeaderError, SoftFailure: hdr.SoftFailure}
+		return &header.VerifyError{Reason: ErrVerificationFailed, SoftFailure: hdr.SoftFailure}
 	}
 
 	// if adjacent, check PreviousHash -- this check is necessary
