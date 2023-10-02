@@ -38,7 +38,7 @@ func main() {
 		headertest.NewDummySubscriber(),
 		// TrustingPeriod can be set to a nanosecond so even if the head
 		// given by the trusted peer expires by the time `subjectiveHead` is
-		// called again, it will still call Head on the `eclipsedExchange`
+		// called again, it will still call Head on the `eclipsedPeer`
 		// which will return the same head as before.
 		sync.WithTrustingPeriod(time.Nanosecond),
 	)
@@ -72,7 +72,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = ee.eclipsedExchange.GetByHeight(ctx, 100)
+	_, err = ee.eclipsedPeer.GetByHeight(ctx, 100)
 	if err != nil {
 		panic(err)
 	}
@@ -96,8 +96,10 @@ func main() {
 // but attempts to "eclipse" the syncer by serving it a fork as it requests
 // headers between its storeHead --> subjectiveHead.
 type eclipsedExchange struct {
-	trustedPeer      header.Store[*headertest.DummyHeader]
-	eclipsedExchange header.Store[*headertest.DummyHeader]
+	// trusted peer that serves a good Head to the syncer
+	trustedPeer header.Store[*headertest.DummyHeader]
+	// bad peers who attempt to eclipse the syncer and get it to follow a fork
+	eclipsedPeer header.Store[*headertest.DummyHeader]
 }
 
 func newEclipsedExchange(
@@ -106,8 +108,8 @@ func newEclipsedExchange(
 	head *headertest.DummyHeader,
 ) *eclipsedExchange {
 	return &eclipsedExchange{
-		trustedPeer:      store.NewTestStore(ctx, t, head),
-		eclipsedExchange: store.NewTestStore(ctx, t, head),
+		trustedPeer:  store.NewTestStore(ctx, t, head),
+		eclipsedPeer: store.NewTestStore(ctx, t, head),
 	}
 }
 
@@ -119,7 +121,7 @@ func (e *eclipsedExchange) Head(ctx context.Context, h ...header.HeadOption[*hea
 // GetVerifiedRange returns a fork from the eclipsed exchange in an attempt to
 // eclipse the syncer.
 func (e *eclipsedExchange) GetVerifiedRange(ctx context.Context, from *headertest.DummyHeader, amount uint64) ([]*headertest.DummyHeader, error) {
-	return e.eclipsedExchange.GetVerifiedRange(ctx, from, amount)
+	return e.eclipsedPeer.GetVerifiedRange(ctx, from, amount)
 }
 
 func (e *eclipsedExchange) appendToTrusted(ctx context.Context, h ...*headertest.DummyHeader) error {
@@ -127,7 +129,7 @@ func (e *eclipsedExchange) appendToTrusted(ctx context.Context, h ...*headertest
 }
 
 func (e *eclipsedExchange) appendToEclipsedExchange(ctx context.Context, h ...*headertest.DummyHeader) error {
-	return e.eclipsedExchange.Append(ctx, h...)
+	return e.eclipsedPeer.Append(ctx, h...)
 }
 
 func (e *eclipsedExchange) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
