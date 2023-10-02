@@ -355,9 +355,14 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 
 		err := s.store.Append(ctx, mustApplySegment...)
 		if err != nil {
-			log.Fatal(fmt.Errorf("failed to apply trusted head at height %d to synced chain segment, "+
-				"potentially following fork: %w", sbjHeadHeight, err))
+			var verErr *header.VerifyError
+			if errors.As(err, &verErr) {
+				log.Fatal(fmt.Errorf("failed to apply trusted head at height %d to synced chain segment, "+
+					"potentially following fork: %w", sbjHeadHeight, err))
+			}
+			return err
 		}
+
 		// if success, then clear subjective head as it's already applied as the store head
 		s.sbjHead.Store(new(H))
 	}

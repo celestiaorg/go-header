@@ -31,7 +31,7 @@ func TestVerify(t *testing.T) {
 				untrusted.VerifyFailure = true
 				return untrusted
 			},
-			err: ErrDummyVerify{},
+			err: DummyHeaderError,
 		},
 		{
 			prepare: func() *DummyHeader {
@@ -39,7 +39,7 @@ func TestVerify(t *testing.T) {
 				untrusted.VerifyFailure = true
 				return untrusted
 			},
-			err:  ErrDummyVerify{},
+			err:  DummyHeaderError,
 			soft: true, // soft because non-adjacent
 		},
 		{

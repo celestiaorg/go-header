@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -13,13 +14,7 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-type ErrDummyVerify struct {
-	Reason string
-}
-
-func (edv ErrDummyVerify) Error() string {
-	return edv.Reason
-}
+var DummyHeaderError = errors.New("forced failure")
 
 type DummyHeader struct {
 	Chainid      string
@@ -86,16 +81,16 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 
 func (d *DummyHeader) Verify(hdr *DummyHeader) error {
 	if hdr.VerifyFailure {
-		return &header.VerifyError{Reason: ErrDummyVerify, SoftFailure: hdr.SoftFailure}
+		return &header.VerifyError{Reason: DummyHeaderError, SoftFailure: hdr.SoftFailure}
 	}
 
 	// if adjacent, check PreviousHash -- this check is necessary
 	// to mock fork-following scenarios with the dummy header.
-	if header.Height() == d.Height()+1 {
-		if !bytes.Equal(header.PreviousHash, d.Hash()) {
-			return ErrDummyVerify{
-				Reason: fmt.Sprintf("adjacent verify failure on header at height %d, err: %x != %x",
-					header.Height(), header.PreviousHash, d.Hash()),
+	if hdr.Height() == d.Height()+1 {
+		if !bytes.Equal(hdr.PreviousHash, d.Hash()) {
+			return &header.VerifyError{
+				Reason: fmt.Errorf("adjacent verify failure on header at height %d, err: %x != %x",
+					hdr.Height(), hdr.PreviousHash, d.Hash()),
 			}
 		}
 	}
