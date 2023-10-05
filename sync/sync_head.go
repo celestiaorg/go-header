@@ -192,7 +192,7 @@ func isExpired[H header.Header[H]](header H, period time.Duration) bool {
 // isRecent checks if header is recent against the given recency threshold.
 func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Duration) bool {
 	if recencyThreshold == 0 {
-		recencyThreshold = blockTime + blockTime/2 // allow some drift by adding additional buffer of 1/2 of block time
+		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
 	}
 	return time.Since(header.Time()) <= recencyThreshold
 }
