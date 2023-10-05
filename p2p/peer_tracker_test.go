@@ -11,7 +11,6 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p/core/peer"
 	testpeer "github.com/libp2p/go-libp2p/core/test"
-	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,11 +24,8 @@ func TestPeerTracker_GC(t *testing.T) {
 
 	gcCycle = time.Millisecond * 200
 
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
-
 	pidstore := newDummyPIDStore()
-	p := newPeerTracker(h[0], connGater, pidstore)
+	p := newPeerTracker(h[0], nil, pidstore)
 
 	maxAwaitingTime = time.Millisecond
 
@@ -51,7 +47,7 @@ func TestPeerTracker_GC(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 500)
 
-	err = p.stop(ctx)
+	err := p.stop(ctx)
 	require.NoError(t, err)
 
 	require.Nil(t, p.trackedPeers[pid1])
@@ -65,21 +61,21 @@ func TestPeerTracker_GC(t *testing.T) {
 
 func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater, nil)
-	maxAwaitingTime = time.Millisecond
+	// create blacklistPeer function that records the peer that was blacklisted
+	var blacklisted peer.ID
+	blacklistPeer := func(pID peer.ID) error {
+		blacklisted = pID
+		return nil
+	}
+	p := newPeerTracker(h[0], blacklistPeer, nil)
 	p.blockPeer(h[1].ID(), errors.New("test"))
-	require.Len(t, connGater.ListBlockedPeers(), 1)
-	require.True(t, connGater.ListBlockedPeers()[0] == h[1].ID())
+	require.Equal(t, h[1].ID(), blacklisted)
+	require.Len(t, h[0].Network().Conns(), 0)
 }
 
 func TestPeerTracker_Bootstrap(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-
-	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
-	require.NoError(t, err)
 
 	// mn := createMocknet(t, 10)
 	mn, err := mocknet.FullMeshConnected(10)
@@ -100,7 +96,7 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 	err = pidstore.Put(ctx, prevSeen[2:])
 	require.NoError(t, err)
 
-	tracker := newPeerTracker(mn.Hosts()[0], connGater, pidstore)
+	tracker := newPeerTracker(mn.Hosts()[0], nil, pidstore)
 
 	go tracker.track()
 

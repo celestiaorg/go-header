@@ -13,7 +13,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
@@ -51,7 +50,7 @@ type Exchange[H header.Header[H]] struct {
 func NewExchange[H header.Header[H]](
 	host host.Host,
 	peers peer.IDSlice,
-	gater *conngater.BasicConnectionGater,
+	blacklistPeer func(id peer.ID) error,
 	opts ...Option[ClientParameters],
 ) (*Exchange[H], error) {
 	params := DefaultClientParameters()
@@ -67,7 +66,7 @@ func NewExchange[H header.Header[H]](
 	ex := &Exchange[H]{
 		host:        host,
 		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore),
+		peerTracker: newPeerTracker(host, blacklistPeer, params.pidstore),
 		Params:      params,
 	}
 

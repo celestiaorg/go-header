@@ -9,7 +9,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libpeer "github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 )
 
 const (
@@ -28,8 +27,8 @@ var (
 )
 
 type peerTracker struct {
-	host      host.Host
-	connGater *conngater.BasicConnectionGater
+	host          host.Host
+	blacklistPeer func(id libpeer.ID) error
 
 	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
@@ -53,13 +52,13 @@ type peerTracker struct {
 
 func newPeerTracker(
 	h host.Host,
-	connGater *conngater.BasicConnectionGater,
+	blacklistPeer func(id libpeer.ID) error,
 	pidstore PeerIDStore,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &peerTracker{
 		host:              h,
-		connGater:         connGater,
+		blacklistPeer:     blacklistPeer,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
 		pidstore:          pidstore,
@@ -301,7 +300,7 @@ func (p *peerTracker) stop(ctx context.Context) error {
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
 func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 	// add peer to the blacklist, so we can't connect to it in the future.
-	err := p.connGater.BlockPeer(pID)
+	err := p.blacklistPeer(pID)
 	if err != nil {
 		log.Errorw("header/p2p: blocking peer failed", "pID", pID, "err", err)
 	}
