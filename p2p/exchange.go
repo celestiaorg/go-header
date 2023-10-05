@@ -163,8 +163,6 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 						headerRespCh <- headers[0]
 						return
 					}
-					// bad head was given, block peer
-					ex.peerTracker.blockPeer(from, fmt.Errorf("returned bad head: %w", err))
 					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
 						"height", headers[0].Height(), "err", err)
 					headerRespCh <- zero
