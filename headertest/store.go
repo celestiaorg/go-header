@@ -64,8 +64,20 @@ func (m *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	return m.Headers[height], nil
 }
 
-func (m *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
-	headers := make([]H, to-from)
+func (m *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
+	return m.getRangeByHeight(ctx, from, to)
+}
+
+// GetRangeByHeight returns headers in range [from; to).
+func (m *Store[H]) GetRangeByHeight(ctx context.Context, fromHead H, to uint64) ([]H, error) {
+	from := fromHead.Height() + 1
+	return m.getRangeByHeight(ctx, from, to)
+}
+
+func (m *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
+	amount := to - from
+	headers := make([]H, amount)
+
 	// As the requested range is [from; to),
 	// check that (to-1) height in request is less than
 	// the biggest header height in store.
@@ -77,14 +89,6 @@ func (m *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 		from++
 	}
 	return headers, nil
-}
-
-func (m *Store[H]) GetVerifiedRange(
-	ctx context.Context,
-	h H,
-	to uint64,
-) ([]H, error) {
-	return m.GetRangeByHeight(ctx, uint64(h.Height())+1, to)
 }
 
 func (m *Store[H]) Has(context.Context, header.Hash) (bool, error) {

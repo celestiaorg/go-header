@@ -213,36 +213,20 @@ func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error
 	return headers[0], nil
 }
 
-// GetRangeByHeight performs a request for the given range of Headers
-// to the network. Note that the Headers must be verified thereafter.
-func (ex *Exchange[H]) GetRangeByHeight(ctx context.Context, from, amount uint64) ([]H, error) {
-	if amount == 0 {
-		return make([]H, 0), nil
-	}
-	if amount > header.MaxRangeRequestSize {
-		return nil, header.ErrHeadersLimitExceeded
-	}
-	session := newSession[H](ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout)
-	defer session.close()
-	return session.getRangeByHeight(ctx, from, amount, ex.Params.MaxHeadersPerRangeRequest)
-}
-
-// GetVerifiedRange performs a request for the given range of Headers to the network and
+// GetRangeByHeight performs a request for the given range of Headers to the network and
 // ensures that returned headers are correct against the passed one.
-func (ex *Exchange[H]) GetVerifiedRange(
+func (ex *Exchange[H]) GetRangeByHeight(
 	ctx context.Context,
 	from H,
-	amount uint64,
+	to uint64,
 ) ([]H, error) {
-	if amount == 0 {
-		return make([]H, 0), nil
-	}
 	session := newSession[H](
 		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
-	return session.getRangeByHeight(ctx, uint64(from.Height())+1, amount, ex.Params.MaxHeadersPerRangeRequest)
+	amount := to - (from.Height() + 1)
+	return session.getRangeByHeight(ctx, from.Height()+1, amount, ex.Params.MaxHeadersPerRangeRequest)
 }
 
 // Get performs a request for the Header by the given hash corresponding

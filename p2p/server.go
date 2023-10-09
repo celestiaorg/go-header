@@ -210,7 +210,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		}
 
 		// might be a case when store hasn't synced yet to the requested range
-		if uint64(head.Height()) < from {
+		if head.Height() < from {
 			span.SetStatus(codes.Error, header.ErrNotFound.Error())
 			log.Debugw("server: requested headers not stored",
 				"from", from,
@@ -229,7 +229,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		to = uint64(head.Height()) + 1
 	}
 
-	headersByRange, err := serv.store.GetRangeByHeight(ctx, from, to)
+	headersByRange, err := serv.store.GetRange(ctx, from, to)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		if errors.Is(err, context.DeadlineExceeded) {

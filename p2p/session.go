@@ -197,7 +197,7 @@ func (s *session[H]) doRequest(
 	responseLn := uint64(len(h))
 	// ensure that we received the correct amount of headers.
 	if responseLn < req.Amount {
-		from := uint64(h[responseLn-1].Height())
+		from := h[responseLn-1].Height()
 		amount := req.Amount - responseLn
 
 		select {
