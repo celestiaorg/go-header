@@ -99,8 +99,8 @@ func TestStore(t *testing.T) {
 	require.NoError(t, err)
 }
 
-//TestStoreGetByHeight_ExpectedRange
-func TestStoreGetByHeight_ExpectedRange(t *testing.T) {
+// TestStore_GetRangeByHeight_ExpectedRange
+func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -121,7 +121,7 @@ func TestStoreGetByHeight_ExpectedRange(t *testing.T) {
 	err = store.Append(ctx, in...)
 	require.NoError(t, err)
 
-	// request the range [4:98) || (from:to)
+	// request the range [4:98] || (from:to)
 	from := in[2]
 	firstHeaderInRangeHeight := from.Height() + 1
 	lastHeaderInRangeHeight := uint64(98)
@@ -129,6 +129,42 @@ func TestStoreGetByHeight_ExpectedRange(t *testing.T) {
 	expectedLenHeaders := to - firstHeaderInRangeHeight // expected amount
 
 	out, err := store.GetRangeByHeight(ctx, from, to)
+	require.NoError(t, err)
+
+	assert.Len(t, out, int(expectedLenHeaders))
+	assert.Equal(t, firstHeaderInRangeHeight, out[0].Height())
+	assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
+}
+
+// TestStore_GetRange_ExpectedRange
+func TestStore_GetRange_ExpectedRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStoreWithHead(ctx, ds, suite.Head())
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
+
+	in := suite.GenDummyHeaders(100)
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	// request the range [4:98]
+	firstHeaderInRangeHeight := uint64(4)
+	lastHeaderInRangeHeight := uint64(98)
+	to := lastHeaderInRangeHeight + 1
+	expectedLenHeaders := to - firstHeaderInRangeHeight // expected amount
+
+	out, err := store.GetRange(ctx, firstHeaderInRangeHeight, to)
 	require.NoError(t, err)
 
 	assert.Len(t, out, int(expectedLenHeaders))
