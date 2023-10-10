@@ -166,35 +166,36 @@ func TestExchange_RequestHeader(t *testing.T) {
 	assert.Equal(t, store.Headers[5].Hash(), header.Hash())
 }
 
-func TestExchange_RequestHeaders(t *testing.T) {
+func TestExchange_GetRangeByHeight(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
 	hosts := createMocknet(t, 2)
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
 
-	gen, err := store.GetByHeight(ctx, 1)
+	from, err := store.GetByHeight(ctx, 1)
 	require.NoError(t, err)
 
+	firstHeaderInRangeHeight := from.Height() + 1
+	lastHeaderInRangeHeight := uint64(4)
+	to := lastHeaderInRangeHeight + 1
+	expectedLenHeaders := to - firstHeaderInRangeHeight // expected amount
+
 	// perform expected request
-	gotHeaders, err := exchg.GetRangeByHeight(ctx, gen, 5)
+	gotHeaders, err := exchg.GetRangeByHeight(ctx, from, to)
 	require.NoError(t, err)
+
+	assert.Len(t, gotHeaders, int(expectedLenHeaders))
+	assert.Equal(t, firstHeaderInRangeHeight, gotHeaders[0].Height())
+	assert.Equal(t, lastHeaderInRangeHeight, gotHeaders[len(gotHeaders)-1].Height())
+
 	for _, got := range gotHeaders {
 		assert.Equal(t, store.Headers[got.Height()].Height(), got.Height())
 		assert.Equal(t, store.Headers[got.Height()].Hash(), got.Hash())
 	}
 }
 
-func TestExchange_RequestVerifiedHeaders(t *testing.T) {
-	hosts := createMocknet(t, 2)
-	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
-	// perform expected request
-	h := store.Headers[1]
-	_, err := exchg.GetRangeByHeight(context.Background(), h, 3)
-	require.NoError(t, err)
-}
-
-func TestExchange_RequestVerifiedHeadersFails(t *testing.T) {
+func TestExchange_GetRangeByHeight_FailsVerification(t *testing.T) {
 	hosts := createMocknet(t, 2)
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
 	store.Headers[3].VerifyFailure = true // force a verification failure on the 3rd header
@@ -202,7 +203,9 @@ func TestExchange_RequestVerifiedHeadersFails(t *testing.T) {
 	h := store.Headers[1]
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 	t.Cleanup(cancel)
-	_, err := exchg.GetRangeByHeight(ctx, h, 4) // requests range (1:4)
+
+	// requests range (1:4)
+	_, err := exchg.GetRangeByHeight(ctx, h, 4)
 	assert.Error(t, err)
 
 	// ensure that peer was added to the blacklist
