@@ -8,37 +8,32 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+var meter = otel.Meter("header/p2p")
+
 type metrics struct {
 	responseSize     metric.Float64Histogram
 	responseDuration metric.Float64Histogram
 }
 
-var (
-	meter = otel.Meter("header/p2p")
-)
-
-func (ex *Exchange[H]) InitMetrics() error {
+func newExchangeMetrics() *metrics {
 	responseSize, err := meter.Float64Histogram(
-		"header_p2p_headers_response_size",
+		"header_p2p_exchange_response_size",
 		metric.WithDescription("Size of get headers response in bytes"),
 	)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
 	responseDuration, err := meter.Float64Histogram(
-		"header_p2p_headers_request_duration",
+		"header_p2p_exchange_request_duration",
 		metric.WithDescription("Duration of get headers request in seconds"),
 	)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	ex.metrics = &metrics{
+	return &metrics{
 		responseSize:     responseSize,
 		responseDuration: responseDuration,
 	}
-	return nil
 }
 
 func (m *metrics) observeResponse(ctx context.Context, size uint64, duration uint64, err error) {

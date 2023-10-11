@@ -28,6 +28,8 @@ type ServerParameters struct {
 	// networkID is a network that will be used to create a protocol.ID
 	// Is empty by default
 	networkID string
+	// metrics is a flag that enables metrics collection.
+	metrics bool
 }
 
 // DefaultServerParameters returns the default params to configure the store.
@@ -51,6 +53,17 @@ func (p *ServerParameters) Validate() error {
 			"%s. %s: %v", greaterThenZero, providedSuffix, p.RangeRequestTimeout)
 	}
 	return nil
+}
+
+func WithMetrics[T parameters]() Option[T] {
+	return func(p *T) {
+		switch t := any(p).(type) { //nolint:gocritic
+		case *ServerParameters:
+			t.metrics = true
+		case *ClientParameters:
+			t.metrics = true
+		}
+	}
 }
 
 // WithWriteDeadline is a functional option that configures the
@@ -119,7 +132,9 @@ type ClientParameters struct {
 	networkID string
 	// chainID is an identifier of the chain.
 	chainID string
-
+	// metrics is a flag that enables metrics collection.
+	metrics bool
+	// pidstore is an optional interface used to periodically dump peers
 	pidstore PeerIDStore
 }
 
@@ -149,14 +164,13 @@ func (p *ClientParameters) Validate() error {
 }
 
 // WithMaxHeadersPerRangeRequest is a functional option that configures the
-// // `MaxRangeRequestSize` parameter.
+// `MaxRangeRequestSize` parameter.
 func WithMaxHeadersPerRangeRequest[T ClientParameters](amount uint64) Option[T] {
 	return func(p *T) {
 		switch t := any(p).(type) { //nolint:gocritic
 		case *ClientParameters:
 			t.MaxHeadersPerRangeRequest = amount
 		}
-
 	}
 }
 
