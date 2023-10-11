@@ -59,7 +59,7 @@ func NewSyncer[H header.Header[H]](
 	getter header.Getter[H],
 	store header.Store[H],
 	sub header.Subscriber[H],
-	opts ...Options,
+	opts ...Option,
 ) (*Syncer[H], error) {
 	params := DefaultParameters()
 	for _, opt := range opts {
