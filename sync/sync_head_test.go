@@ -138,7 +138,7 @@ func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.
 func (t *wrappedGetter) GetRangeByHeight(
 	ctx context.Context,
 	from *headertest.DummyHeader,
-	amount uint64,
+	to uint64,
 ) ([]*headertest.DummyHeader, error) {
 	//TODO implement me
 	panic("implement me")

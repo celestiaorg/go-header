@@ -388,10 +388,10 @@ type delayedGetter[H header.Header[H]] struct {
 	header.Getter[H]
 }
 
-func (d *delayedGetter[H]) GetRangeByHeight(ctx context.Context, from H, amount uint64) ([]H, error) {
+func (d *delayedGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
 	select {
 	case <-time.After(time.Millisecond * 100):
-		return d.Getter.GetRangeByHeight(ctx, from, amount)
+		return d.Getter.GetRangeByHeight(ctx, from, to)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
