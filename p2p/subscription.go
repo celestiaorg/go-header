@@ -14,19 +14,22 @@ import (
 type subscription[H header.Header[H]] struct {
 	topic        *pubsub.Topic
 	subscription *pubsub.Subscription
+	metrics      *subscriberMetrics
 }
 
 // newSubscription creates a new Header event subscription
 // on the given host.
-func newSubscription[H header.Header[H]](topic *pubsub.Topic) (*subscription[H], error) {
+func newSubscription[H header.Header[H]](topic *pubsub.Topic, metrics *subscriberMetrics) (*subscription[H], error) {
 	sub, err := topic.Subscribe()
 	if err != nil {
 		return nil, err
 	}
+	metrics.observeSubscription(context.TODO(), 1)
 
 	return &subscription[H]{
 		topic:        topic,
 		subscription: sub,
+		metrics:      metrics,
 	}, nil
 }
 
@@ -51,4 +54,5 @@ func (s *subscription[H]) NextHeader(ctx context.Context) (H, error) {
 // Cancel cancels the subscription to new Headers from the network.
 func (s *subscription[H]) Cancel() {
 	s.subscription.Cancel()
+	s.metrics.observeSubscription(context.TODO(), -1)
 }

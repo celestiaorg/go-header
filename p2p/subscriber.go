@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -26,9 +27,10 @@ type SubscriberParams struct {
 type Subscriber[H header.Header[H]] struct {
 	pubsubTopicID string
 
-	pubsub *pubsub.PubSub
-	topic  *pubsub.Topic
-	msgID  pubsub.MsgIdFunction
+	metrics *subscriberMetrics
+	pubsub  *pubsub.PubSub
+	topic   *pubsub.Topic
+	msgID   pubsub.MsgIdFunction
 }
 
 // WithSubscriberMetrics enables metrics collection for the Subscriber.
@@ -57,7 +59,13 @@ func NewSubscriber[H header.Header[H]](
 		opt(&params)
 	}
 
+	var metrics *subscriberMetrics
+	if params.metrics {
+		metrics = newSubscriberMetrics()
+	}
+
 	return &Subscriber[H]{
+		metrics:       metrics,
 		pubsubTopicID: PubsubTopicID(params.networkID),
 		pubsub:        ps,
 		msgID:         msgID,
@@ -85,6 +93,7 @@ func (s *Subscriber[H]) Stop(context.Context) error {
 // SetVerifier set given verification func as Header PubSub topic validator
 // Does not punish peers if *header.VerifyError is given with Uncertain set to true.
 func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
+	var lastAccept time.Time
 	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
 		hdr := header.New[H]()
 		err := hdr.UnmarshalBinary(msg.Data)
@@ -92,6 +101,7 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("unmarshalling header",
 				"from", p.ShortString(),
 				"err", err)
+			s.metrics.observeReject(ctx)
 			return pubsub.ValidationReject
 		}
 		// ensure header validity
@@ -100,23 +110,34 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("invalid header",
 				"from", p.ShortString(),
 				"err", err)
+			s.metrics.observeReject(ctx)
 			return pubsub.ValidationReject
 		}
-		// keep the valid header in the msg so Subscriptions can access it without
-		// additional unmarhalling
-		msg.ValidatorData = hdr
 
 		var verErr *header.VerifyError
 		err = val(ctx, hdr)
 		switch {
-		case err == nil:
-			return pubsub.ValidationAccept
-		case errors.As(err, &verErr) && verErr.SoftFailure:
-			return pubsub.ValidationIgnore
 		default:
+			s.metrics.observeReject(ctx)
 			return pubsub.ValidationReject
+		case errors.As(err, &verErr) && verErr.SoftFailure:
+			s.metrics.observeIgnore(ctx)
+			return pubsub.ValidationIgnore
+		case err == nil:
 		}
+
+		now := time.Now()
+		if !lastAccept.IsZero() {
+			s.metrics.observeAccept(ctx, now.Sub(lastAccept), len(msg.Data))
+		}
+		lastAccept = now
+
+		// keep the valid header in the msg so Subscriptions can access it without
+		// additional unmarshalling
+		msg.ValidatorData = hdr
+		return pubsub.ValidationAccept
 	}
+
 	return s.pubsub.RegisterTopicValidator(s.pubsubTopicID, pval)
 }
 
@@ -127,7 +148,7 @@ func (s *Subscriber[H]) Subscribe() (header.Subscription[H], error) {
 		return nil, fmt.Errorf("header topic is not instantiated, service must be started before subscribing")
 	}
 
-	return newSubscription[H](s.topic)
+	return newSubscription[H](s.topic, s.metrics)
 }
 
 // Broadcast broadcasts the given Header to the topic.
