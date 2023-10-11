@@ -5,10 +5,9 @@ import (
 	"time"
 )
 
-// Options is the functional option that is applied to the Syner instance
+// Option is the functional option that is applied to the Syner instance
 // to configure its parameters.
-// TODO(@Wondertan): rename to single Option in some breaking release
-type Options func(*Parameters)
+type Option func(*Parameters)
 
 // Parameters is the set of parameters that must be configured for the syncer.
 type Parameters struct {
@@ -47,7 +46,7 @@ func (p *Parameters) Validate() error {
 
 // WithBlockTime is a functional option that configures the
 // `blockTime` parameter.
-func WithBlockTime(duration time.Duration) Options {
+func WithBlockTime(duration time.Duration) Option {
 	return func(p *Parameters) {
 		p.blockTime = duration
 	}
@@ -55,7 +54,7 @@ func WithBlockTime(duration time.Duration) Options {
 
 // WithRecencyThreshold is a functional option that configures the
 // `recencyThreshold` parameter.
-func WithRecencyThreshold(threshold time.Duration) Options {
+func WithRecencyThreshold(threshold time.Duration) Option {
 	return func(p *Parameters) {
 		p.recencyThreshold = threshold
 	}
@@ -63,14 +62,14 @@ func WithRecencyThreshold(threshold time.Duration) Options {
 
 // WithTrustingPeriod is a functional option that configures the
 // `TrustingPeriod` parameter.
-func WithTrustingPeriod(duration time.Duration) Options {
+func WithTrustingPeriod(duration time.Duration) Option {
 	return func(p *Parameters) {
 		p.TrustingPeriod = duration
 	}
 }
 
 // WithParams is a functional option that overrides Parameters.
-func WithParams(new Parameters) Options {
+func WithParams(new Parameters) Option {
 	return func(old *Parameters) {
 		*old = new
 	}

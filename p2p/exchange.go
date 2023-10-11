@@ -42,10 +42,9 @@ type Exchange[H header.Header[H]] struct {
 
 	trustedPeers func() peer.IDSlice
 	peerTracker  *peerTracker
+	metrics      *metrics
 
 	Params ClientParameters
-
-	metrics *metrics
 }
 
 func NewExchange[H header.Header[H]](
@@ -64,11 +63,17 @@ func NewExchange[H header.Header[H]](
 		return nil, err
 	}
 
+	var metrics *metrics
+	if params.metrics {
+		metrics = newExchangeMetrics()
+	}
+
 	ex := &Exchange[H]{
 		host:        host,
 		protocolID:  protocolID(params.networkID),
 		peerTracker: newPeerTracker(host, gater, params.pidstore),
 		Params:      params,
+		metrics:     metrics,
 	}
 
 	ex.trustedPeers = func() peer.IDSlice {
