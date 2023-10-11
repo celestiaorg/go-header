@@ -2,8 +2,8 @@
 
 The p2p package mainly contains two services:
 
-1) Subscriber 
-2) Exchange 
+1) Subscriber
+2) Exchange
 
 ## Subscriber
 
@@ -16,14 +16,14 @@ The Subscriber implements the following interface:
 // subscribe/unsubscribe from new Header events from the
 // network.
 type Subscriber[H Header[H]] interface {
-	// Subscribe creates long-living Subscription for validated Headers.
-	// Multiple Subscriptions can be created.
-	Subscribe() (Subscription[H], error)
-	// SetVerifier registers verification func for all Subscriptions.
-	// Registered func screens incoming headers
-	// before they are forwarded to Subscriptions.
-	// Only one func can be set.
-	SetVerifier(func(context.Context, H) error) error
+ // Subscribe creates long-living Subscription for validated Headers.
+ // Multiple Subscriptions can be created.
+ Subscribe() (Subscription[H], error)
+ // SetVerifier registers verification func for all Subscriptions.
+ // Registered func screens incoming headers
+ // before they are forwarded to Subscriptions.
+ // Only one func can be set.
+ SetVerifier(func(context.Context, H) error) error
 }
 ```
 
@@ -32,6 +32,7 @@ The `Subscribe()` method allows listening to any new headers that are published 
 ## Exchange
 
 An exchange is a combination of:
+
 * Exchange: a client for requesting headers from the p2p network (outbound)
 * ExchangeServer: a p2p server for handling inbound header requests
 
@@ -53,32 +54,33 @@ The exchange client implements the following interface:
 // Getter contains the behavior necessary for a component to retrieve
 // headers that have been processed during header sync.
 type Getter[H Header[H]] interface {
-	Head[H]
+ Head[H]
 
-	// Get returns the Header corresponding to the given hash.
-	Get(context.Context, Hash) (H, error)
+ // Get returns the Header corresponding to the given hash.
+ Get(context.Context, Hash) (H, error)
 
-	// GetByHeight returns the Header corresponding to the given block height.
-	GetByHeight(context.Context, uint64) (H, error)
+ // GetByHeight returns the Header corresponding to the given block height.
+ GetByHeight(context.Context, uint64) (H, error)
 
-	// GetRangeByHeight returns the given range of Headers.
-	GetRangeByHeight(ctx context.Context, from, amount uint64) ([]H, error)
+ // GetRangeByHeight returns the given range of Headers.
+ GetRangeByHeight(ctx context.Context, from, amount uint64) ([]H, error)
 
-	// GetVerifiedRange requests the header range from the provided Header and
-	// verifies that the returned headers are adjacent to each other.
-	GetVerifiedRange(ctx context.Context, from H, amount uint64) ([]H, error)
+ // GetVerifiedRange requests the header range from the provided Header and
+ // verifies that the returned headers are adjacent to each other.
+ GetVerifiedRange(ctx context.Context, from H, amount uint64) ([]H, error)
 }
 
 // Head contains the behavior necessary for a component to retrieve
 // the chain head. Note that "chain head" is subjective to the component
 // reporting it.
 type Head[H Header[H]] interface {
-	// Head returns the latest known header.
-	Head(context.Context, ...HeadOption[H]) (H, error)
+ // Head returns the latest known header.
+ Head(context.Context, ...HeadOption[H]) (H, error)
 }
 ```
 
 `Head()` method requests the latest header from trusted peers. The `Head()` requests utilizes 90% of the set deadline (in the form of context deadline) for requests and remaining for determining the best head from gathered responses. The `Head()` call also allows passing an option `TrustedHead` which allows the caller to specify a trusted header against which the untrusted headers received from a list of tracked peers (limited to `maxUntrustedHeadRequests` of 4) can be verified against, in the absence of trusted peers. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
+
 * with max height among the received
 * which is received from at least `minHeadResponses` of 2 peers
 * when neither or both conditions meet, the head with highest height is used
@@ -94,6 +96,7 @@ message HeaderRequest {
   uint64 amount = 3;
 }
 ```
+
 The `GetVerifiedRange` differs from `GetRangeByHeight` as it ensures that the returned headers are correct against another header (passed as parameter to the call).
 
 ### Exchange Server
@@ -103,16 +106,16 @@ ExchangeServer represents the server-side component (p2p server) for responding 
 ```
 // ServerParameters is the set of parameters that must be configured for the exchange.
 type ServerParameters struct {
-	// WriteDeadline sets the timeout for sending messages to the stream
-	WriteDeadline time.Duration
-	// ReadDeadline sets the timeout for reading messages from the stream
-	ReadDeadline time.Duration
-	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
-	// from another peer.
-	RangeRequestTimeout time.Duration
-	// networkID is a network that will be used to create a protocol.ID
-	// Is empty by default
-	networkID string
+ // WriteDeadline sets the timeout for sending messages to the stream
+ WriteDeadline time.Duration
+ // ReadDeadline sets the timeout for reading messages from the stream
+ ReadDeadline time.Duration
+ // RangeRequestTimeout defines a timeout after which the session will try to re-request headers
+ // from another peer.
+ RangeRequestTimeout time.Duration
+ // networkID is a network that will be used to create a protocol.ID
+ // Is empty by default
+ networkID string
 }
 ```
 
@@ -121,11 +124,11 @@ The default values for `ServerParameters` are as described below.
 ```
 // DefaultServerParameters returns the default params to configure the store.
 func DefaultServerParameters() ServerParameters {
-	return ServerParameters{
-		WriteDeadline:       time.Second * 8,
-		ReadDeadline:        time.Minute,
-		RangeRequestTimeout: time.Second * 10,
-	}
+ return ServerParameters{
+  WriteDeadline:       time.Second * 8,
+  ReadDeadline:        time.Minute,
+  RangeRequestTimeout: time.Second * 10,
+ }
 }
 ```
 
@@ -141,6 +144,7 @@ message HeaderResponse {
 ```
 
 The `OK` status code for success, `NOT_FOUND` for requested headers not found, and `INVALID` for error (default).
+
 ```
 enum StatusCode {
   INVALID = 0;
@@ -158,17 +162,17 @@ Session aims to divide a header range requests into several smaller requests amo
 ```
 // ClientParameters is the set of parameters that must be configured for the exchange.
 type ClientParameters struct {
-	// MaxHeadersPerRangeRequest defines the max amount of headers that can be requested per 1 request.
-	MaxHeadersPerRangeRequest uint64
-	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
-	// from another peer.
-	RangeRequestTimeout time.Duration
-	// networkID is a network that will be used to create a protocol.ID
-	networkID string
-	// chainID is an identifier of the chain.
-	chainID string
+ // MaxHeadersPerRangeRequest defines the max amount of headers that can be requested per 1 request.
+ MaxHeadersPerRangeRequest uint64
+ // RangeRequestTimeout defines a timeout after which the session will try to re-request headers
+ // from another peer.
+ RangeRequestTimeout time.Duration
+ // networkID is a network that will be used to create a protocol.ID
+ networkID string
+ // chainID is an identifier of the chain.
+ chainID string
 
-	pidstore PeerIDStore
+ pidstore PeerIDStore
 }
 ```
 
@@ -177,13 +181,12 @@ The default values for `ClientParameters` are as described below.
 ```
 // DefaultClientParameters returns the default params to configure the store.
 func DefaultClientParameters() ClientParameters {
-	return ClientParameters{
-		MaxHeadersPerRangeRequest: 64,
-		RangeRequestTimeout:       time.Second * 8,
-	}
+ return ClientParameters{
+  MaxHeadersPerRangeRequest: 64,
+  RangeRequestTimeout:       time.Second * 8,
+ }
 }
 ```
-
 
 ## Metrics
 
