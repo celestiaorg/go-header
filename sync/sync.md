@@ -5,6 +5,8 @@ Syncer implements efficient synchronization for headers.
 There are two main processes running in Syncer:
 * Main syncing loop(`syncLoop`)
     * Performs syncing from the latest stored header up to the latest known Subjective Head
+        * Subjective head: the latest known local valid header and a sync target.
+        * Network head: the latest valid network-wide header. Becomes subjective once applied locally.
     * Syncs by requesting missing headers from Exchange or
     * By accessing cache of pending headers
 * Receives every new Network Head from PubSub gossip subnetwork (`incomingNetworkHead`)
