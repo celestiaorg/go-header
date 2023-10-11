@@ -35,6 +35,8 @@ func (s *syncStore[H]) Append(ctx context.Context, headers ...H) error {
 		return err
 	}
 
-	s.head.Store(&headers[len(headers)-1])
+	if len(headers) > 0 {
+		s.head.Store(&headers[len(headers)-1])
+	}
 	return nil
 }
