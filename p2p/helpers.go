@@ -18,7 +18,7 @@ import (
 )
 
 func protocolID(networkID string) protocol.ID {
-	base := protocol.ID("/header-ex/v0.0.3")
+	base := protocol.ID("header-ex/v0.0.3")
 	if networkID != "" {
 		base = protocol.ID(fmt.Sprintf("/%s/%s", networkID, base))
 	}
@@ -26,7 +26,7 @@ func protocolID(networkID string) protocol.ID {
 }
 
 func PubsubTopicID(networkID string) string {
-	base := "/header-sub/v0.0.1"
+	base := "header-sub/v0.0.1"
 	if networkID != "" {
 		base = fmt.Sprintf("/%s/%s", networkID, base)
 	}
