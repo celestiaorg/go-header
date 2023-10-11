@@ -42,11 +42,18 @@ Exchange defines a client for requesting headers from the p2p network. An exchan
 
 #### Peer Tracker
 
-//TODO
+The three main functionalities of the peer tracker are:
+* bootstrap
+* track
+* gc
 
-#### Trusted Peers vs Tracked Peers
+When the exchange client is started, it bootstraps the peer tracker using the set of trusted peers used to initialize the exchange client.
 
-//TODO
+The new peers are tracked by subscribing to `event.EvtPeerConnectednessChanged{}`.
+
+The peer tracker also runs garbage collector (gc) that removes the disconnected peers (determined as disconnected for more than `maxAwaitingTime` or connected peers whose scores are less than or equal to `defaultScore`) from the tracked peers list once every `gcPeriod`.
+
+The peer tracker also provides a block peer functionality which is used to block peers that send invalid network headers. Invalid header is a header that fails when `Verify` method of the header interface is invoked.
 
 The exchange client implements the following interface:
 
@@ -190,7 +197,11 @@ func DefaultClientParameters() ClientParameters {
 
 ## Metrics
 
-//TODO
+Currently only following metrics are collected:
+* P2P header exchange response size
+* Duration of the get headers request in seconds
+* Total synced headers
+
 
 # References
 
