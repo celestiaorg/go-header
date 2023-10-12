@@ -65,7 +65,11 @@ func NewExchange[H header.Header[H]](
 
 	var metrics *metrics
 	if params.metrics {
-		metrics = newExchangeMetrics()
+		var err error
+		metrics, err = newExchangeMetrics()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ex := &Exchange[H]{

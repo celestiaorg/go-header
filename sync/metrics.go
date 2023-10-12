@@ -15,13 +15,13 @@ type metrics struct {
 	totalSyncedGauge metric.Float64ObservableGauge
 }
 
-func newMetrics() *metrics {
+func newMetrics() (*metrics, error) {
 	totalSynced, err := meter.Float64ObservableGauge(
 		"total_synced_headers",
 		metric.WithDescription("total synced headers"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	m := &metrics{
@@ -34,10 +34,10 @@ func newMetrics() *metrics {
 	}
 	_, err = meter.RegisterCallback(callback, totalSynced)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return m
+	return m, nil
 }
 
 // recordTotalSynced records the total amount of synced headers.
