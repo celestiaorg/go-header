@@ -45,6 +45,13 @@ func WithSubscriberNetworkID(networkID string) SubscriberOption {
 	}
 }
 
+// WithSubscriberParams is a functional option that overrides SubscriberParams.
+func WithSubscriberParams(params SubscriberParams) SubscriberOption {
+	return func(p *SubscriberParams) {
+		*p = params
+	}
+}
+
 // NewSubscriber returns a Subscriber that manages the header Module's
 // relationship with the "header-sub" gossipsub topic.
 func NewSubscriber[H header.Header[H]](
