@@ -8,6 +8,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+const (
+	statusKey = "status"
+	sizeKey   = "size"
+	reasonKey = "reason"
+)
+
 type subscriberMetrics struct {
 	headerPropagationTime metric.Float64Histogram
 	headerReceivedNum     metric.Int64Counter
@@ -43,36 +49,37 @@ func newSubscriberMetrics() *subscriberMetrics {
 	}
 }
 
-func (m *subscriberMetrics) observeAccept(ctx context.Context, duration time.Duration, size int) {
+func (m *subscriberMetrics) accept(ctx context.Context, duration time.Duration, size int) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
-			attribute.String("status", "accept"),
-			attribute.Int64("size", int64(size)),
+			attribute.String(statusKey, "accept"),
+			attribute.Int64(sizeKey, int64(size)),
 		)))
 
 		m.headerPropagationTime.Record(ctx, duration.Seconds())
 	})
 }
 
-func (m *subscriberMetrics) observeIgnore(ctx context.Context) {
+func (m *subscriberMetrics) ignore(ctx context.Context, size int, reason error) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("status", "ignore"),
-			// TODO(@Wondertan): Do we wanna track reason string and sizes?
+			attribute.String(statusKey, "ignore"),
+			attribute.Int64(sizeKey, int64(size)),
+			attribute.String(reasonKey, reason.Error()),
 		))
 	})
 }
 
-func (m *subscriberMetrics) observeReject(ctx context.Context) {
+func (m *subscriberMetrics) reject(ctx context.Context, reason error) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("status", "reject"),
-			// TODO(@Wondertan): Do we wanna track reason string and sizes?
+			attribute.String(statusKey, "reject"),
+			attribute.String(reasonKey, reason.Error()),
 		))
 	})
 }
 
-func (m *subscriberMetrics) observeSubscription(ctx context.Context, num int) {
+func (m *subscriberMetrics) subscription(ctx context.Context, num int) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.subscriptionNum.Add(ctx, int64(num))
 	})

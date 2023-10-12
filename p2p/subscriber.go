@@ -101,7 +101,7 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("unmarshalling header",
 				"from", p.ShortString(),
 				"err", err)
-			s.metrics.observeReject(ctx)
+			s.metrics.reject(ctx, err)
 			return pubsub.ValidationReject
 		}
 		// ensure header validity
@@ -110,25 +110,25 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("invalid header",
 				"from", p.ShortString(),
 				"err", err)
-			s.metrics.observeReject(ctx)
+			s.metrics.reject(ctx, err)
 			return pubsub.ValidationReject
 		}
 
 		var verErr *header.VerifyError
 		err = val(ctx, hdr)
 		switch {
-		default:
-			s.metrics.observeReject(ctx)
-			return pubsub.ValidationReject
 		case errors.As(err, &verErr) && verErr.SoftFailure:
-			s.metrics.observeIgnore(ctx)
+			s.metrics.ignore(ctx, len(msg.Data), err)
 			return pubsub.ValidationIgnore
-		case err == nil:
+		case err != nil:
+			s.metrics.reject(ctx, err)
+			return pubsub.ValidationReject
+		default:
 		}
 
 		now := time.Now()
 		if !lastAccept.IsZero() {
-			s.metrics.observeAccept(ctx, now.Sub(lastAccept), len(msg.Data))
+			s.metrics.accept(ctx, now.Sub(lastAccept), len(msg.Data))
 		}
 		lastAccept = now
 

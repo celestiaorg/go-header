@@ -24,7 +24,7 @@ func newSubscription[H header.Header[H]](topic *pubsub.Topic, metrics *subscribe
 	if err != nil {
 		return nil, err
 	}
-	metrics.observeSubscription(context.TODO(), 1)
+	metrics.subscription(context.TODO(), 1)
 
 	return &subscription[H]{
 		topic:        topic,
@@ -54,5 +54,5 @@ func (s *subscription[H]) NextHeader(ctx context.Context) (H, error) {
 // Cancel cancels the subscription to new Headers from the network.
 func (s *subscription[H]) Cancel() {
 	s.subscription.Cancel()
-	s.metrics.observeSubscription(context.TODO(), -1)
+	s.metrics.subscription(context.TODO(), -1)
 }
