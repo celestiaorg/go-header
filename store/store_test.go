@@ -34,7 +34,7 @@ func TestStore(t *testing.T) {
 	err = store.Append(ctx, in...)
 	require.NoError(t, err)
 
-	out, err := store.GetRangeByHeight(ctx, 2, 12)
+	out, err := store.GetRange(ctx, 2, 12)
 	require.NoError(t, err)
 	for i, h := range in {
 		assert.Equal(t, h.Hash(), out[i].Hash())
@@ -66,16 +66,16 @@ func TestStore(t *testing.T) {
 
 	h, err = store.GetByHeight(ctx, 2)
 	require.NoError(t, err)
-	out, err = store.GetVerifiedRange(ctx, h, 3)
+	out, err = store.GetRangeByHeight(ctx, h, 3)
 	require.Error(t, err)
 	assert.Nil(t, out)
 
-	out, err = store.GetVerifiedRange(ctx, h, 4)
+	out, err = store.GetRangeByHeight(ctx, h, 4)
 	require.NoError(t, err)
 	assert.NotNil(t, out)
 	assert.Len(t, out, 1)
 
-	out, err = store.GetRangeByHeight(ctx, 2, 2)
+	out, err = store.GetRange(ctx, 2, 2)
 	require.Error(t, err)
 	assert.Nil(t, out)
 
@@ -91,12 +91,128 @@ func TestStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, suite.Head().Hash(), head.Hash())
 
-	out, err = store.GetRangeByHeight(ctx, 1, 13)
+	out, err = store.getRangeByHeight(ctx, 1, 13)
 	require.NoError(t, err)
 	assert.Len(t, out, 12)
 
 	err = store.Stop(ctx)
 	require.NoError(t, err)
+}
+
+// TestStore_GetRangeByHeight_ExpectedRange
+func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStoreWithHead(ctx, ds, suite.Head())
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
+
+	in := suite.GenDummyHeaders(100)
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	// request the range [4:98] || (from:to)
+	from := in[2]
+	firstHeaderInRangeHeight := from.Height() + 1
+	lastHeaderInRangeHeight := uint64(98)
+	to := lastHeaderInRangeHeight + 1
+	expectedLenHeaders := to - firstHeaderInRangeHeight // expected amount
+
+	out, err := store.GetRangeByHeight(ctx, from, to)
+	require.NoError(t, err)
+
+	assert.Len(t, out, int(expectedLenHeaders))
+	assert.Equal(t, firstHeaderInRangeHeight, out[0].Height())
+	assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
+}
+
+// TestStore_GetRange tests possible combinations of requests and ensures that
+// the store can handle them adequately (even malformed requests)
+func TestStore_GetRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStoreWithHead(ctx, ds, suite.Head())
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
+
+	in := suite.GenDummyHeaders(100)
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	var tests = []struct {
+		name          string
+		from          uint64
+		to            uint64
+		expectedError bool
+	}{
+		{
+			name:          "valid request for headers all contained in store",
+			from:          4,
+			to:            99,
+			expectedError: false,
+		},
+		{
+			name:          "malformed request for headers contained in store",
+			from:          99,
+			to:            4,
+			expectedError: true,
+		},
+		{
+			name:          "valid request for headers not contained in store",
+			from:          100,
+			to:            500,
+			expectedError: true,
+		},
+		{
+			name:          "valid request for headers partially contained in store (`to` is greater than chain head)",
+			from:          77,
+			to:            200,
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			firstHeaderInRangeHeight := tt.from
+			lastHeaderInRangeHeight := tt.to - 1
+			to := lastHeaderInRangeHeight + 1
+			expectedLenHeaders := to - firstHeaderInRangeHeight // expected amount
+
+			// request the range [tt.to:tt.from)
+			out, err := store.GetRange(ctx, firstHeaderInRangeHeight, to)
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Nil(t, out)
+				return
+			}
+			require.NoError(t, err)
+
+			assert.Len(t, out, int(expectedLenHeaders))
+			assert.Equal(t, firstHeaderInRangeHeight, out[0].Height())
+			assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
+		})
+	}
+
 }
 
 func TestStorePendingCacheMiss(t *testing.T) {
@@ -121,10 +237,10 @@ func TestStorePendingCacheMiss(t *testing.T) {
 	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
 	require.NoError(t, err)
 
-	_, err = store.GetRangeByHeight(ctx, 1, 101)
+	_, err = store.GetRange(ctx, 1, 101)
 	require.NoError(t, err)
 
-	_, err = store.GetRangeByHeight(ctx, 101, 151)
+	_, err = store.GetRange(ctx, 101, 151)
 	require.NoError(t, err)
 }
 

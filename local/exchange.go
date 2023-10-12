@@ -34,16 +34,9 @@ func (l *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error)
 	return l.store.GetByHeight(ctx, height)
 }
 
-func (l *Exchange[H]) GetRangeByHeight(ctx context.Context, origin, amount uint64) ([]H, error) {
-	if amount == 0 {
-		return nil, nil
-	}
-	return l.store.GetRangeByHeight(ctx, origin, origin+amount)
-}
-
-func (l *Exchange[H]) GetVerifiedRange(ctx context.Context, from H, amount uint64,
+func (l *Exchange[H]) GetRangeByHeight(ctx context.Context, from H, to uint64,
 ) ([]H, error) {
-	return l.store.GetVerifiedRange(ctx, from, uint64(from.Height())+amount+1)
+	return l.store.GetRangeByHeight(ctx, from, to)
 }
 
 func (l *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {

@@ -135,12 +135,11 @@ func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.
 	panic("implement me")
 }
 
-func (t *wrappedGetter) GetRangeByHeight(ctx context.Context, from, amount uint64) ([]*headertest.DummyHeader, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (t *wrappedGetter) GetVerifiedRange(ctx context.Context, from *headertest.DummyHeader, amount uint64) ([]*headertest.DummyHeader, error) {
+func (t *wrappedGetter) GetRangeByHeight(
+	ctx context.Context,
+	from *headertest.DummyHeader,
+	to uint64,
+) ([]*headertest.DummyHeader, error) {
 	//TODO implement me
 	panic("implement me")
 }

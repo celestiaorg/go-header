@@ -67,10 +67,6 @@ func (f *fakeGetter[H]) GetByHeight(ctx context.Context, u uint64) (H, error) {
 	panic("implement me")
 }
 
-func (f *fakeGetter[H]) GetRangeByHeight(ctx context.Context, from, amount uint64) ([]H, error) {
-	panic("implement me")
-}
-
-func (f *fakeGetter[H]) GetVerifiedRange(ctx context.Context, from H, amount uint64) ([]H, error) {
+func (f *fakeGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
 	panic("implement me")
 }

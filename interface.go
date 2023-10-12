@@ -93,6 +93,9 @@ type Store[H Header[H]] interface {
 	// It returns the amount of successfully applied headers,
 	// so caller can understand what given header was invalid, if any.
 	Append(context.Context, ...H) error
+
+	// GetRange returns the range [from:to).
+	GetRange(context.Context, uint64, uint64) ([]H, error)
 }
 
 // Getter contains the behavior necessary for a component to retrieve
@@ -106,12 +109,10 @@ type Getter[H Header[H]] interface {
 	// GetByHeight returns the Header corresponding to the given block height.
 	GetByHeight(context.Context, uint64) (H, error)
 
-	// GetRangeByHeight returns the given range of Headers.
-	GetRangeByHeight(ctx context.Context, from, amount uint64) ([]H, error)
-
-	// GetVerifiedRange requests the header range from the provided Header and
+	// GetRangeByHeight requests the header range from the provided Header and
 	// verifies that the returned headers are adjacent to each other.
-	GetVerifiedRange(ctx context.Context, from H, amount uint64) ([]H, error)
+	// Expected to return the range [from.Height()+1:to).
+	GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error)
 }
 
 // Head contains the behavior necessary for a component to retrieve

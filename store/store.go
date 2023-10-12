@@ -238,7 +238,31 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	return s.Get(ctx, hash)
 }
 
-func (s *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
+func (s *Store[H]) GetRangeByHeight(
+	ctx context.Context,
+	from H,
+	to uint64,
+) ([]H, error) {
+	headers, err := s.getRangeByHeight(ctx, from.Height()+1, to)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, h := range headers {
+		err := from.Verify(h)
+		if err != nil {
+			return nil, err
+		}
+		from = h
+	}
+	return headers, nil
+}
+
+func (s *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
+	return s.getRangeByHeight(ctx, from, to)
+}
+
+func (s *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
 	// as the requested range is non-inclusive in the end[from;to), we need to compare
 	// `from` with `to-1`
 	if from > to-1 {
@@ -260,26 +284,6 @@ func (s *Store[H]) GetRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 	}
 	headers[0] = h
 
-	return headers, nil
-}
-
-func (s *Store[H]) GetVerifiedRange(
-	ctx context.Context,
-	from H,
-	to uint64,
-) ([]H, error) {
-	headers, err := s.GetRangeByHeight(ctx, uint64(from.Height()+1), to)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, h := range headers {
-		err := from.Verify(h)
-		if err != nil {
-			return nil, err
-		}
-		from = h
-	}
 	return headers, nil
 }
 

@@ -237,7 +237,7 @@ func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) 
 	s.state.Start = time.Now()
 	s.stateLk.Unlock()
 
-	err = s.processHeaders(ctx, fromHead, uint64(toHead.Height()))
+	err = s.processHeaders(ctx, fromHead, toHead.Height())
 
 	s.stateLk.Lock()
 	s.state.End = time.Now()
@@ -272,7 +272,7 @@ func (s *Syncer[H]) processHeaders(
 		// check if returned range is not adjacent to `fromHead`
 		if fromHead.Height()+1 != headers[0].Height() {
 			// if so - request missing ones
-			to := uint64(headers[0].Height() - 1)
+			to := headers[0].Height() - 1
 			if err = s.requestHeaders(ctx, fromHead, to); err != nil {
 				return err
 			}
@@ -297,7 +297,7 @@ func (s *Syncer[H]) requestHeaders(
 	fromHead H,
 	to uint64,
 ) error {
-	amount := to - uint64(fromHead.Height())
+	amount := to - fromHead.Height()
 	// start requesting headers until amount remaining will be 0
 	for amount > 0 {
 		size := header.MaxRangeRequestSize
@@ -305,7 +305,8 @@ func (s *Syncer[H]) requestHeaders(
 			size = amount
 		}
 
-		headers, err := s.getter.GetVerifiedRange(ctx, fromHead, size)
+		to := fromHead.Height() + size + 1
+		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
 		if err != nil {
 			return err
 		}
