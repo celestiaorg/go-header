@@ -28,6 +28,8 @@ type Parameters struct {
 	// recencyThreshold describes the time period for which a header is
 	// considered "recent". The default is blockTime + 5 seconds.
 	recencyThreshold time.Duration
+	// metrics is a flag that enables metrics collection.
+	metrics bool
 }
 
 // DefaultParameters returns the default params to configure the syncer.
@@ -42,6 +44,13 @@ func (p *Parameters) Validate() error {
 		return fmt.Errorf("invalid trusting period duration: %v", p.TrustingPeriod)
 	}
 	return nil
+}
+
+// WithMetrics enables Metrics on Syncer.
+func WithMetrics() Option {
+	return func(p *Parameters) {
+		p.metrics = true
+	}
 }
 
 // WithBlockTime is a functional option that configures the

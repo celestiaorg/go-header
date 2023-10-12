@@ -69,10 +69,15 @@ func NewSyncer[H header.Header[H]](
 		return nil, err
 	}
 
+	var metrics *metrics
+	if params.metrics {
+		metrics = newMetrics()
+	}
 	return &Syncer[H]{
 		sub:         sub,
 		store:       syncStore[H]{Store: store},
 		getter:      syncGetter[H]{Getter: getter},
+		metrics:     metrics,
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
 	}, nil
