@@ -15,25 +15,25 @@ type metrics struct {
 	responseDuration metric.Float64Histogram
 }
 
-func newExchangeMetrics() *metrics {
+func newExchangeMetrics() (*metrics, error) {
 	responseSize, err := meter.Float64Histogram(
 		"header_p2p_exchange_response_size",
 		metric.WithDescription("Size of get headers response in bytes"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	responseDuration, err := meter.Float64Histogram(
 		"header_p2p_exchange_request_duration",
 		metric.WithDescription("Duration of get headers request in seconds"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return &metrics{
 		responseSize:     responseSize,
 		responseDuration: responseDuration,
-	}
+	}, nil
 }
 
 func (m *metrics) observeResponse(ctx context.Context, size uint64, duration uint64, err error) {

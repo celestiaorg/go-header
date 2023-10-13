@@ -51,7 +51,7 @@ func NewSubscriber[H header.Header[H]](
 	ps *pubsub.PubSub,
 	msgID pubsub.MsgIdFunction,
 	opts ...SubscriberOption,
-) *Subscriber[H] {
+) (*Subscriber[H], error) {
 	var params SubscriberParams
 	for _, opt := range opts {
 		opt(&params)
@@ -61,7 +61,7 @@ func NewSubscriber[H header.Header[H]](
 		pubsubTopicID: PubsubTopicID(params.networkID),
 		pubsub:        ps,
 		msgID:         msgID,
-	}
+	}, nil
 }
 
 // Start starts the Subscriber, registering a topic validator for the "header-sub"

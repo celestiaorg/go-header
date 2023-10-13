@@ -71,7 +71,11 @@ func NewSyncer[H header.Header[H]](
 
 	var metrics *metrics
 	if params.metrics {
-		metrics = newMetrics()
+		var err error
+		metrics, err = newMetrics()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &Syncer[H]{
 		sub:         sub,
