@@ -102,5 +102,9 @@ The store runs a flush loop during the start which performs writing task to the 
 
 # References
 
+[1] [datastore][go-datastore]
+
+[2] [lru.ARCCache][lru.ARCCache]
+
 [go-datastore]: https://github.com/ipfs/go-datastore
 [lru.ARCCache]: https://github.com/hashicorp/golang-lru

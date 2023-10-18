@@ -87,5 +87,9 @@ When a new network head is received which gets validated and set as subjective h
 
 # References
 
+[1] [Exchange][exchange]
+
+[2] [Subscriber][subscriber]
+
 [exchange]: https://github.com/celestiaorg/go-header/blob/main/p2p/exchange.go
 [subscriber]: https://github.com/celestiaorg/go-header/blob/main/p2p/subscriber.go

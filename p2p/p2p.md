@@ -38,7 +38,7 @@ An exchange is a combination of:
 
 ### Exchange Client
 
-Exchange defines a client for requesting headers from the p2p network. An exchange client is initialized using self [host.Host][host], list of peers in the form of slice [peer.IDSlice][peer], and [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker.
+Exchange defines a client for requesting headers from the p2p network. An exchange client is initialized using self [host.Host][host], a list of peers in the form of slice [peer.IDSlice][peer], and a [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker.
 
 #### Peer Tracker
 
@@ -86,7 +86,7 @@ type Head[H Header[H]] interface {
 }
 ```
 
-`Head()` method requests the latest header from trusted peers. The `Head()` requests utilizes 90% of the set deadline (in the form of context deadline) for requests and remaining for determining the best head from gathered responses. The `Head()` call also allows passing an option `TrustedHead` which allows the caller to specify a trusted header against which the untrusted headers received from a list of tracked peers (limited to `maxUntrustedHeadRequests` of 4) can be verified against, in the absence of trusted peers. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
+`Head()` method requests the latest header from trusted peers. The `Head()` requests utilizes 90% of the set deadline (in the form of context deadline) for requests and remaining for determining the best head from gathered responses. The `Head()` call also allows passing an optional `TrustedHead` which allows the caller to specify a trusted header against which the untrusted headers received from a list of tracked peers (limited to `maxUntrustedHeadRequests` of 4) can be verified against, in the absence of trusted peers. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
 
 * with max height among the received
 * which is received from at least `minHeadResponses` of 2 peers
@@ -204,6 +204,16 @@ Currently only following metrics are collected:
 
 
 # References
+
+[1] [libp2p][libp2p]
+
+[2] [pubsub][pubsub]
+
+[3] [host.Host][host]
+
+[4] [peer.IDSlice][peer]
+
+[5] [connection gater][gater]
 
 [libp2p]: https://github.com/libp2p/go-libp2p
 [pubsub]: https://github.com/libp2p/go-libp2p-pubsub
