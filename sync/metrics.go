@@ -46,5 +46,5 @@ func (m *metrics) recordTotalSynced(totalSynced int) {
 		return
 	}
 
-	m.totalSynced.Store(int64(totalSynced))
+	m.totalSynced.Add(int64(totalSynced))
 }
