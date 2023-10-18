@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -9,80 +11,104 @@ import (
 )
 
 const (
-	statusKey = "status"
-	sizeKey   = "size"
-	reasonKey = "reason"
+	statusKey    = "status"
+	statusAccept = "accept"
+	statusIgnore = "ignore"
+	statusReject = "reject"
 )
 
 type subscriberMetrics struct {
-	headerPropagationTime metric.Float64Histogram
-	headerReceivedNum     metric.Int64Counter
-	subscriptionNum       metric.Int64UpDownCounter
+	messageNumInst  metric.Int64Counter
+	messageSizeInst metric.Int64Histogram
+
+	messageTimeLastMu sync.Mutex
+	messageTimeLast   time.Time
+	messageTimeInst   metric.Float64Histogram
+
+	subscriptionNum     atomic.Int64
+	subscriptionNumInst metric.Int64ObservableGauge
+	subscriptionNumReg  metric.Registration
 }
 
-func newSubscriberMetrics() *subscriberMetrics {
-	headerPropagationTime, err := meter.Float64Histogram(
-		"header_p2p_subscriber_propagation_time",
-		metric.WithDescription("header propagation time"),
+func newSubscriberMetrics() (m *subscriberMetrics, err error) {
+	m = new(subscriberMetrics)
+	m.messageNumInst, err = meter.Int64Counter(
+		"hdr_p2p_sub_msg_num",
+		metric.WithDescription("header message count"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	headerReceivedNum, err := meter.Int64Counter(
-		"header_p2p_subscriber_received_num",
-		metric.WithDescription("header received from subscription counter"),
+	m.messageSizeInst, err = meter.Int64Histogram(
+		"hdr_p2p_sub_msg_size",
+		metric.WithDescription("valid header message size"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	subscriptionNum, err := meter.Int64UpDownCounter(
-		"header_p2p_subscriber_subscription_num",
-		metric.WithDescription("number of active subscriptions"),
+	m.messageTimeInst, err = meter.Float64Histogram(
+		"hdr_p2p_sub_msg_time",
+		metric.WithDescription("valid header message propagation time"),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return &subscriberMetrics{
-		headerPropagationTime: headerPropagationTime,
-		headerReceivedNum:     headerReceivedNum,
-		subscriptionNum:       subscriptionNum,
+	m.subscriptionNumInst, err = meter.Int64ObservableGauge(
+		"hdr_p2p_sub_num",
+		metric.WithDescription("number of active header message subscriptions"),
+	)
+	if err != nil {
+		return nil, err
 	}
+	m.subscriptionNumReg, err = meter.RegisterCallback(m.subscriptionCallback, m.subscriptionNumInst)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
-func (m *subscriberMetrics) accept(ctx context.Context, duration time.Duration, size int) {
+func (m *subscriberMetrics) accept(ctx context.Context, size int) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributeSet(attribute.NewSet(
-			attribute.String(statusKey, "accept"),
-			attribute.Int64(sizeKey, int64(size)),
-		)))
+		m.messageNumInst.Add(ctx, 1, metric.WithAttributes(
+			attribute.String(statusKey, statusAccept),
+		))
+		m.messageSizeInst.Record(ctx, int64(size))
 
-		m.headerPropagationTime.Record(ctx, duration.Seconds())
+		now := time.Now()
+		m.messageTimeLastMu.Lock()
+		if !m.messageTimeLast.IsZero() {
+			m.messageTimeInst.Record(ctx, now.Sub(m.messageTimeLast).Seconds())
+		}
+		m.messageTimeLast = now
+		m.messageTimeLastMu.Unlock()
 	})
 }
 
-func (m *subscriberMetrics) ignore(ctx context.Context, size int, reason error) {
+func (m *subscriberMetrics) ignore(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributes(
-			attribute.String(statusKey, "ignore"),
-			attribute.Int64(sizeKey, int64(size)),
-			attribute.String(reasonKey, reason.Error()),
+		m.messageNumInst.Add(ctx, 1, metric.WithAttributes(
+			attribute.String(statusKey, statusIgnore),
 		))
 	})
 }
 
-func (m *subscriberMetrics) reject(ctx context.Context, reason error) {
+func (m *subscriberMetrics) reject(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headerReceivedNum.Add(ctx, 1, metric.WithAttributes(
-			attribute.String(statusKey, "reject"),
-			attribute.String(reasonKey, reason.Error()),
+		m.messageNumInst.Add(ctx, 1, metric.WithAttributes(
+			attribute.String(statusKey, statusReject),
 		))
 	})
 }
 
-func (m *subscriberMetrics) subscription(ctx context.Context, num int) {
-	m.observe(ctx, func(ctx context.Context) {
-		m.subscriptionNum.Add(ctx, int64(num))
+func (m *subscriberMetrics) subscription(num int) {
+	m.observe(context.Background(), func(ctx context.Context) {
+		m.subscriptionNum.Add(int64(num))
 	})
+}
+
+func (m *subscriberMetrics) subscriptionCallback(_ context.Context, obs metric.Observer) error {
+	obs.ObserveInt64(m.subscriptionNumInst, m.subscriptionNum.Load())
+	return nil
 }
 
 func (m *subscriberMetrics) observe(ctx context.Context, observeFn func(context.Context)) {
@@ -94,4 +120,11 @@ func (m *subscriberMetrics) observe(ctx context.Context, observeFn func(context.
 	}
 
 	observeFn(ctx)
+}
+
+func (m *subscriberMetrics) Close() error {
+	if m == nil {
+		return nil
+	}
+	return m.subscriptionNumReg.Unregister()
 }

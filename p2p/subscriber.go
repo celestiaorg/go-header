@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -61,7 +60,11 @@ func NewSubscriber[H header.Header[H]](
 
 	var metrics *subscriberMetrics
 	if params.metrics {
-		metrics = newSubscriberMetrics()
+		var err error
+		metrics, err = newSubscriberMetrics()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Subscriber[H]{
@@ -87,13 +90,14 @@ func (s *Subscriber[H]) Stop(context.Context) error {
 		log.Warnf("unregistering validator: %s", err)
 	}
 
-	return s.topic.Close()
+	err = errors.Join(err, s.topic.Close())
+	err = errors.Join(err, s.metrics.Close())
+	return err
 }
 
 // SetVerifier set given verification func as Header PubSub topic validator
 // Does not punish peers if *header.VerifyError is given with Uncertain set to true.
 func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
-	var lastAccept time.Time
 	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
 		hdr := header.New[H]()
 		err := hdr.UnmarshalBinary(msg.Data)
@@ -101,7 +105,7 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("unmarshalling header",
 				"from", p.ShortString(),
 				"err", err)
-			s.metrics.reject(ctx, err)
+			s.metrics.reject(ctx)
 			return pubsub.ValidationReject
 		}
 		// ensure header validity
@@ -110,7 +114,7 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 			log.Errorw("invalid header",
 				"from", p.ShortString(),
 				"err", err)
-			s.metrics.reject(ctx, err)
+			s.metrics.reject(ctx)
 			return pubsub.ValidationReject
 		}
 
@@ -118,23 +122,18 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 		err = val(ctx, hdr)
 		switch {
 		case errors.As(err, &verErr) && verErr.SoftFailure:
-			s.metrics.ignore(ctx, len(msg.Data), err)
+			s.metrics.ignore(ctx)
 			return pubsub.ValidationIgnore
 		case err != nil:
-			s.metrics.reject(ctx, err)
+			s.metrics.reject(ctx)
 			return pubsub.ValidationReject
 		default:
 		}
 
-		now := time.Now()
-		if !lastAccept.IsZero() {
-			s.metrics.accept(ctx, now.Sub(lastAccept), len(msg.Data))
-		}
-		lastAccept = now
-
 		// keep the valid header in the msg so Subscriptions can access it without
 		// additional unmarshalling
 		msg.ValidatorData = hdr
+		s.metrics.accept(ctx, len(msg.Data))
 		return pubsub.ValidationAccept
 	}
 
