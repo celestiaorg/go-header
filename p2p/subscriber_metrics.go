@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,8 +20,7 @@ type subscriberMetrics struct {
 	messageNumInst  metric.Int64Counter
 	messageSizeInst metric.Int64Histogram
 
-	messageTimeLastMu sync.Mutex
-	messageTimeLast   time.Time
+	messageTimeLast   atomic.Pointer[time.Time]
 	messageTimeInst   metric.Float64Histogram
 
 	subscriptionNum     atomic.Int64
@@ -33,28 +31,28 @@ type subscriberMetrics struct {
 func newSubscriberMetrics() (m *subscriberMetrics, err error) {
 	m = new(subscriberMetrics)
 	m.messageNumInst, err = meter.Int64Counter(
-		"hdr_p2p_sub_msg_num",
+		"hdr_p2p_sub_msg_num_counter",
 		metric.WithDescription("header message count"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	m.messageSizeInst, err = meter.Int64Histogram(
-		"hdr_p2p_sub_msg_size",
+		"hdr_p2p_sub_msg_size_hist",
 		metric.WithDescription("valid header message size"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	m.messageTimeInst, err = meter.Float64Histogram(
-		"hdr_p2p_sub_msg_time",
+		"hdr_p2p_sub_msg_time_hist",
 		metric.WithDescription("valid header message propagation time"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	m.subscriptionNumInst, err = meter.Int64ObservableGauge(
-		"hdr_p2p_sub_num",
+		"hdr_p2p_sub_num_gauge",
 		metric.WithDescription("number of active header message subscriptions"),
 	)
 	if err != nil {
@@ -75,12 +73,11 @@ func (m *subscriberMetrics) accept(ctx context.Context, size int) {
 		m.messageSizeInst.Record(ctx, int64(size))
 
 		now := time.Now()
-		m.messageTimeLastMu.Lock()
-		if !m.messageTimeLast.IsZero() {
-			m.messageTimeInst.Record(ctx, now.Sub(m.messageTimeLast).Seconds())
+		lastTime := m.messageTimeLast.Swap(&now)
+		if lastTime == nil || lastTime.IsZero() {
+			return
 		}
-		m.messageTimeLast = now
-		m.messageTimeLastMu.Unlock()
+		m.messageTimeInst.Record(ctx, now.Sub(*lastTime).Seconds())
 	})
 }
 
