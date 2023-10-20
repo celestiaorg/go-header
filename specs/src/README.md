@@ -2,15 +2,15 @@
 
 Welcome to the go-header Specifications.
 
-go-header is a library for syncing blockchain data such as block headers over the p2p network. It contains services for requesting and receiving headers from the p2p network, serving header requests from other nodes in the p2p network, storing headers, and syncing historical headers in case of fallbacks.
+go-header is a library for syncing blockchain data such as block headers over the P2P network. It contains services for requesting and receiving headers from the P2P network, serving header requests from other nodes in the P2P network, storing headers, and syncing historical headers in case of fallbacks.
 
 |Component|Description|
 |---|---|
-|[p2p.Subscriber](../../p2p/p2p.md)|listens for new headers from the p2p network|
-|[p2p.ExchangeServer](../../p2p/p2p.md)|serve header requests from other nodes in the p2p network|
-|[p2p.Exchange](../../p2p/p2p.md)|client that requests headers from other nodes in the p2p network|
-|[store.Store](../../store/store.md)|storing headers and making them available for access by other services such as exchange and syncer|
-|[sync.Syncer](../../sync/sync.md)|syncing of historical and new headers from the p2p network|
+|[p2p.Subscriber][p2p]|listens for new headers from the P2P network|
+|[p2p.ExchangeServer][p2p]|serve header requests from other nodes in the P2P network|
+|[p2p.Exchange][p2p]|client that requests headers from other nodes in the P2P network|
+|[store.Store][store]|storing headers and making them available for access by other services such as exchange and syncer|
+|[sync.Syncer][sync]|syncing of historical and new headers from the P2P network|
 
 The go-header library makes it easy to be used by other projects by defining a clear interface (as described below). An example usage is defined in [headertest/dummy_header.go][dummy header]
 
@@ -53,3 +53,6 @@ type Header[H any] interface {
 [1] [Dummy Header][dummy header]
 
 [dummy header]: https://github.com/celestiaorg/go-header/blob/main/headertest/dummy_header.go
+[p2p]: https://github.com/celestiaorg/go-header/blob/main/p2p/p2p.md
+[store]: https://github.com/celestiaorg/go-header/blob/main/store/store.md
+[sync]: https://github.com/celestiaorg/go-header/blob/main/sync/sync.md

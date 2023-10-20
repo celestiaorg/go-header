@@ -1,13 +1,13 @@
 # P2P
 
-The p2p package mainly contains two services:
+The P2P package mainly contains two services:
 
 1) Subscriber
 2) Exchange
 
 ## Subscriber
 
-Subscriber is a service that manages gossip of headers among the nodes in the p2p network by using [libp2p][libp2p] and its [pubsub][pubsub] modules. The pubsub topic used for gossip (`/<networkID>/header-sub/v0.0.1`) is configurable based on `networkID` parameter used to initialize the subscriber service.
+Subscriber is a service that manages gossip of headers among the nodes in the P2P network by using [libp2p][libp2p] and its [pubsub][pubsub] modules. The pubsub topic used for gossip (`/<networkID>/header-sub/v0.0.1`) is configurable based on `networkID` parameter used to initialize the subscriber service.
 
 The Subscriber implements the following interface:
 
@@ -27,25 +27,26 @@ type Subscriber[H Header[H]] interface {
 }
 ```
 
-The `Subscribe()` method allows listening to any new headers that are published to the p2p network. The `SetVerifier()` method allows for setting a custom verifier that will be executed upon receiving any new headers from the p2p network. This is a very useful customization for the consumers of go-header library to pass any custom logic as part of the pubsub.
+The `Subscribe()` method allows listening to any new headers that are published to the P2P network. The `SetVerifier()` method allows for setting a custom verifier that will be executed upon receiving any new headers from the P2P network. This is a very useful customization for the consumers of go-header library to pass any custom logic as part of the pubsub.
 
 ## Exchange
 
 An exchange is a combination of:
 
-* Exchange: a client for requesting headers from the p2p network (outbound)
-* ExchangeServer: a p2p server for handling inbound header requests
+* Exchange: a client for requesting headers from the P2P network (outbound)
+* ExchangeServer: a P2P server for handling inbound header requests
 
 ### Exchange Client
 
-Exchange defines a client for requesting headers from the p2p network. An exchange client is initialized using self [host.Host][host], a list of peers in the form of slice [peer.IDSlice][peer], and a [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker. The peer tracker discovers peers until `len(connected)+len(disconnected)` will not reach the limit(`maxPeerTrackerSize` for now it is 100) and `len(connected)>len(disconnected)`.
+Exchange defines a client for requesting headers from the P2P network. An exchange client is initialized using self [host.Host][host], a list of peers in the form of slice [peer.IDSlice][peer], and a [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker. The peer tracker discovers peers until `len(connected)+len(disconnected)` will not reach the limit(`maxPeerTrackerSize` for now it is 100) and `len(connected)>len(disconnected)`.
 
 #### Peer Tracker
 
 The three main functionalities of the peer tracker are:
+
 * bootstrap
 * track
-* gc
+* garbage collection (gc)
 
 When the exchange client is started, it bootstraps the peer tracker using the set of trusted peers used to initialize the exchange client.
 
@@ -108,7 +109,7 @@ The `GetVerifiedRange` differs from `GetRangeByHeight` as it ensures that the re
 
 ### Exchange Server
 
-ExchangeServer represents the server-side component (p2p server) for responding to inbound header requests. The exchange server needs to be initialized using self [host.Host][host] and a [store](../specs/src/specs/store.md). Optional `ServerParameters` as shown below, can be set during the server initialization.
+ExchangeServer represents the server-side component (P2P server) for responding to inbound header requests. The exchange server needs to be initialized using self [host.Host][host] and a [store][store]. Optional `ServerParameters` as shown below, can be set during the server initialization.
 
 ```
 // ServerParameters is the set of parameters that must be configured for the exchange.
@@ -160,7 +161,7 @@ enum StatusCode {
 }
 ```
 
-The request handler utilizes its local [store](../specs/src/specs/store.md) for serving the header requests and only up to `MaxRangeRequestSize` of 512 headers can be requested while requesting headers by range. If the requested range is not available, the range is reset to whatever is available.
+The request handler utilizes its local [store][store] for serving the header requests and only up to `MaxRangeRequestSize` of 512 headers can be requested while requesting headers by range. If the requested range is not available, the range is reset to whatever is available.
 
 ### Session
 
@@ -198,10 +199,10 @@ func DefaultClientParameters() ClientParameters {
 ## Metrics
 
 Currently only following metrics are collected:
+
 * P2P header exchange response size
 * Duration of the get headers request in seconds
 * Total synced headers
-
 
 # References
 
@@ -220,3 +221,4 @@ Currently only following metrics are collected:
 [host]: https://github.com/libp2p/go-libp2p/core/host
 [peer]: https://github.com/libp2p/go-libp2p/core/peer
 [gater]: https://github.com/libp2p/go-libp2p/p2p/net/conngater
+[store]: https://github.com/celestiaorg/go-header/blob/main/store/store.md

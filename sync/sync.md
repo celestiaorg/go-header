@@ -19,7 +19,7 @@ There are two main processes running in Syncer:
 For creating a new instance of the Syncer following components are needed:
 
 * A getter, e.g., [Exchange][exchange]
-* A [Store](../../../store/store.md)
+* A [Store][store]
 * A [Subscriber][subscriber]
 * Additional options such as block time. More options as described below.
 
@@ -93,3 +93,4 @@ When a new network head is received which gets validated and set as subjective h
 
 [exchange]: https://github.com/celestiaorg/go-header/blob/main/p2p/exchange.go
 [subscriber]: https://github.com/celestiaorg/go-header/blob/main/p2p/subscriber.go
+[store]: https://github.com/celestiaorg/go-header/blob/main/store/store.md
