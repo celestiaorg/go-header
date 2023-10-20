@@ -38,7 +38,7 @@ An exchange is a combination of:
 
 ### Exchange Client
 
-Exchange defines a client for requesting headers from the p2p network. An exchange client is initialized using self [host.Host][host], a list of peers in the form of slice [peer.IDSlice][peer], and a [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker.
+Exchange defines a client for requesting headers from the p2p network. An exchange client is initialized using self [host.Host][host], a list of peers in the form of slice [peer.IDSlice][peer], and a [connection gater][gater] for blocking and allowing nodes. Optional parameters like `ChainID` and `NetworkID` can also be passed. The exchange client also maintains a list of trusted peers via a peer tracker. The peer tracker discovers peers until `len(connected)+len(disconnected)` will not reach the limit(`maxPeerTrackerSize` for now it is 100) and `len(connected)>len(disconnected)`.
 
 #### Peer Tracker
 
