@@ -7,7 +7,7 @@ The P2P package mainly contains two services:
 
 ## Subscriber
 
-Subscriber is a service that manages gossip of headers among the nodes in the P2P network by using [libp2p][libp2p] and its [pubsub][pubsub] modules. The pubsub topic used for gossip (`/<networkID>/header-sub/v0.0.1`) is configurable based on `networkID` parameter used to initialize the subscriber service.
+Subscriber is a service that manages the gossip of headers among the nodes in the P2P network by using [libp2p][libp2p] and its [pubsub][pubsub] modules. The pubsub topic is used for gossip (`/<networkID>/header-sub/v0.0.1`) and is configurable based on the `networkID` parameter used to initialize the subscriber service.
 
 The Subscriber implements the following interface:
 
