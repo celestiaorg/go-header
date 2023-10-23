@@ -51,7 +51,7 @@ func sendMessage(
 	to peer.ID,
 	protocol protocol.ID,
 	req *p2p_pb.HeaderRequest,
-) ([]*p2p_pb.HeaderResponse, uint64, uint64, error) {
+) ([]*p2p_pb.HeaderResponse, uint64, time.Duration, error) {
 	startTime := time.Now()
 	stream, err := host.NewStream(ctx, to, protocol)
 	if err != nil {
@@ -94,8 +94,6 @@ func sendMessage(
 		headers = append(headers, resp)
 	}
 
-	duration := time.Since(startTime).Milliseconds()
-
 	// we allow the server side to explicitly close the connection
 	// if it does not have the requested range.
 	// In this case, server side will send us a response with ErrNotFound status code inside
@@ -114,7 +112,7 @@ func sendMessage(
 		// reset stream in case of an error
 		stream.Reset() //nolint:errcheck
 	}
-	return headers, totalRespLn, uint64(duration), err
+	return headers, totalRespLn, time.Since(startTime), err
 }
 
 // convertStatusCodeToError converts passed status code into an error.

@@ -26,12 +26,12 @@ type peerStat struct {
 // by dividing the amount by time, so the result score will represent how many bytes
 // were retrieved in 1 millisecond. This value will then be averaged relative to the
 // previous peerScore.
-func (p *peerStat) updateStats(amount uint64, time uint64) {
+func (p *peerStat) updateStats(amount uint64, duration time.Duration) {
 	p.Lock()
 	defer p.Unlock()
 	averageSpeed := float32(amount)
-	if time != 0 {
-		averageSpeed /= float32(time)
+	if duration != 0 {
+		averageSpeed /= float32(duration.Milliseconds())
 	}
 	if p.peerScore == 0.0 {
 		p.peerScore = averageSpeed

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
@@ -66,13 +67,13 @@ func Test_StatsUpdateStats(t *testing.T) {
 	stat := &peerStat{peerID: "peerID", peerScore: 0}
 	heap.Push(&pQueue.stats, stat)
 	testCases := []struct {
-		inputTime   uint64
+		inputTime   time.Duration
 		inputBytes  uint64
 		resultScore float32
 	}{
 		// common case, where time and bytes is not equal to 0
 		{
-			inputTime:   16,
+			inputTime:   time.Millisecond * 16,
 			inputBytes:  4,
 			resultScore: 4,
 		},
@@ -80,7 +81,7 @@ func Test_StatsUpdateStats(t *testing.T) {
 		// then the request was failed and previous score will be
 		// decreased
 		{
-			inputTime:   10,
+			inputTime:   time.Millisecond * 10,
 			inputBytes:  0,
 			resultScore: 2,
 		},
