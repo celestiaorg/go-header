@@ -28,8 +28,8 @@ var (
 type ExchangeServer[H header.Header[H]] struct {
 	protocolID protocol.ID
 
-	host  host.Host
-	store header.Store[H]
+	host    host.Host
+	store   header.Store[H]
 	metrics *serverMetrics
 
 	ctx    context.Context
@@ -66,7 +66,7 @@ func NewExchangeServer[H header.Header[H]](
 		protocolID: protocolID(params.networkID),
 		host:       host,
 		store:      store,
-		metrics: metrics,
+		metrics:    metrics,
 		Params:     params,
 	}, nil
 }

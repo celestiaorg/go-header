@@ -11,15 +11,15 @@ import (
 const headersServedKey = "num_headers_served"
 
 type serverMetrics struct {
-	headersServed    metric.Int64Counter
-	headServeTimeInst metric.Int64Histogram
+	headersServedInst  metric.Int64Counter
+	headServeTimeInst  metric.Int64Histogram
 	rangeServeTimeInst metric.Int64Histogram
-	getServeTimeInst metric.Int64Histogram
+	getServeTimeInst   metric.Int64Histogram
 }
 
 func newServerMetrics() (m *serverMetrics, err error) {
 	m = new(serverMetrics)
-	m.headersServed, err = meter.Int64Counter(
+	m.headersServedInst, err = meter.Int64Counter(
 		"hdr_p2p_exch_srvr_headers_served",
 		metric.WithDescription("number of headers served"),
 	)
@@ -52,14 +52,14 @@ func newServerMetrics() (m *serverMetrics, err error) {
 
 func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headersServed.Add(ctx, 1)
+		m.headersServedInst.Add(ctx, 1)
 		m.headServeTimeInst.Record(ctx, duration.Milliseconds())
 	})
 }
 
 func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headersServed.Add(ctx, int64(headersServed))
+		m.headersServedInst.Add(ctx, int64(headersServed))
 		m.rangeServeTimeInst.Record(ctx,
 			duration.Milliseconds(),
 			metric.WithAttributes(attribute.Int(headersServedKey, headersServed)),
@@ -69,7 +69,7 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 
 func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headersServed.Add(ctx, 1)
+		m.headersServedInst.Add(ctx, 1)
 		m.getServeTimeInst.Record(ctx, duration.Milliseconds())
 	})
 }
