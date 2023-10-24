@@ -27,7 +27,7 @@ const (
 )
 
 type exchangeMetrics struct {
-	headRequestTimeInst metric.Int64Histogram
+	headRequestTimeInst metric.Float64Histogram
 	responseSizeInst    metric.Int64Histogram
 	responseTimeInst    metric.Float64Histogram
 	blockedPeersNum     metric.Int64Counter
@@ -43,9 +43,9 @@ type exchangeMetrics struct {
 
 func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	m = new(exchangeMetrics)
-	m.headRequestTimeInst, err = meter.Int64Histogram(
+	m.headRequestTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_clnt_head_time_hist",
-		metric.WithDescription("exchange client head request time in milliseconds"),
+		metric.WithDescription("exchange client head request time in seconds"),
 	)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	}
 	m.responseTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_clnt_resp_time_hist",
-		metric.WithDescription("exchange client response time in milliseconds"),
+		metric.WithDescription("exchange client response time in seconds"),
 	)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 func (m *exchangeMetrics) head(ctx context.Context, duration time.Duration, headersReceived int, tp, status string) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headRequestTimeInst.Record(ctx,
-			duration.Milliseconds(),
+			duration.Seconds(),
 			metric.WithAttributes(
 				attribute.Int(headerReceivedKey, headersReceived),
 				attribute.String(headTypeKey, tp),

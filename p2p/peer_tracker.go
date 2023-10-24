@@ -30,7 +30,7 @@ var (
 type peerTracker struct {
 	host      host.Host
 	connGater *conngater.BasicConnectionGater
-	metrics *exchangeMetrics
+	metrics   *exchangeMetrics
 
 	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
