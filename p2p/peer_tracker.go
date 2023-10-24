@@ -30,7 +30,7 @@ var (
 type peerTracker struct {
 	host      host.Host
 	connGater *conngater.BasicConnectionGater
-	metric    *exchangeMetrics
+	metrics *exchangeMetrics
 
 	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
@@ -62,7 +62,7 @@ func newPeerTracker(
 	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
-		metric:            metrics,
+		metrics:           metrics,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
 		pidstore:          pidstore,
@@ -200,7 +200,7 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 	}
 	p.trackedPeers[pID] = stats
 
-	p.metric.peersTracked(1)
+	p.metrics.peersTracked(1)
 }
 
 func (p *peerTracker) disconnected(pID libpeer.ID) {
@@ -214,8 +214,8 @@ func (p *peerTracker) disconnected(pID libpeer.ID) {
 	p.disconnectedPeers[pID] = stats
 	delete(p.trackedPeers, pID)
 
-	p.metric.peersTracked(-1)
-	p.metric.peersDisconnected(1)
+	p.metrics.peersTracked(-1)
+	p.metrics.peersDisconnected(1)
 }
 
 func (p *peerTracker) peers() []*peerStat {
@@ -260,8 +260,8 @@ func (p *peerTracker) gc() {
 			}
 			p.peerLk.Unlock()
 
-			p.metric.peersDisconnected(-deletedDisconnectedNum)
-			p.metric.peersTracked(-deletedTrackedNum)
+			p.metrics.peersDisconnected(-deletedDisconnectedNum)
+			p.metrics.peersTracked(-deletedTrackedNum)
 			p.dumpPeers(p.ctx)
 		}
 	}
@@ -324,5 +324,5 @@ func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 	}
 
 	log.Warnw("header/p2p: blocked peer", "pID", pID, "reason", reason)
-	p.metric.peerBlocked(p.ctx)
+	p.metrics.peerBlocked(p.ctx)
 }

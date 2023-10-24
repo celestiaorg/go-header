@@ -16,9 +16,9 @@ var meter = otel.Meter("header/p2p")
 const (
 	failedKey           = "failed"
 	headerReceivedKey   = "num_headers_received"
-	headTypeKey         = "type"
-	headTypeTrusted     = "trusted"
-	headTypeUntrusted   = "untrusted"
+	headTypeKey         = "request_type"
+	headTypeTrusted     = "trusted_request"
+	headTypeUntrusted   = "untrusted_request"
 	headStatusKey       = "status"
 	headStatusOk        = "ok"
 	headStatusTimeout   = "timeout"
@@ -29,7 +29,7 @@ const (
 type exchangeMetrics struct {
 	headRequestTimeInst metric.Int64Histogram
 	responseSizeInst    metric.Int64Histogram
-	responseTimeInst    metric.Int64Histogram
+	responseTimeInst    metric.Float64Histogram
 	blockedPeersNum     metric.Int64Counter
 
 	trackerPeersNum     atomic.Int64
@@ -57,7 +57,7 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.responseTimeInst, err = meter.Int64Histogram(
+	m.responseTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_clnt_resp_time_hist",
 		metric.WithDescription("exchange client response time in milliseconds"),
 	)
@@ -109,7 +109,7 @@ func (m *exchangeMetrics) response(ctx context.Context, size uint64, duration ti
 			metric.WithAttributes(attribute.Bool(failedKey, err != nil)),
 		)
 		m.responseTimeInst.Record(ctx,
-			duration.Milliseconds(),
+			duration.Seconds(),
 			metric.WithAttributes(attribute.Bool(failedKey, err != nil)),
 		)
 	})
