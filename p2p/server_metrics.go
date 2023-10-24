@@ -12,9 +12,9 @@ const headersServedKey = "num_headers_served"
 
 type serverMetrics struct {
 	headersServedInst  metric.Int64Counter
-	headServeTimeInst  metric.Int64Histogram
-	rangeServeTimeInst metric.Int64Histogram
-	getServeTimeInst   metric.Int64Histogram
+	headServeTimeInst  metric.Float64Histogram
+	rangeServeTimeInst metric.Float64Histogram
+	getServeTimeInst   metric.Float64Histogram
 }
 
 func newServerMetrics() (m *serverMetrics, err error) {
@@ -26,23 +26,23 @@ func newServerMetrics() (m *serverMetrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.headServeTimeInst, err = meter.Int64Histogram(
+	m.headServeTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_srvr_head_serve_time_hist",
-		metric.WithDescription("exchange server head serve time in milliseconds"),
+		metric.WithDescription("exchange server head serve time in seconds"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.rangeServeTimeInst, err = meter.Int64Histogram(
+	m.rangeServeTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_srvr_range_serve_time_hist",
-		metric.WithDescription("exchange server range serve time in milliseconds"),
+		metric.WithDescription("exchange server range serve time in seconds"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.getServeTimeInst, err = meter.Int64Histogram(
+	m.getServeTimeInst, err = meter.Float64Histogram(
 		"hdr_p2p_exch_srvr_get_serve_time_hist",
-		metric.WithDescription("exchange server get serve time in milliseconds"),
+		metric.WithDescription("exchange server get serve time in seconds"),
 	)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func newServerMetrics() (m *serverMetrics, err error) {
 func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx, 1)
-		m.headServeTimeInst.Record(ctx, duration.Milliseconds())
+		m.headServeTimeInst.Record(ctx, duration.Seconds())
 	})
 }
 
@@ -61,7 +61,7 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx, int64(headersServed))
 		m.rangeServeTimeInst.Record(ctx,
-			duration.Milliseconds(),
+			duration.Seconds(),
 			metric.WithAttributes(attribute.Int(headersServedKey, headersServed)),
 		)
 	})
@@ -70,7 +70,7 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx, 1)
-		m.getServeTimeInst.Record(ctx, duration.Milliseconds())
+		m.getServeTimeInst.Record(ctx, duration.Seconds())
 	})
 }
 
