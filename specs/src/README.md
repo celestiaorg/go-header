@@ -2,7 +2,7 @@
 
 Welcome to the go-header Specifications.
 
-go-header is a library for syncing blockchain data such as block headers over the P2P network. It contains services for requesting and receiving headers from the P2P network, serving header requests from other nodes in the P2P network, storing headers, and syncing historical headers in case of fallbacks.
+go-header is a library for syncing blockchain data, such as block headers, over the P2P network in a trust-minimized way. It contains services for requesting and receiving headers from the P2P network, serving header requests from other nodes in the P2P network, storing headers, and syncing historical headers in case of fallbacks.
 
 |Component|Description|
 |---|---|

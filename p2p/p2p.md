@@ -87,7 +87,7 @@ type Head[H Header[H]] interface {
 }
 ```
 
-`Head()` method requests the latest header from trusted peers. The `Head()` requests utilizes 90% of the set deadline (in the form of context deadline) for requests and remaining for determining the best head from gathered responses. The `Head()` call also allows passing an optional `TrustedHead` which allows the caller to specify a trusted header against which the untrusted headers received from a list of tracked peers (limited to `maxUntrustedHeadRequests` of 4) can be verified against, in the absence of trusted peers. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
+`Head()` method requests the latest header from trusted or tracked peers. The `Head()` call also allows passing an optional `TrustedHead`, which allows the caller to specify a trusted head against which the untrusted head is verified. By default, `Head()` requests only trusted peers and if `TrustedHead` is provided untrusted tracked peers are also requested (limited to `maxUntrustedHeadRequests` of 4). The `Head()` requests utilize 90% of the set deadline (in the form of context deadline) for requests and the remaining for determining the best head from gathered responses. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
 
 * with max height among the received
 * which is received from at least `minHeadResponses` of 2 peers
