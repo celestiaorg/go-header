@@ -30,6 +30,7 @@ type ExchangeServer[H header.Header[H]] struct {
 
 	host  host.Host
 	store header.Store[H]
+	metrics *serverMetrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -52,10 +53,20 @@ func NewExchangeServer[H header.Header[H]](
 		return nil, err
 	}
 
+	var metrics *serverMetrics
+	if params.metrics {
+		var err error
+		metrics, err = newServerMetrics()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &ExchangeServer[H]{
 		protocolID: protocolID(params.networkID),
 		host:       host,
 		store:      store,
+		metrics: metrics,
 		Params:     params,
 	}, nil
 }
@@ -158,6 +169,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 // handleRequestByHash returns the Header at the given hash
 // if it exists.
 func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
+	startTime := time.Now()
 	log.Debugw("server: handling header request", "hash", header.Hash(hash).String())
 	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
 	defer cancel()
@@ -178,6 +190,8 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 		attribute.Int64("height", int64(h.Height()))),
 	)
 	span.SetStatus(codes.Ok, "")
+
+	serv.metrics.getServed(ctx, time.Since(startTime))
 	return []H{h}, nil
 }
 
@@ -188,6 +202,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		return serv.handleHeadRequest()
 	}
 
+	startTime := time.Now()
 	ctx, span := tracer.Start(serv.ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
@@ -243,11 +258,13 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 	span.AddEvent("fetched-range-of-headers", trace.WithAttributes(
 		attribute.Int("amount", len(headersByRange))))
 	span.SetStatus(codes.Ok, "")
+	serv.metrics.rangeServed(ctx, time.Since(startTime), len(headersByRange))
 	return headersByRange, nil
 }
 
 // handleHeadRequest returns the latest stored head.
 func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
+	startTime := time.Now()
 	log.Debug("server: handling head request")
 	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
 	defer cancel()
@@ -266,5 +283,6 @@ func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
 		attribute.Int64("height", int64(head.Height()))),
 	)
 	span.SetStatus(codes.Ok, "")
+	serv.metrics.headServed(ctx, time.Since(startTime))
 	return []H{head}, nil
 }
