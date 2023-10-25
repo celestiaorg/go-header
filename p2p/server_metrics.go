@@ -62,7 +62,7 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 		m.headersServedInst.Add(ctx, int64(headersServed))
 		m.rangeServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)),
+			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
 		)
 	})
 }
