@@ -42,7 +42,7 @@ type Exchange[H header.Header[H]] struct {
 
 	trustedPeers func() peer.IDSlice
 	peerTracker  *peerTracker
-	metrics      *metrics
+	metrics      *exchangeMetrics
 
 	Params ClientParameters
 }
@@ -63,7 +63,7 @@ func NewExchange[H header.Header[H]](
 		return nil, err
 	}
 
-	var metrics *metrics
+	var metrics *exchangeMetrics
 	if params.metrics {
 		var err error
 		metrics, err = newExchangeMetrics()
@@ -75,7 +75,7 @@ func NewExchange[H header.Header[H]](
 	ex := &Exchange[H]{
 		host:        host,
 		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore),
+		peerTracker: newPeerTracker(host, gater, params.pidstore, metrics),
 		Params:      params,
 		metrics:     metrics,
 	}
@@ -102,7 +102,8 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 	// cancel the session if it exists
 	ex.cancel()
 	// stop the peerTracker
-	return ex.peerTracker.stop(ctx)
+	err := ex.peerTracker.stop(ctx)
+	return errors.Join(err, ex.metrics.Close())
 }
 
 // Head requests the latest Header from trusted peers.
@@ -114,14 +115,15 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	log.Debug("requesting head")
 
 	reqCtx := ctx
+	startTime := time.Now()
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 90% of caller's set deadline for requests
 		// and give leftover to determine the bestHead from gathered responses
 		// this avoids DeadlineExceeded error when any of the peers are unresponsive
-		now := time.Now()
-		sub := deadline.Sub(now) * 9 / 10
+
+		sub := deadline.Sub(startTime) * 9 / 10
 		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithDeadline(ctx, now.Add(sub))
+		reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
 		defer cancel()
 	}
 
@@ -184,6 +186,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		}(from)
 	}
 
+	headType := headTypeTrusted
+	if useTrackedPeers {
+		headType = headTypeUntrusted
+	}
+
 	headers := make([]H, 0, len(peers))
 	for range peers {
 		select {
@@ -192,12 +199,27 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				headers = append(headers, h)
 			}
 		case <-ctx.Done():
+			status := headStatusCanceled
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				status = headStatusTimeout
+			}
+
+			ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, status)
 			return zero, ctx.Err()
 		case <-ex.ctx.Done():
+			ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusCanceled)
 			return zero, ex.ctx.Err()
 		}
 	}
-	return bestHead[H](headers)
+
+	head, err := bestHead[H](headers)
+	if err != nil {
+		ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusNoHeaders)
+		return zero, err
+	}
+
+	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
+	return head, nil
 }
 
 // GetByHeight performs a request for the Header at the given
@@ -230,7 +252,7 @@ func (ex *Exchange[H]) GetRangeByHeight(
 	to uint64,
 ) ([]H, error) {
 	session := newSession[H](
-		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, withValidation(from),
+		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, ex.metrics, withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
@@ -307,7 +329,7 @@ func (ex *Exchange[H]) request(
 ) ([]H, error) {
 	log.Debugw("requesting peer", "peer", to)
 	responses, size, duration, err := sendMessage(ctx, ex.host, to, ex.protocolID, req)
-	ex.metrics.observeResponse(ctx, size, duration, err)
+	ex.metrics.response(ctx, size, duration, err)
 	if err != nil {
 		log.Debugw("err sending request", "peer", to, "err", err)
 		return nil, err

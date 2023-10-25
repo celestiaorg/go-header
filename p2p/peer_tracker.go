@@ -30,6 +30,7 @@ var (
 type peerTracker struct {
 	host      host.Host
 	connGater *conngater.BasicConnectionGater
+	metrics   *exchangeMetrics
 
 	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
@@ -55,11 +56,13 @@ func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
 	pidstore PeerIDStore,
+	metrics *exchangeMetrics,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
+		metrics:           metrics,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
 		pidstore:          pidstore,
@@ -196,6 +199,8 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 		delete(p.disconnectedPeers, pID)
 	}
 	p.trackedPeers[pID] = stats
+
+	p.metrics.peersTracked(1)
 }
 
 func (p *peerTracker) disconnected(pID libpeer.ID) {
@@ -208,6 +213,9 @@ func (p *peerTracker) disconnected(pID libpeer.ID) {
 	stats.pruneDeadline = time.Now().Add(maxAwaitingTime)
 	p.disconnectedPeers[pID] = stats
 	delete(p.trackedPeers, pID)
+
+	p.metrics.peersTracked(-1)
+	p.metrics.peersDisconnected(1)
 }
 
 func (p *peerTracker) peers() []*peerStat {
@@ -235,20 +243,25 @@ func (p *peerTracker) gc() {
 			p.peerLk.Lock()
 
 			now := time.Now()
-
+			var deletedDisconnectedNum int
 			for id, peer := range p.disconnectedPeers {
 				if peer.pruneDeadline.Before(now) {
 					delete(p.disconnectedPeers, id)
+					deletedDisconnectedNum++
 				}
 			}
 
+			var deletedTrackedNum int
 			for id, peer := range p.trackedPeers {
 				if peer.peerScore <= defaultScore {
 					delete(p.trackedPeers, id)
+					deletedTrackedNum++
 				}
 			}
 			p.peerLk.Unlock()
 
+			p.metrics.peersDisconnected(-deletedDisconnectedNum)
+			p.metrics.peersTracked(-deletedTrackedNum)
 			p.dumpPeers(p.ctx)
 		}
 	}
@@ -294,7 +307,6 @@ func (p *peerTracker) stop(ctx context.Context) error {
 
 	// dump remaining tracked peers
 	p.dumpPeers(ctx)
-
 	return nil
 }
 
@@ -312,10 +324,5 @@ func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 	}
 
 	log.Warnw("header/p2p: blocked peer", "pID", pID, "reason", reason)
-
-	p.peerLk.Lock()
-	defer p.peerLk.Unlock()
-	// remove peer from cache.
-	delete(p.trackedPeers, pID)
-	delete(p.disconnectedPeers, pID)
+	p.metrics.peerBlocked()
 }

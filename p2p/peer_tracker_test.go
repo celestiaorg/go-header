@@ -29,7 +29,7 @@ func TestPeerTracker_GC(t *testing.T) {
 	require.NoError(t, err)
 
 	pidstore := newDummyPIDStore()
-	p := newPeerTracker(h[0], connGater, pidstore)
+	p := newPeerTracker(h[0], connGater, pidstore, nil)
 
 	maxAwaitingTime = time.Millisecond
 
@@ -67,7 +67,7 @@ func TestPeerTracker_BlockPeer(t *testing.T) {
 	h := createMocknet(t, 2)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
-	p := newPeerTracker(h[0], connGater, nil)
+	p := newPeerTracker(h[0], connGater, nil, nil)
 	maxAwaitingTime = time.Millisecond
 	p.blockPeer(h[1].ID(), errors.New("test"))
 	require.Len(t, connGater.ListBlockedPeers(), 1)
@@ -100,7 +100,7 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 	err = pidstore.Put(ctx, prevSeen[2:])
 	require.NoError(t, err)
 
-	tracker := newPeerTracker(mn.Hosts()[0], connGater, pidstore)
+	tracker := newPeerTracker(mn.Hosts()[0], connGater, pidstore, nil)
 
 	go tracker.track()
 

@@ -34,6 +34,7 @@ type session[H header.Header[H]] struct {
 	queue      *peerQueue
 	// peerTracker contains discovered peers with records that describes their activity.
 	peerTracker *peerTracker
+	metrics     *exchangeMetrics
 
 	// Otherwise, it will be nil.
 	// `from` is set when additional validation for range is needed.
@@ -51,6 +52,7 @@ func newSession[H header.Header[H]](
 	peerTracker *peerTracker,
 	protocolID protocol.ID,
 	requestTimeout time.Duration,
+	metrics *exchangeMetrics,
 	options ...option[H],
 ) *session[H] {
 	ctx, cancel := context.WithCancel(ctx)
@@ -62,6 +64,7 @@ func newSession[H header.Header[H]](
 		queue:          newPeerQueue(ctx, peerTracker.peers()),
 		peerTracker:    peerTracker,
 		requestTimeout: requestTimeout,
+		metrics:        metrics,
 	}
 
 	for _, opt := range options {
@@ -153,6 +156,7 @@ func (s *session[H]) doRequest(
 	defer cancel()
 
 	r, size, duration, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
+	s.metrics.response(ctx, size, duration, err)
 	if err != nil {
 		// we should not punish peer at this point and should try to parse responses, despite that error
 		// was received.
