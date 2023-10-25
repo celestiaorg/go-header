@@ -20,7 +20,7 @@ type serverMetrics struct {
 func newServerMetrics() (m *serverMetrics, err error) {
 	m = new(serverMetrics)
 	m.headersServedInst, err = meter.Int64Counter(
-		"hdr_p2p_exch_srvr_headers_served",
+		"hdr_p2p_exch_srvr_headers_served_counter",
 		metric.WithDescription("number of headers served"),
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 		m.headersServedInst.Add(ctx, int64(headersServed))
 		m.rangeServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Int(headersServedKey, headersServed)),
+			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)),
 		)
 	})
 }
