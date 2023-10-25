@@ -30,7 +30,6 @@ type exchangeMetrics struct {
 	headRequestTimeInst metric.Float64Histogram
 	responseSizeInst    metric.Int64Histogram
 	responseTimeInst    metric.Float64Histogram
-	blockedPeersNum     metric.Int64Counter
 
 	trackerPeersNum     atomic.Int64
 	trackedPeersNumInst metric.Int64ObservableGauge
@@ -39,6 +38,10 @@ type exchangeMetrics struct {
 	disconnectedPeersNum     atomic.Int64
 	disconnectedPeersNumInst metric.Int64ObservableGauge
 	disconnectedPeersNumReg  metric.Registration
+
+	blockedPeersNum     atomic.Int64
+	blockedPeersNumInst metric.Int64ObservableGauge
+	blockedPeersNumReg  metric.Registration
 }
 
 func newExchangeMetrics() (m *exchangeMetrics, err error) {
@@ -76,13 +79,24 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 		return nil, err
 	}
 	m.disconnectedPeersNumInst, err = meter.Int64ObservableGauge(
-		"hdr_p2p_exch_clnt_disc_peer_num_gauge",
+		"hdr_p2p_exch_clnt_disconn_peer_num_gauge",
 		metric.WithDescription("exchange client tracked disconnected peers number"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	m.disconnectedPeersNumReg, err = meter.RegisterCallback(m.observeDisconnectedPeers, m.disconnectedPeersNumInst)
+	if err != nil {
+		return nil, err
+	}
+	m.blockedPeersNumInst, err = meter.Int64ObservableGauge(
+		"hdr_p2p_exch_clnt_block_peer_num_gauge",
+		metric.WithDescription("exchange client blocked peers number"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	m.blockedPeersNumReg, err = meter.RegisterCallback(m.observeBlockedPeers, m.blockedPeersNumInst)
 	if err != nil {
 		return nil, err
 	}
@@ -127,9 +141,9 @@ func (m *exchangeMetrics) peersDisconnected(num int) {
 	})
 }
 
-func (m *exchangeMetrics) peerBlocked(ctx context.Context) {
-	m.observe(ctx, func(ctx context.Context) {
-		m.blockedPeersNum.Add(ctx, 1)
+func (m *exchangeMetrics) peerBlocked() {
+	m.observe(context.Background(), func(ctx context.Context) {
+		m.blockedPeersNum.Add(1)
 	})
 }
 
@@ -140,6 +154,11 @@ func (m *exchangeMetrics) observeTrackedPeers(_ context.Context, obs metric.Obse
 
 func (m *exchangeMetrics) observeDisconnectedPeers(_ context.Context, obs metric.Observer) error {
 	obs.ObserveInt64(m.disconnectedPeersNumInst, m.disconnectedPeersNum.Load())
+	return nil
+}
+
+func (m *exchangeMetrics) observeBlockedPeers(_ context.Context, obs metric.Observer) error {
+	obs.ObserveInt64(m.blockedPeersNumInst, m.blockedPeersNum.Load())
 	return nil
 }
 

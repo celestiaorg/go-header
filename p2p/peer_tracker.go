@@ -324,5 +324,5 @@ func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 	}
 
 	log.Warnw("header/p2p: blocked peer", "pID", pID, "reason", reason)
-	p.metrics.peerBlocked(p.ctx)
+	p.metrics.peerBlocked()
 }
