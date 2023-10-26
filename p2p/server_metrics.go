@@ -53,42 +53,42 @@ func newServerMetrics() (m *serverMetrics, err error) {
 	return m, nil
 }
 
-func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration, err ...error) {
+func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration, failed bool) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx,
 			1,
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 		m.headServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 	})
 }
 
-func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int, err ...error) {
+func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int, failed bool) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx,
 			int64(headersServed),
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 		m.rangeServeTimeInst.Record(ctx,
 			duration.Seconds(),
 			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 	})
 }
 
-func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration, err ...error) {
+func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration, failed bool) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx,
 			1,
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 		m.getServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 	})
 }
