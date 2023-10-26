@@ -182,6 +182,7 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 	if err != nil {
 		log.Errorw("server: getting header by hash", "hash", header.Hash(hash).String(), "err", err)
 		span.SetStatus(codes.Error, err.Error())
+		serv.metrics.getServed(ctx, time.Since(startTime), err)
 		return nil, err
 	}
 
@@ -211,6 +212,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 	if to-from > header.MaxRangeRequestSize {
 		log.Errorw("server: skip request for too many headers.", "amount", to-from)
 		span.SetStatus(codes.Error, header.ErrHeadersLimitExceeded.Error())
+		serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), header.ErrHeadersLimitExceeded)
 		return nil, header.ErrHeadersLimitExceeded
 	}
 
@@ -221,6 +223,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			log.Debugw("server: could not get current head", "err", err)
+			serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), err)
 			return nil, err
 		}
 
@@ -233,6 +236,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 				"currentHead",
 				head.Height(),
 			)
+			serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), header.ErrNotFound)
 			return nil, header.ErrNotFound
 		}
 
@@ -252,6 +256,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 			return nil, header.ErrNotFound
 		}
 		log.Errorw("server: getting headers", "from", from, "to", to, "err", err)
+		serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), err)
 		return nil, err
 	}
 
@@ -275,6 +280,7 @@ func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
 	if err != nil {
 		log.Errorw("server: getting head", "err", err)
 		span.SetStatus(codes.Error, err.Error())
+		serv.metrics.headServed(ctx, time.Since(startTime), err)
 		return nil, err
 	}
 

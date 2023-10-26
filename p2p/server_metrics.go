@@ -8,7 +8,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const headersServedKey = "num_headers_served"
+const (
+	headersServedKey = "num_headers_served"
+	failedRequestKey = "failed_request"
+)
 
 type serverMetrics struct {
 	headersServedInst  metric.Int64Counter
@@ -50,27 +53,43 @@ func newServerMetrics() (m *serverMetrics, err error) {
 	return m, nil
 }
 
-func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration) {
+func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration, err ...error) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headersServedInst.Add(ctx, 1)
-		m.headServeTimeInst.Record(ctx, duration.Seconds())
-	})
-}
-
-func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int) {
-	m.observe(ctx, func(ctx context.Context) {
-		m.headersServedInst.Add(ctx, int64(headersServed))
-		m.rangeServeTimeInst.Record(ctx,
+		m.headersServedInst.Add(ctx,
+			1,
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+		)
+		m.headServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
 		)
 	})
 }
 
-func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration) {
+func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int, err ...error) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.headersServedInst.Add(ctx, 1)
-		m.getServeTimeInst.Record(ctx, duration.Seconds())
+		m.headersServedInst.Add(ctx,
+			int64(headersServed),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+		)
+		m.rangeServeTimeInst.Record(ctx,
+			duration.Seconds(),
+			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+		)
+	})
+}
+
+func (m *serverMetrics) getServed(ctx context.Context, duration time.Duration, err ...error) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.headersServedInst.Add(ctx,
+			1,
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+		)
+		m.getServeTimeInst.Record(ctx,
+			duration.Seconds(),
+			metric.WithAttributes(attribute.Bool(failedRequestKey, err != nil)),
+		)
 	})
 }
 
