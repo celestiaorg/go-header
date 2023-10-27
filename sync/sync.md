@@ -25,39 +25,11 @@ For creating a new instance of the Syncer following components are needed:
 
 Options for configuring the syncer:
 
-```
-// Parameters is the set of parameters that must be configured for the syncer.
-type Parameters struct {
- // TrustingPeriod is period through which we can trust a header's validators set.
- //
- // Should be significantly less than the unbonding period (e.g. unbonding
- // period = 3 weeks, trusting period = 2 weeks).
- //
- // More specifically, trusting period + time needed to check headers + time
- // needed to report and punish misbehavior should be less than the unbonding
- // period.
- TrustingPeriod time.Duration
- // blockTime provides a reference point for the Syncer to determine
- // whether its subjective head is outdated.
- // Keeping it private to disable serialization for it.
- // default value is set to 0 so syncer will constantly request networking head.
- blockTime time.Duration
- // recencyThreshold describes the time period for which a header is
- // considered "recent". The default is blockTime + 5 seconds.
- recencyThreshold time.Duration
-}
-```
-
-The default parameters used to configure the syncer are:
-
-```
-// DefaultParameters returns the default params to configure the syncer.
-func DefaultParameters() Parameters {
- return Parameters{
-  TrustingPeriod: 336 * time.Hour, // tendermint's default trusting period
- }
-}
-```
+|Parameter|Type|Description|Default|
+|--|--|--|--|
+| TrustingPeriod | time.Duration | TrustingPeriod is period through which we can trust a header's validators set. Should be significantly less than the unbonding period (e.g. unbonding period = 3 weeks, trusting period = 2 weeks). More specifically, trusting period + time needed to check headers + time needed to report and punish misbehavior should be less than the unbonding period. | 336 hours (tendermint's default trusting period) |
+| blockTime | time.Duration | blockTime provides a reference point for the Syncer to determine whether its subjective head is outdated. Keeping it private to disable serialization for it. | 0 (reason: syncer will constantly request networking head.) |
+| recencyThreshold | time.Duration | recencyThreshold describes the time period for which a header is considered "recent". | blockTime + 5 seconds |
 
 When the syncer is started:
 
