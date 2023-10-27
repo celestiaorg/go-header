@@ -6,11 +6,11 @@ Store encompasses the behavior necessary to store and retrieve headers from a no
 
 |Method|Input|Output|Description|
 |--|--|--|--|
-| Init | `context.Context, H` | `error` | Init initializes Store with the given head, meaning it is initialized with the genesis header. |
-| Height | | `uint64` | Height reports current height of the chain head. |
-| Has | `context.Context, Hash` | `bool, error` | Has checks whether Header is already stored. |
-| HasAt | `context.Context, uint64` | `bool` | HasAt checks whether Header at the given height is already stored. |
-| Append | `context.Context, ...H` | `error` | Append stores and verifies the given Header(s). It requires them to be adjacent and in ascending order, as it applies them contiguously on top of the current head height. It returns the amount of successfully applied headers, so caller can understand what given header was invalid, if any. |
+| Init | context.Context, H | error | Init initializes Store with the given head, meaning it is initialized with the genesis header. |
+| Height | | uint64 | Height reports current height of the chain head. |
+| Has | context.Context, Hash | bool, error | Has checks whether Header is already stored. |
+| HasAt | context.Context, uint64 | bool | HasAt checks whether Header at the given height is already stored. |
+| Append | context.Context, ...H | error | Append stores and verifies the given Header(s). It requires them to be adjacent and in ascending order, as it applies them contiguously on top of the current head height. It returns the amount of successfully applied headers, so caller can understand what given header was invalid, if any. |
 
 A new store is created by passing a [datastore][go-datastore] instance and an optional head. If the head is not passed while creating a new store, `Init` method can be used to later initialize the store with head. The store must have a head before start. The head is considered trusted header and generally it is the genesis header. A custom store prefix can be passed during the store initialization. Further, a set of parameters can be passed during the store initialization to configure the store as described below.
 

@@ -48,10 +48,9 @@ Known subjective head is considered network head if it is recent (`now - timesta
 
 The header interface defines a `Verify` method which gets invoked when any new header is received via `incomingNetworkHead`.
 
-```
-// Verify validates given untrusted Header against trusted Header.
-Verify(H) error
-```
+|Method|Input|Output|Description|
+|--|--|--|--|
+| Verify | H | error | Verify validates given untrusted Header against trusted Header. |
 
 ## syncLoop
 

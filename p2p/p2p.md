@@ -13,8 +13,8 @@ The Subscriber encompasses the behavior necessary to subscribe/unsubscribe from 
 
 |Method|Input|Output|Description|
 |--|--|--|--|
-| Subscribe | | `Subscription[H], error` | Subscribe creates long-living Subscription for validated Headers. Multiple Subscriptions can be created. |
-| SetVerifier | `func(context.Context, H) error` | error | SetVerifier registers verification func for all Subscriptions. Registered func screens incoming headers before they are forwarded to Subscriptions. Only one func can be set.|
+| Subscribe | | Subscription[H], error | Subscribe creates long-living Subscription for validated Headers. Multiple Subscriptions can be created. |
+| SetVerifier | func(context.Context, H) error | error | SetVerifier registers verification func for all Subscriptions. Registered func screens incoming headers before they are forwarded to Subscriptions. Only one func can be set.|
 
 The `Subscribe()` method allows listening to any new headers that are published to the P2P network. The `SetVerifier()` method allows for setting a custom verifier that will be executed upon receiving any new headers from the P2P network. This is a very useful customization for the consumers of go-header library to pass any custom logic as part of the pubsub. While multiple simultaneous subscriptions are possible via `Subscribe()` interface, only a single verifier can be set using the `SetVerifier` interface method.
 
@@ -62,10 +62,10 @@ The exchange client implements the following `Getter` interface which contains t
 
 |Method|Input|Output|Description|
 |--|--|--|--|
-| Head | `context.Context, ...HeadOption[H]` | `H, error` | Head returns the latest known chain header. Note that "chain head" is subjective to the component reporting it. |
-| Get | `context.Context, Hash` | `H, error` | Get returns the Header corresponding to the given hash. |
-| GetByHeight | `context.Context, uint64` | `H, error` | GetByHeight returns the Header corresponding to the given block height. |
-| GetRangeByHeight | `ctx context.Context, from H, to uint64` | `[]H, error` | GetRangeByHeight requests the header range from the provided Header and verifies that the returned headers are adjacent to each other. Expected to return the range [from.Height()+1:to).|
+| Head | context.Context, ...HeadOption[H] | H, error | Head returns the latest known chain header. Note that "chain head" is subjective to the component reporting it. |
+| Get | context.Context, Hash | H, error | Get returns the Header corresponding to the given hash. |
+| GetByHeight | context.Context, uint64 | H, error | GetByHeight returns the Header corresponding to the given block height. |
+| GetRangeByHeight | ctx context.Context, from H, to uint64 | []H, error | GetRangeByHeight requests the header range from the provided Header and verifies that the returned headers are adjacent to each other. Expected to return the range [from.Height()+1:to).|
 
 `Head()` method requests the latest header from trusted or tracked peers. The `Head()` call also allows passing an optional `TrustedHead`, which allows the caller to specify a trusted head against which the untrusted head is verified. By default, `Head()` requests only trusted peers and if `TrustedHead` is provided untrusted tracked peers are also requested, limited to [maxUntrustedHeadRequests][maxUntrustedHeadRequests]. The `Head()` requests utilize 90% of the set deadline (in the form of context deadline) for requests and the remaining for determining the best head from gathered responses. Upon receiving headers from peers (either trusted or tracked), the best head is determined as the head:
 
