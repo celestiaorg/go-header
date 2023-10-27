@@ -6,13 +6,13 @@ go-header is a library for syncing blockchain data, such as block headers, over 
 
 |Component|Description|
 |---|---|
-|[p2p.Subscriber][p2p]|listens for new headers from the P2P network|
-|[p2p.ExchangeServer][p2p]|serve header requests from other nodes in the P2P network|
-|[p2p.Exchange][p2p]|client that requests headers from other nodes in the P2P network|
-|[store.Store][store]|storing headers and making them available for access by other services such as exchange and syncer|
-|[sync.Syncer][sync]|syncing of historical and new headers from the P2P network|
+|[Subscriber](specs/p2p.md#subscriber)|listens for new headers from the P2P network|
+|[ExchangeServer](specs/p2p.md#exchange-server)|serve header requests from other nodes in the P2P network|
+|[Exchange](specs/p2p.md#exchange-client)|client that requests headers from other nodes in the P2P network|
+|[Store](specs/store.md)|storing headers and making them available for access by other services such as exchange and syncer|
+|[Syncer](specs/sync.md)|syncing of historical and new headers from the P2P network|
 
-The go-header library makes it easy to be used by other projects by defining a clear interface (as described below). An example usage is defined in [headertest/dummy_header.go][dummy header]
+The go-header library defines a clear interface (as described in the table below) for consumption. Any blockchain data implementing this interface can utilize go-header's P2P services. An example is defined in [headertest/dummy_header.go][dummy header]
 
 |Method|Input|Output|Description|
 |--|--|--|--|
@@ -33,6 +33,3 @@ The go-header library makes it easy to be used by other projects by defining a c
 [1] [Dummy Header][dummy header]
 
 [dummy header]: https://github.com/celestiaorg/go-header/blob/main/headertest/dummy_header.go
-[p2p]: https://github.com/celestiaorg/go-header/blob/main/p2p/p2p.md
-[store]: https://github.com/celestiaorg/go-header/blob/main/store/store.md
-[sync]: https://github.com/celestiaorg/go-header/blob/main/sync/sync.md
