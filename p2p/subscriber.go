@@ -26,10 +26,11 @@ type SubscriberParams struct {
 type Subscriber[H header.Header[H]] struct {
 	pubsubTopicID string
 
-	metrics *subscriberMetrics
-	pubsub  *pubsub.PubSub
-	topic   *pubsub.Topic
-	msgID   pubsub.MsgIdFunction
+	metrics        *subscriberMetrics
+	pubsub         *pubsub.PubSub
+	topic          *pubsub.Topic
+	msgID          pubsub.MsgIdFunction
+	CustomValidate func(H) error
 }
 
 // WithSubscriberMetrics enables metrics collection for the Subscriber.
@@ -116,6 +117,17 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 				"err", err)
 			s.metrics.reject(ctx)
 			return pubsub.ValidationReject
+		}
+
+		if s.CustomValidate != nil {
+			err = s.CustomValidate(hdr)
+			if err != nil {
+				log.Errorw("invalid header",
+					"from", p.ShortString(),
+					"err", err)
+				s.metrics.reject(ctx)
+				return pubsub.ValidationReject
+			}
 		}
 
 		var verErr *header.VerifyError

@@ -44,7 +44,8 @@ type Exchange[H header.Header[H]] struct {
 	peerTracker  *peerTracker
 	metrics      *exchangeMetrics
 
-	Params ClientParameters
+	Params         ClientParameters
+	CustomValidate func(H) error
 }
 
 func NewExchange[H header.Header[H]](
@@ -253,6 +254,7 @@ func (ex *Exchange[H]) GetRangeByHeight(
 ) ([]H, error) {
 	session := newSession[H](
 		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, ex.metrics, withValidation(from),
+		func(s *session[H]) { s.customValidate = ex.CustomValidate },
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
@@ -335,7 +337,7 @@ func (ex *Exchange[H]) request(
 		return nil, err
 	}
 
-	hdrs, err := processResponses[H](responses)
+	hdrs, err := processResponses[H](responses, ex.CustomValidate)
 	if err != nil {
 		return nil, err
 	}

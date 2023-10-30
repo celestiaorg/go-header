@@ -41,9 +41,10 @@ type session[H header.Header[H]] struct {
 	from           H
 	requestTimeout time.Duration
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	reqCh  chan *p2p_pb.HeaderRequest
+	ctx            context.Context
+	cancel         context.CancelFunc
+	reqCh          chan *p2p_pb.HeaderRequest
+	customValidate func(H) error
 }
 
 func newSession[H header.Header[H]](
@@ -222,7 +223,7 @@ func (s *session[H]) doRequest(
 
 // processResponses converts HeaderResponse to Header.
 func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) ([]H, error) {
-	hdrs, err := processResponses[H](responses)
+	hdrs, err := processResponses[H](responses, s.customValidate)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +289,7 @@ func prepareRequests(from, amount, headersPerPeer uint64) []*p2p_pb.HeaderReques
 }
 
 // processResponses converts HeaderResponses to Headers
-func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse) ([]H, error) {
+func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse, customValidate func(H) error) ([]H, error) {
 	if len(resps) == 0 {
 		return nil, errEmptyResponse
 	}
@@ -309,6 +310,13 @@ func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse) ([]H, 
 		err = hdr.Validate()
 		if err != nil {
 			return nil, err
+		}
+
+		if customValidate != nil {
+			err = customValidate(hdr)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		hdrs = append(hdrs, hdr)
