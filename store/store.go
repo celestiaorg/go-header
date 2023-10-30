@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/ipfs/go-datastore"
@@ -31,6 +32,8 @@ type Store[H header.Header[H]] struct {
 	ds datastore.Batching
 	// adaptive replacement cache of headers
 	cache *lru.ARCCache
+	// metrics collection instance
+	metrics *metrics
 
 	// header heights management
 	//
@@ -102,15 +105,24 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 		return nil, fmt.Errorf("failed to create height indexer: %w", err)
 	}
 
+	var metrics *metrics
+	if params.metrics {
+		metrics, err = newMetrics()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Store[H]{
-		Params:      params,
 		ds:          wrappedStore,
+		cache:       cache,
+		metrics:     metrics,
+		heightIndex: index,
 		heightSub:   newHeightSub[H](),
 		writes:      make(chan []H, 16),
 		writesDn:    make(chan struct{}),
-		cache:       cache,
-		heightIndex: index,
 		pending:     newBatch[H](params.WriteBatchSize),
+		Params:      params,
 	}, nil
 }
 
@@ -141,9 +153,14 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	default:
 	}
 	// signal to prevent further writes to Store
-	s.writes <- nil
 	select {
-	case <-s.writesDn: // wait till it is done writing
+	case s.writes <- nil:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	// wait till it is done writing
+	select {
+	case <-s.writesDn:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -172,7 +189,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
 		return zero, header.ErrNoHead
 	case err == nil:
-		s.heightSub.SetHeight(uint64(head.Height()))
+		s.heightSub.SetHeight(head.Height())
 		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
 		return head, nil
 	}
@@ -188,12 +205,8 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 		return h, nil
 	}
 
-	b, err := s.ds.Get(ctx, datastore.NewKey(hash.String()))
+	b, err := s.get(ctx, hash)
 	if err != nil {
-		if errors.Is(err, datastore.ErrNotFound) {
-			return zero, header.ErrNotFound
-		}
-
 		return zero, err
 	}
 
@@ -356,15 +369,27 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		verified, head = append(verified, h), h
 	}
 
+	onWrite := func() {
+		newHead := verified[len(verified)-1]
+		s.writeHead.Store(&newHead)
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
+	}
+
 	// queue headers to be written on disk
 	select {
 	case s.writes <- verified:
-		ln := len(verified)
-		s.writeHead.Store(&verified[ln-1])
-		wh := *s.writeHead.Load()
-		log.Infow("new head", "height", wh.Height(), "hash", wh.Hash())
 		// we return an error here after writing,
 		// as there might be an invalid header in between of a given range
+		onWrite()
+		return err
+	default:
+		s.metrics.writesQueueBlocked(ctx)
+	}
+	// if the writes queue is full, we block until it is not
+	select {
+	case s.writes <- verified:
+		onWrite()
 		return err
 	case <-s.writesDn:
 		return errStoppedStore
@@ -393,13 +418,17 @@ func (s *Store[H]) flushLoop() {
 			continue
 		}
 
-		err := s.flush(ctx, s.pending.GetAll()...)
+		startTime := time.Now()
+		toFlush := s.pending.GetAll()
+		err := s.flush(ctx, toFlush...)
 		if err != nil {
+			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
 			// TODO(@Wondertan): Should this be a fatal error case with os.Exit?
-			from, to := uint64(headers[0].Height()), uint64(headers[len(headers)-1].Height())
 			log.Errorw("writing header batch", "from", from, "to", to)
+			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
 			continue
 		}
+		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
 		// reset pending
 		s.pending.Reset()
 
@@ -471,4 +500,19 @@ func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 	}
 
 	return s.Get(ctx, head)
+}
+
+func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
+	startTime := time.Now()
+	data, err := s.ds.Get(ctx, datastore.NewKey(hash.String()))
+	if err != nil {
+		s.metrics.readSingle(ctx, time.Since(startTime), true)
+		if errors.Is(err, datastore.ErrNotFound) {
+			return nil, header.ErrNotFound
+		}
+		return nil, err
+	}
+
+	s.metrics.readSingle(ctx, time.Since(startTime), false)
+	return data, nil
 }
