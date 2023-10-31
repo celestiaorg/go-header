@@ -168,7 +168,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	// cleanup caches
 	s.cache.Purge()
 	s.heightIndex.cache.Purge()
-	return nil
+	return s.metrics.Close()
 }
 
 func (s *Store[H]) Height() uint64 {

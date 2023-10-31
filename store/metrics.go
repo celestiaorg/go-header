@@ -111,5 +111,9 @@ func (m *metrics) observe(ctx context.Context, f func(context.Context)) {
 }
 
 func (m *metrics) Close() error {
+	if m == nil {
+		return nil
+	}
+
 	return m.headHeightReg.Unregister()
 }
