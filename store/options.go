@@ -18,13 +18,16 @@ type Parameters struct {
 	// IndexCacheSize defines the maximum amount of entries in the Height to Hash index cache.
 	IndexCacheSize int
 
-	// WriteBatchSize defines the size of the batched header write.
+	// WriteBatchSize defines the size of the batched header flush.
 	// Headers are written in batches not to thrash the underlying Datastore with writes.
 	WriteBatchSize int
 
 	// storePrefix defines the prefix used to wrap the store
 	// OPTIONAL
 	storePrefix datastore.Key
+
+	// metrics is a flag that enables metrics collection
+	metrics bool
 }
 
 // DefaultParameters returns the default params to configure the store.
@@ -49,6 +52,13 @@ func (p *Parameters) Validate() error {
 		return fmt.Errorf("invalid batch size:%s", errSuffix)
 	}
 	return nil
+}
+
+// WithMetrics enables metrics on the Store.
+func WithMetrics() Option {
+	return func(p *Parameters) {
+		p.metrics = true
+	}
 }
 
 // WithStoreCacheSize is a functional option that configures the
