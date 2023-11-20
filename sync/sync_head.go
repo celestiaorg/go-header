@@ -121,11 +121,14 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 			"err", err)
 	}
 
+	defer s.metrics.recordNetworkHead(netHead.Height())
+
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {
 		// we already synced it up - do nothing
 		return
 	}
+
 	// and if valid, set it as new subjective head
 	s.pending.Add(netHead)
 	s.wantSync()
