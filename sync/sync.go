@@ -30,7 +30,14 @@ var log = logging.Logger("header/sync")
 //   - Sets as the new Subjective Head, which
 //   - if there is a gap between the previous and the new Subjective Head
 //   - Triggers s.syncLoop and saves the Subjective Head in the pending so s.syncLoop can access it
+//
+//nolint:govet
 type Syncer[H header.Header[H]] struct {
+	// stateLk protects state which represents the current or latest sync
+	stateLk sync.RWMutex
+	// incomingMu ensures only one incoming network head candidate is processed at the time
+	incomingMu sync.Mutex
+
 	store syncStore[H]         // to store all the headers to
 	sub   header.Subscriber[H] // to subscribe for new Network Heads
 
@@ -49,11 +56,6 @@ type Syncer[H header.Header[H]] struct {
 	pending ranges[H]
 
 	state State
-
-	// stateLk protects state which represents the current or latest sync
-	stateLk sync.RWMutex
-	// incomingMu ensures only one incoming network head candidate is processed at the time
-	incomingMu sync.Mutex
 }
 
 // NewSyncer creates a new instance of Syncer.
