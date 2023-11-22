@@ -24,12 +24,11 @@ type SubscriberParams struct {
 // Subscriber manages the lifecycle and relationship of header Module
 // with the "header-sub" gossipsub topic.
 type Subscriber[H header.Header[H]] struct {
+	metrics       *subscriberMetrics
+	pubsub        *pubsub.PubSub
+	topic         *pubsub.Topic
+	msgID         pubsub.MsgIdFunction
 	pubsubTopicID string
-
-	metrics *subscriberMetrics
-	pubsub  *pubsub.PubSub
-	topic   *pubsub.Topic
-	msgID   pubsub.MsgIdFunction
 }
 
 // WithSubscriberMetrics enables metrics collection for the Subscriber.

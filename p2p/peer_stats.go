@@ -11,13 +11,13 @@ import (
 
 // peerStat represents a peer's average statistics.
 type peerStat struct {
-	sync.RWMutex
-	peerID peer.ID
-	// score is the average speed per single request
-	peerScore float32
 	// pruneDeadline specifies when disconnected peer will be removed if
 	// it does not return online.
 	pruneDeadline time.Time
+	peerID        peer.ID
+	sync.RWMutex
+	// score is the average speed per single request
+	peerScore float32
 }
 
 // updateStats recalculates peer.score by averaging the last score
@@ -100,10 +100,10 @@ func (ps *peerStats) Pop() any {
 type peerQueue struct {
 	ctx context.Context
 
-	statsLk sync.RWMutex
-	stats   peerStats
-
 	havePeer chan struct{}
+	stats    peerStats
+
+	statsLk sync.RWMutex
 }
 
 func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {

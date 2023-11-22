@@ -13,7 +13,6 @@ import (
 var meter = otel.Meter("header/store")
 
 type metrics struct {
-	headHeight     atomic.Int64
 	headHeightInst metric.Int64ObservableGauge
 	headHeightReg  metric.Registration
 
@@ -21,6 +20,7 @@ type metrics struct {
 	readTimeInst  metric.Float64Histogram
 
 	writesQueueBlockedInst metric.Int64Counter
+	headHeight             atomic.Int64
 }
 
 func newMetrics() (m *metrics, err error) {

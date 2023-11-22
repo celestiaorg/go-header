@@ -28,11 +28,16 @@ var (
 )
 
 type peerTracker struct {
-	host      host.Host
+	host host.Host
+
+	// an optional interface used to periodically dump
+	// good peers during garbage collection
+	pidstore PeerIDStore
+
+	ctx       context.Context
 	connGater *conngater.BasicConnectionGater
 	metrics   *exchangeMetrics
 
-	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
 	// we cache the peer once they disconnect,
 	// so we can guarantee that peerQueue will only contain active peers
@@ -41,15 +46,12 @@ type peerTracker struct {
 	// online until pruneDeadline, it will be removed and its score will be lost
 	disconnectedPeers map[libpeer.ID]*peerStat
 
-	// an optional interface used to periodically dump
-	// good peers during garbage collection
-	pidstore PeerIDStore
-
-	ctx    context.Context
 	cancel context.CancelFunc
 	// done is used to gracefully stop the peerTracker.
 	// It allows to wait until track() and gc() will be stopped.
 	done chan struct{}
+
+	peerLk sync.RWMutex
 }
 
 func newPeerTracker(

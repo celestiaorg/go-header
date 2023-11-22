@@ -20,12 +20,14 @@ type subscriberMetrics struct {
 	messageNumInst  metric.Int64Counter
 	messageSizeInst metric.Int64Histogram
 
-	messageTimeLast atomic.Pointer[time.Time]
 	messageTimeInst metric.Float64Histogram
 
-	subscriptionNum     atomic.Int64
 	subscriptionNumInst metric.Int64ObservableGauge
 	subscriptionNumReg  metric.Registration
+
+	messageTimeLast atomic.Pointer[time.Time]
+
+	subscriptionNum atomic.Int64
 }
 
 func newSubscriberMetrics() (m *subscriberMetrics, err error) {

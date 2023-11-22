@@ -10,8 +10,8 @@ import (
 // ascending order). This prevents unnecessary / duplicate network requests for additional headers
 // during sync.
 type ranges[H header.Header[H]] struct {
-	lk     sync.RWMutex
 	ranges []*headerRange[H]
+	lk     sync.RWMutex
 }
 
 // Head returns the highest Header in all ranges if any.
@@ -87,9 +87,9 @@ func (rs *ranges[H]) First() (*headerRange[H], bool) {
 }
 
 type headerRange[H header.Header[H]] struct {
-	lk      sync.RWMutex
 	headers []H
 	start   uint64
+	lk      sync.RWMutex
 }
 
 func newRange[H header.Header[H]](h H) *headerRange[H] {

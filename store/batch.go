@@ -14,9 +14,9 @@ import (
 // The approach simplifies implementation for the batch and
 // makes it better optimized for the GetByHeight case which is what we need.
 type batch[H header.Header[H]] struct {
-	lk      sync.RWMutex
 	heights map[string]uint64
 	headers []H
+	lk      sync.RWMutex
 }
 
 // newBatch creates the batch with the given pre-allocated size.

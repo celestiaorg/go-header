@@ -31,27 +31,29 @@ var log = logging.Logger("header/sync")
 //   - if there is a gap between the previous and the new Subjective Head
 //   - Triggers s.syncLoop and saves the Subjective Head in the pending so s.syncLoop can access it
 type Syncer[H header.Header[H]] struct {
-	sub     header.Subscriber[H] // to subscribe for new Network Heads
-	store   syncStore[H]         // to store all the headers to
-	getter  syncGetter[H]        // to fetch headers from
-	metrics *metrics
+	store syncStore[H]         // to store all the headers to
+	sub   header.Subscriber[H] // to subscribe for new Network Heads
 
-	// stateLk protects state which represents the current or latest sync
-	stateLk sync.RWMutex
-	state   State
+	// controls lifecycle for syncLoop
+	ctx     context.Context
+	metrics *metrics
 
 	// signals to start syncing
 	triggerSync chan struct{}
-	// pending keeps ranges of valid new network headers awaiting to be appended to store
-	pending ranges[H]
-	// incomingMu ensures only one incoming network head candidate is processed at the time
-	incomingMu sync.Mutex
-
-	// controls lifecycle for syncLoop
-	ctx    context.Context
-	cancel context.CancelFunc
+	cancel      context.CancelFunc
 
 	Params *Parameters
+	getter syncGetter[H] // to fetch headers from
+
+	// pending keeps ranges of valid new network headers awaiting to be appended to store
+	pending ranges[H]
+
+	state State
+
+	// stateLk protects state which represents the current or latest sync
+	stateLk sync.RWMutex
+	// incomingMu ensures only one incoming network head candidate is processed at the time
+	incomingMu sync.Mutex
 }
 
 // NewSyncer creates a new instance of Syncer.
@@ -126,15 +128,15 @@ func (s *Syncer[H]) SyncWait(ctx context.Context) error {
 
 // State collects all the information about a sync.
 type State struct {
+	Start      time.Time   `json:"start"`
+	End        time.Time   `json:"end"`
+	Error      string      `json:"error,omitempty"` // the error that might happen within a sync
+	FromHash   header.Hash `json:"from_hash"`
+	ToHash     header.Hash `json:"to_hash"`
 	ID         uint64      `json:"id"`          // incrementing ID of a sync
 	Height     uint64      `json:"height"`      // height at the moment when State is requested for a sync
 	FromHeight uint64      `json:"from_height"` // the starting point of a sync
 	ToHeight   uint64      `json:"to_height"`   // the ending point of a sync
-	FromHash   header.Hash `json:"from_hash"`
-	ToHash     header.Hash `json:"to_hash"`
-	Start      time.Time   `json:"start"`
-	End        time.Time   `json:"end"`
-	Error      string      `json:"error,omitempty"` // the error that might happen within a sync
 }
 
 // Finished returns true if sync is done, false otherwise.

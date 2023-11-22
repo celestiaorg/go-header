@@ -51,10 +51,10 @@ func TestExchange_RequestHead(t *testing.T) {
 	})
 
 	tests := []struct {
-		requestFromTrusted bool
 		lastHeader         *headertest.DummyHeader
-		expectedHeight     uint64
 		expectedHash       header.Hash
+		expectedHeight     uint64
+		requestFromTrusted bool
 	}{
 		// routes to trusted peer only
 		{

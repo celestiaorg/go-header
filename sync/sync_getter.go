@@ -10,9 +10,9 @@ import (
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time
 type syncGetter[H header.Header[H]] struct {
+	header.Getter[H]
 	getterLk   sync.RWMutex
 	isGetterLk atomic.Bool
-	header.Getter[H]
 }
 
 // Lock locks the getter for single user.

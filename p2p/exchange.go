@@ -34,17 +34,15 @@ var maxUntrustedHeadRequests = 4
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
 type Exchange[H header.Header[H]] struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	host        host.Host
+	ctx         context.Context
+	peerTracker *peerTracker
+	metrics     *exchangeMetrics
 
-	protocolID protocol.ID
-	host       host.Host
-
+	cancel       context.CancelFunc
 	trustedPeers func() peer.IDSlice
-	peerTracker  *peerTracker
-	metrics      *exchangeMetrics
-
-	Params ClientParameters
+	protocolID   protocol.ID
+	Params       ClientParameters
 }
 
 func NewExchange[H header.Header[H]](

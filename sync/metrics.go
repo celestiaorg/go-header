@@ -11,8 +11,8 @@ import (
 var meter = otel.Meter("header/sync")
 
 type metrics struct {
-	totalSynced      atomic.Int64
 	totalSyncedGauge metric.Float64ObservableGauge
+	totalSynced      atomic.Int64
 }
 
 func newMetrics() (*metrics, error) {

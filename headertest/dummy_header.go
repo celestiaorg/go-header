@@ -17,12 +17,14 @@ import (
 var ErrDummyVerify = errors.New("dummy verify error")
 
 type DummyHeader struct {
+	Timestamp time.Time
+
 	Chainid      string
 	PreviousHash header.Hash
-	HeightI      uint64
-	Timestamp    time.Time
 
 	hash header.Hash
+
+	HeightI uint64
 
 	// VerifyFailure allows for testing scenarios where a header would fail
 	// verification. When set to true, it forces a failure.
