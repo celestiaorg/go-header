@@ -5,6 +5,7 @@ on:
       - v*
     branches:
       - main
+      - chore/ramin/field-alignment
   pull_request:
 
 jobs:
@@ -54,7 +55,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set up Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ needs.setup.outputs.go-version }}
 
