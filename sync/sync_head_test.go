@@ -114,7 +114,10 @@ func newWrappedGetter(ex header.Exchange[*headertest.DummyHeader]) *wrappedGette
 	}
 }
 
-func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) Head(
+	ctx context.Context,
+	options ...header.HeadOption[*headertest.DummyHeader],
+) (*headertest.DummyHeader, error) {
 	params := header.HeadParams[*headertest.DummyHeader]{}
 	for _, opt := range options {
 		opt(&params)
@@ -125,20 +128,26 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*
 	return t.ex.Head(ctx, options...)
 }
 
-func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) Get(
+	_ context.Context,
+	_ header.Hash,
+) (*headertest.DummyHeader, error) {
 	// TODO implement me
 	panic("implement me")
 }
 
-func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) GetByHeight(
+	_ context.Context,
+	_ uint64,
+) (*headertest.DummyHeader, error) {
 	// TODO implement me
 	panic("implement me")
 }
 
 func (t *wrappedGetter) GetRangeByHeight(
-	ctx context.Context,
-	from *headertest.DummyHeader,
-	to uint64,
+	_ context.Context,
+	_ *headertest.DummyHeader,
+	_ uint64,
 ) ([]*headertest.DummyHeader, error) {
 	// TODO implement me
 	panic("implement me")

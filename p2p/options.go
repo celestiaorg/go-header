@@ -57,7 +57,7 @@ func (p *ServerParameters) Validate() error {
 
 func WithMetrics[T parameters]() Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
+		switch t := any(p).(type) {
 		case *ServerParameters:
 			t.metrics = true
 		case *ClientParameters:
@@ -178,8 +178,7 @@ func WithMaxHeadersPerRangeRequest[T ClientParameters](amount uint64) Option[T] 
 // `chainID` parameter.
 func WithChainID[T ClientParameters](chainID string) Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
-		case *ClientParameters:
+		if t, ok := any(p).(*ClientParameters); ok {
 			t.chainID = chainID
 		}
 	}
@@ -189,8 +188,7 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 // inside the peerTracker.
 func WithPeerIDStore[T ClientParameters](pidstore PeerIDStore) Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
-		case *ClientParameters:
+		if t, ok := any(p).(*ClientParameters); ok {
 			t.pidstore = pidstore
 		}
 	}

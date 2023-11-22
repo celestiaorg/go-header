@@ -59,14 +59,21 @@ func (f *fakeGetter[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (h 
 	return
 }
 
-func (f *fakeGetter[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
+func (f *fakeGetter[H]) Get(
+	_ context.Context,
+	_ header.Hash,
+) (H, error) {
 	panic("implement me")
 }
 
-func (f *fakeGetter[H]) GetByHeight(ctx context.Context, u uint64) (H, error) {
+func (f *fakeGetter[H]) GetByHeight(_ context.Context, _ uint64) (H, error) {
 	panic("implement me")
 }
 
-func (f *fakeGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
+func (f *fakeGetter[H]) GetRangeByHeight(
+	_ context.Context,
+	_ H,
+	_ uint64,
+) ([]H, error) {
 	panic("implement me")
 }
