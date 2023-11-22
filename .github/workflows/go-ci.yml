@@ -18,8 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Read .go-version file
-        id: go-version
+      - name: debug .go-version file
         run: cat .go-version
 
       - name: Read .go-version file
