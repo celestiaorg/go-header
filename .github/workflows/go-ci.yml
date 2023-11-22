@@ -12,7 +12,7 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      go-version: ${{ steps.go-version.outputs.version }}
+      go-version: ${{ steps.go-version.outputs.go-version }}
 
     steps:
       - name: Checkout code
@@ -20,7 +20,11 @@ jobs:
 
       - name: Read .go-version file
         id: go-version
-        run: echo "version=$(cat .go-version)" >> $GITHUB_ENV
+        run: cat .go-version
+
+      - name: Read .go-version file
+        id: go-version
+        run: echo "go-version=$(cat .go-version)" >> $GITHUB_ENV
 
   lint:
     needs: [setup]
