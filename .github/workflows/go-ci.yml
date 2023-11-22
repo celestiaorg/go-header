@@ -10,6 +10,7 @@ on:
 
 jobs:
   setup:
+    name: Setup
     runs-on: ubuntu-latest
     outputs:
       go-version: ${{ steps.go-version.outputs.go-version }}
@@ -48,6 +49,7 @@ jobs:
 
   build:
     needs: [lint]
+    name: Build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
