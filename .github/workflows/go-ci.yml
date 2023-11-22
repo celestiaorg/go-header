@@ -48,7 +48,7 @@ jobs:
           skip-build-cache: true
 
   build:
-    needs: [lint]
+    needs: [setup, lint]
     name: Build
     runs-on: ubuntu-latest
     steps:
