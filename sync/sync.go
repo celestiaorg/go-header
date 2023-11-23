@@ -35,27 +35,27 @@ var log = logging.Logger("header/sync")
 type Syncer[H header.Header[H]] struct {
 	// stateLk protects state which represents the current or latest sync
 	stateLk sync.RWMutex
+	state   State
+
 	// incomingMu ensures only one incoming network head candidate is processed at the time
 	incomingMu sync.Mutex
 
-	store syncStore[H]         // to store all the headers to
-	sub   header.Subscriber[H] // to subscribe for new Network Heads
+	store   syncStore[H]         // to store all the headers to
+	sub     header.Subscriber[H] // to subscribe for new Network Heads
+	getter  syncGetter[H]        // to fetch headers from
+	metrics *metrics
 
 	// controls lifecycle for syncLoop
-	ctx     context.Context
-	metrics *metrics
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// signals to start syncing
 	triggerSync chan struct{}
-	cancel      context.CancelFunc
-
-	Params *Parameters
-	getter syncGetter[H] // to fetch headers from
 
 	// pending keeps ranges of valid new network headers awaiting to be appended to store
 	pending ranges[H]
 
-	state State
+	Params *Parameters
 }
 
 // NewSyncer creates a new instance of Syncer.
