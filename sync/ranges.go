@@ -9,6 +9,9 @@ import (
 // ranges keeps non-overlapping and non-adjacent header ranges which are used to cache headers (in
 // ascending order). This prevents unnecessary / duplicate network requests for additional headers
 // during sync.
+//
+// @ramin: allowing this one to place the syncRWMutex at bottom of
+// struct as the alignment allows 32bytes -> 8
 type ranges[H header.Header[H]] struct {
 	ranges []*headerRange[H]
 	lk     sync.RWMutex

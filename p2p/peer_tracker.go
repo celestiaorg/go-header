@@ -27,8 +27,10 @@ var (
 	gcCycle = time.Minute * 5
 )
 
+//nolint:govet
 type peerTracker struct {
-	host host.Host
+	peerLk sync.RWMutex
+	host   host.Host
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
@@ -50,8 +52,6 @@ type peerTracker struct {
 	// done is used to gracefully stop the peerTracker.
 	// It allows to wait until track() and gc() will be stopped.
 	done chan struct{}
-
-	peerLk sync.RWMutex
 }
 
 func newPeerTracker(

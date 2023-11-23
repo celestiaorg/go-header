@@ -10,12 +10,14 @@ import (
 )
 
 // peerStat represents a peer's average statistics.
+//
+//nolint:govet
 type peerStat struct {
+	sync.RWMutex
 	// pruneDeadline specifies when disconnected peer will be removed if
 	// it does not return online.
 	pruneDeadline time.Time
 	peerID        peer.ID
-	sync.RWMutex
 	// score is the average speed per single request
 	peerScore float32
 }
