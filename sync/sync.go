@@ -180,6 +180,7 @@ func (s *Syncer[H]) syncLoop() {
 	for {
 		select {
 		case <-s.triggerSync:
+			s.metrics.recordSyncLoopStarted()
 			s.sync(s.ctx)
 		case <-s.ctx.Done():
 			return
