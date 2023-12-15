@@ -103,7 +103,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
 	}
 	log.Warn("trusted peer is out of sync")
-	s.metrics.recordTrustedPeersOutOfSync()
+	s.metrics.recordTrustedPeersOutOfSync(s.ctx)
 	return trustHead, nil
 }
 
@@ -132,7 +132,7 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 	s.pending.Add(netHead)
 	s.wantSync()
 	log.Infow("new network head", "height", netHead.Height(), "hash", netHead.Hash())
-	s.metrics.observeNewSubjectiveHead(int64(netHead.Height()), netHead.Time())
+	s.metrics.observeNewSubjectiveHead(s.ctx, int64(netHead.Height()), netHead.Time())
 }
 
 // incomingNetworkHead processes new potential network headers.

@@ -106,27 +106,26 @@ func (m *metrics) recordTotalSynced(totalSynced int) {
 	m.totalSynced.Add(int64(totalSynced))
 }
 
-func (m *metrics) recordSyncLoopStarted() {
+func (m *metrics) recordSyncLoopStarted(ctx context.Context) {
 	if m == nil {
 		return
 	}
-	m.syncLoopStarted.Add(context.Background(), 1)
+	m.syncLoopStarted.Add(ctx, 1)
 }
 
-func (m *metrics) recordTrustedPeersOutOfSync() {
+func (m *metrics) recordTrustedPeersOutOfSync(ctx context.Context) {
 	if m == nil {
 		return
 	}
-	m.trustedPeersOutOfSync.Add(context.Background(), 1)
+	m.trustedPeersOutOfSync.Add(ctx, 1)
 }
 
-func (m *metrics) observeNewSubjectiveHead(height int64, timestamp time.Time) {
+func (m *metrics) observeNewSubjectiveHead(ctx context.Context, height int64, timestamp time.Time) {
 	if m == nil {
 		return
 	}
 	m.subjectiveHead.Store(height)
 
-	ctx := context.Background()
 	if !m.prevHeader.IsZero() {
 		m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
 	}
