@@ -30,7 +30,7 @@ type metrics struct {
 
 func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	totalSynced, err := meter.Float64ObservableGauge(
-		"total_synced_headers",
+		"hdr_total_synced_headers",
 		metric.WithDescription("total synced headers"),
 	)
 	if err != nil {
@@ -38,7 +38,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	}
 
 	syncLoopStarted, err := meter.Int64Counter(
-		"sync_loop_started",
+		"hdr_sync_loop_started",
 		metric.WithDescription("sync loop started"),
 	)
 	if err != nil {
@@ -46,7 +46,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	}
 
 	trustedPeersOutOfSync, err := meter.Int64Counter(
-		"tr_peers_out_of_sync",
+		"hdr_tr_peers_out_of_sync",
 		metric.WithDescription("trusted peers out of sync"),
 	)
 	if err != nil {
@@ -54,7 +54,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	}
 
 	laggingHeadersStart, err := meter.Int64Counter(
-		"sync_lagging_hdr_start",
+		"hdr_sync_lagging_hdr_start",
 		metric.WithDescription("lagging header start"),
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	}
 
 	subjectiveHead, err := meter.Int64ObservableGauge(
-		"sync_subjective_head",
+		"hdr_sync_subjective_head",
 		metric.WithDescription("subjective head height"),
 	)
 	if err != nil {
@@ -70,7 +70,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	}
 
 	blockTime, err := meter.Float64Histogram(
-		"sync_actual_blockTime_ts",
+		"hdr_sync_actual_blockTime_ts",
 		metric.WithDescription("duration between creation of 2 blocks"),
 	)
 	if err != nil {
