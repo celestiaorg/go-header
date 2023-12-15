@@ -25,9 +25,12 @@ type metrics struct {
 	headerTimestamp metric.Float64Histogram
 
 	headerReceived time.Time
+	prevHeader     time.Time
+
+	headersThreshHold time.Duration
 }
 
-func newMetrics() (*metrics, error) {
+func newMetrics(headersThreshHold time.Duration) (*metrics, error) {
 	totalSynced, err := meter.Float64ObservableGauge(
 		"total_synced_headers",
 		metric.WithDescription("total synced headers"),
@@ -69,6 +72,7 @@ func newMetrics() (*metrics, error) {
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		laggingHeadersStart:   laggingHeadersStart,
 		headerTimestamp:       headerTimestamp,
+		headersThreshHold:     headersThreshHold,
 	}
 
 	callback := func(ctx context.Context, observer metric.Observer) error {
@@ -112,20 +116,22 @@ func (m *metrics) observeNewHead(height int64) {
 	m.subjectiveHead.Store(height)
 }
 
-func (m *metrics) observeLaggingHeader(threshold time.Duration, receivedAt time.Time) {
+func (m *metrics) observeLaggingHeader() {
 	if m == nil {
 		return
 	}
-	if !m.headerReceived.IsZero() &&
-		float64(receivedAt.Second()-m.headerReceived.Second()) > threshold.Seconds() {
+	if time.Since(m.headerReceived) > m.headersThreshHold {
 		m.laggingHeadersStart.Add(m.ctx, 1)
 	}
-	m.headerReceived = receivedAt
+	m.headerReceived = time.Now()
 }
 
 func (m *metrics) observeHeaderTimestamp(timestamp time.Time) {
 	if m == nil {
 		return
 	}
-	m.headerTimestamp.Record(m.ctx, float64(timestamp.Second()))
+	if !m.prevHeader.IsZero() {
+		m.headerTimestamp.Record(m.ctx, timestamp.Sub(m.prevHeader).Seconds())
+	}
+	m.prevHeader = timestamp
 }

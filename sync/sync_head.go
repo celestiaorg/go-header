@@ -134,7 +134,7 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 	log.Infow("new network head", "height", netHead.Height(), "hash", netHead.Hash())
 	s.metrics.observeNewHead(int64(netHead.Height()))
 	s.metrics.observeHeaderTimestamp(netHead.Time())
-	s.metrics.observeLaggingHeader(s.Params.blockTime, time.Now())
+	s.metrics.observeLaggingHeader()
 }
 
 // incomingNetworkHead processes new potential network headers.
