@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,8 +16,10 @@ import (
 const (
 	// defaultScore specifies the score for newly connected peers.
 	defaultScore float32 = 1
-	// maxTrackerSize specifies the max amount of peers that can be added to the peerTracker.
+	// maxPeerTrackerSize specifies the max amount of peers that can be added to the peerTracker.
 	maxPeerTrackerSize = 100
+	// minPeerTrackerSizeBeforeGC specifies the min amount of peers before the peerTracker starts removing peers.
+	minPeerTrackerSizeBeforeGC = 10
 )
 
 var (
@@ -240,31 +243,53 @@ func (p *peerTracker) gc() {
 			p.done <- struct{}{}
 			return
 		case <-ticker.C:
-			p.peerLk.Lock()
-
-			now := time.Now()
-			var deletedDisconnectedNum int
-			for id, peer := range p.disconnectedPeers {
-				if peer.pruneDeadline.Before(now) {
-					delete(p.disconnectedPeers, id)
-					deletedDisconnectedNum++
-				}
-			}
-
-			var deletedTrackedNum int
-			for id, peer := range p.trackedPeers {
-				if peer.peerScore <= defaultScore {
-					delete(p.trackedPeers, id)
-					deletedTrackedNum++
-				}
-			}
-			p.peerLk.Unlock()
-
-			p.metrics.peersDisconnected(-deletedDisconnectedNum)
-			p.metrics.peersTracked(-deletedTrackedNum)
+			p.cleanUpDisconnectedPeers()
+			p.cleanUpTrackedPeers()
 			p.dumpPeers(p.ctx)
 		}
 	}
+}
+
+func (p *peerTracker) cleanUpDisconnectedPeers() {
+	p.peerLk.Lock()
+	defer p.peerLk.Unlock()
+
+	now := time.Now()
+	var deletedDisconnectedNum int
+	for id, peer := range p.disconnectedPeers {
+		if peer.pruneDeadline.Before(now) {
+			delete(p.disconnectedPeers, id)
+			deletedDisconnectedNum++
+		}
+	}
+	p.metrics.peersDisconnected(-deletedDisconnectedNum)
+}
+
+func (p *peerTracker) cleanUpTrackedPeers() {
+	p.peerLk.Lock()
+	defer p.peerLk.Unlock()
+
+	if len(p.trackedPeers) <= minPeerTrackerSizeBeforeGC {
+		return
+	}
+
+	var deletedTrackedNum int
+	orderedPeers := make([]*peerStat, 0, len(p.trackedPeers))
+	for _, peer := range p.trackedPeers {
+		orderedPeers = append(orderedPeers, peer)
+	}
+	sort.Slice(orderedPeers, func(i, j int) bool {
+		return orderedPeers[i].peerScore < orderedPeers[j].peerScore
+	})
+
+	for _, peer := range orderedPeers[:len(orderedPeers)-minPeerTrackerSizeBeforeGC] {
+		if peer.peerScore > defaultScore {
+			break
+		}
+		delete(p.trackedPeers, peer.peerID)
+		deletedTrackedNum++
+	}
+	p.metrics.peersTracked(-deletedTrackedNum)
 }
 
 // dumpPeers stores peers to the peerTracker's PeerIDStore if

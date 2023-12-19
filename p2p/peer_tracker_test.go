@@ -33,7 +33,13 @@ func TestPeerTracker_GC(t *testing.T) {
 
 	maxAwaitingTime = time.Millisecond
 
-	peerlist := generateRandomPeerlist(t, 4)
+	peerlist := generateRandomPeerlist(t, minPeerTrackerSizeBeforeGC)
+	for i := 0; i < minPeerTrackerSizeBeforeGC; i++ {
+		p.trackedPeers[peerlist[i]] = &peerStat{peerID: peerlist[i], peerScore: 0.5}
+	}
+
+	// add peers to trackedPeers to make total number of peers > maxPeerTrackerSize
+	peerlist = generateRandomPeerlist(t, 4)
 	pid1 := peerlist[0]
 	pid2 := peerlist[1]
 	pid3 := peerlist[2]
@@ -54,13 +60,14 @@ func TestPeerTracker_GC(t *testing.T) {
 	err = p.stop(ctx)
 	require.NoError(t, err)
 
-	require.Nil(t, p.trackedPeers[pid1])
+	// ensure amount of peers in trackedPeers is equal to minPeerTrackerSizeBeforeGC
+	require.Len(t, p.trackedPeers, minPeerTrackerSizeBeforeGC)
 	require.Nil(t, p.disconnectedPeers[pid3])
 
 	// ensure good peers were dumped to store
 	peers, err := pidstore.Load(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(peers))
+	require.Equal(t, minPeerTrackerSizeBeforeGC, len(peers))
 }
 
 func TestPeerTracker_BlockPeer(t *testing.T) {
