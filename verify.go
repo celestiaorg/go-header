@@ -19,7 +19,12 @@ func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	// general mandatory verification
 	err := verify[H](trstd, untrstd, heightThreshold)
 	if err != nil {
-		return &VerifyError{Reason: err}
+		verErr := &VerifyError{Reason: err}
+		if errors.Is(err, ErrKnownHeader) {
+			// if known, header is not *really* wrong, just already known and we can ignore it
+			verErr.SoftFailure = true
+		}
+		return verErr
 	}
 	// user defined verification
 	err = trstd.Verify(untrstd)
