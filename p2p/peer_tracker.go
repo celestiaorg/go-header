@@ -18,7 +18,7 @@ const (
 	defaultScore float32 = 1
 	// maxPeerTrackerSize specifies the max amount of peers that can be added to the peerTracker.
 	maxPeerTrackerSize = 100
-	// minPeerTrackerSizeBeforeGC specifies the min amount of peers before the peerTracker starts removing peers.
+	// minPeerTrackerSizeBeforeGC specifies the minimum amount of tracked peers before the peerTracker starts removing peers with lower peer scores.
 	minPeerTrackerSizeBeforeGC = 10
 )
 
