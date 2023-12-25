@@ -175,7 +175,6 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 		logF := log.Warnw
 		if errors.Is(err, header.ErrKnownHeader) {
 			logF = log.Debugw
-			log.Level()
 		}
 		logF("invalid network header",
 			"height_of_invalid", newHead.Height(),

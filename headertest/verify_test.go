@@ -83,8 +83,7 @@ func TestVerify(t *testing.T) {
 				untrusted.HeightI = trusted.Height()
 				return untrusted
 			},
-			err:  header.ErrKnownHeader,
-			soft: true,
+			err: header.ErrKnownHeader,
 		},
 		{
 			prepare: func() *DummyHeader {
