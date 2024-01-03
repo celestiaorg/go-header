@@ -174,11 +174,14 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 						headerRespCh <- headers[0]
 						return
 					}
-					log.Errorw("verifying head received from tracked peer", "tracked peer", from,
+					logF := log.Warnw
+					if errors.Is(err, header.ErrKnownHeader) {
+						logF = log.Debugw
+					}
+					logF("verifying head received from tracked peer", "tracked peer", from,
 						"height", headers[0].Height(), "err", err)
 					headerRespCh <- zero
 					return
-
 				}
 			}
 			// request ensures that the result slice will have at least one Header
