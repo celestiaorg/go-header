@@ -72,7 +72,7 @@ func NewSyncer[H header.Header[H]](
 	var metrics *metrics
 	if params.metrics {
 		var err error
-		metrics, err = newMetrics(params.blockTime)
+		metrics, err = newMetrics(params.recencyThreshold)
 		if err != nil {
 			return nil, err
 		}

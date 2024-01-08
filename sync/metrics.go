@@ -14,7 +14,6 @@ var meter = otel.Meter("header/sync")
 type metrics struct {
 	totalSynced     atomic.Int64
 	totalSyncedInst metric.Int64ObservableGauge
-	totalSyncedReg  metric.Registration
 
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
@@ -27,7 +26,8 @@ type metrics struct {
 	prevHeader     time.Time
 
 	subjectiveHeadInst metric.Int64ObservableGauge
-	subjectiveHeadReg  metric.Registration
+
+	syncReg metric.Registration
 
 	headersThreshold time.Duration
 }
@@ -91,16 +91,21 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 		headersThreshold:      headersThreshold,
 	}
 
-	m.totalSyncedReg, err = meter.RegisterCallback(m.observeTotalSynced, totalSynced, subjectiveHead)
+	m.syncReg, err = meter.RegisterCallback(m.observeMetrics, m.totalSyncedInst, m.subjectiveHeadInst)
 	if err != nil {
 		return nil, err
 	}
 
-	m.subjectiveHeadReg, err = meter.RegisterCallback(m.observeNewHead, totalSynced, subjectiveHead)
-	if err != nil {
-		return nil, err
-	}
 	return m, nil
+}
+
+func (m *metrics) observeMetrics(ctx context.Context, obs metric.Observer) error {
+	err := m.observeTotalSynced(ctx, obs)
+	if err != nil {
+		return err
+	}
+
+	return m.observeNewHead(ctx, obs)
 }
 
 func (m *metrics) observeTotalSynced(_ context.Context, obs metric.Observer) error {
@@ -109,7 +114,7 @@ func (m *metrics) observeTotalSynced(_ context.Context, obs metric.Observer) err
 }
 
 func (m *metrics) observeNewHead(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.subjectiveHeadInst, m.totalSynced.Load())
+	obs.ObserveInt64(m.subjectiveHeadInst, m.subjectiveHead.Load())
 	return nil
 }
 
@@ -154,6 +159,5 @@ func (m *metrics) observe(ctx context.Context, observeFn func(context.Context)) 
 	if ctx.Err() != nil {
 		ctx = context.Background()
 	}
-
 	observeFn(ctx)
 }
