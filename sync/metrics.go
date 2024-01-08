@@ -147,9 +147,9 @@ func (m *metrics) observeNewSubjectiveHead(ctx context.Context, height int64, ti
 		if time.Since(m.headerReceived) > m.headersThreshold {
 			m.laggingHeadersStart.Add(ctx, 1)
 		}
+		m.prevHeader = timestamp
+		m.headerReceived = time.Now()
 	})
-	m.prevHeader = timestamp
-	m.headerReceived = time.Now()
 }
 
 func (m *metrics) observe(ctx context.Context, observeFn func(context.Context)) {
