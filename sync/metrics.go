@@ -33,7 +33,7 @@ type metrics struct {
 func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	totalSynced, err := meter.Int64ObservableGauge(
 		"hdr_total_synced_headers",
-		metric.WithDescription("total synced headers shows how many headers have been synced"),
+metric.WithDescription("total synced headers shows how many headers have been synced since runtime"),
 	)
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 
 	syncLoopStarted, err := meter.Int64Counter(
 		"hdr_sync_loop_started",
-		metric.WithDescription("sync loop started shows that syncing is in progress"),
+metric.WithDescription("sync loop started records timestamp of a new sync job"),
 	)
 	if err != nil {
 		return nil, err
