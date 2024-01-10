@@ -24,6 +24,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
 		return sbjHead, nil
 	}
+	s.metrics.laggingNetworkHead(s.ctx)
 	// otherwise, request head from the network
 	// TODO: Besides requesting we should listen for new gossiped headers and cancel request if so
 	//
@@ -39,6 +40,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	// if we can't get it - give what we have
 	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
 	defer cancel()
+	s.metrics.readHeaderGetter(s.ctx)
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
@@ -85,6 +87,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		return s.subjectiveHead(ctx)
 	}
 	defer s.getter.Unlock()
+	s.metrics.readHeaderGetter(s.ctx)
 	trustHead, err := s.getter.Head(ctx)
 	if err != nil {
 		return trustHead, err
@@ -100,6 +103,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	case isExpired(trustHead, s.Params.TrustingPeriod):
 		log.Warnw("subjective initialization with an expired header", "height", trustHead.Height())
 	case !isRecent(trustHead, s.Params.blockTime, s.Params.recencyThreshold):
+		s.metrics.laggingNetworkHead(s.ctx)
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
 	}
 	log.Warn("trusted peer is out of sync")

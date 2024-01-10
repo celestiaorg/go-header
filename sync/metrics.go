@@ -20,6 +20,7 @@ type metrics struct {
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
 	laggingHeadersStart   metric.Int64Counter
+	readHeader            metric.Int64Counter
 
 	subjectiveHead atomic.Int64
 	blockTime      metric.Float64Histogram
@@ -62,6 +63,16 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 		return nil, err
 	}
 
+	readHeader, err := meter.Int64Counter(
+		"hdr_sync_getter_read",
+		metric.WithDescription(
+			"sync getter used to get the header instead of receiving it through the subscription",
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	subjectiveHead, err := meter.Int64ObservableGauge(
 		"hdr_sync_subjective_head",
 		metric.WithDescription("subjective head height"),
@@ -83,6 +94,7 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 		syncLoopStarted:       syncLoopStarted,
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		laggingHeadersStart:   laggingHeadersStart,
+		readHeader:            readHeader,
 		blockTime:             blockTime,
 		subjectiveHeadInst:    subjectiveHead,
 		headersThreshold:      headersThreshold,
@@ -127,9 +139,21 @@ func (m *metrics) syncingStarted(ctx context.Context) {
 	})
 }
 
+func (m *metrics) laggingNetworkHead(ctx context.Context) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.laggingHeadersStart.Add(ctx, 1)
+	})
+}
+
 func (m *metrics) peersOutOufSync(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.trustedPeersOutOfSync.Add(ctx, 1)
+	})
+}
+
+func (m *metrics) readHeaderGetter(ctx context.Context) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.readHeader.Add(ctx, 1)
 	})
 }
 
@@ -139,10 +163,6 @@ func (m *metrics) observeNewSubjectiveHead(ctx context.Context, height int64, ti
 
 		if !m.prevHeader.IsZero() {
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
-		}
-
-		if time.Since(m.headerReceived) > m.headersThreshold {
-			m.laggingHeadersStart.Add(ctx, 1)
 		}
 		m.prevHeader = timestamp
 		m.headerReceived = time.Now()
