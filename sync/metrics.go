@@ -12,20 +12,19 @@ import (
 var meter = otel.Meter("header/sync")
 
 type metrics struct {
-	syncReg metric.Registration
+	syncReg            metric.Registration
+	subjectiveHeadInst metric.Int64ObservableGauge
+	totalSyncedInst    metric.Int64ObservableGauge
 
-	totalSynced     atomic.Int64
-	totalSyncedInst metric.Int64ObservableGauge
-
+	totalSynced           atomic.Int64
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
 	laggingHeadersStart   metric.Int64Counter
 
-	subjectiveHead     atomic.Int64
-	subjectiveHeadInst metric.Int64ObservableGauge
-	blockTime          metric.Float64Histogram
-	headerReceived     time.Time
-	prevHeader         time.Time
+	subjectiveHead atomic.Int64
+	blockTime      metric.Float64Histogram
+	headerReceived time.Time
+	prevHeader     time.Time
 
 	headersThreshold time.Duration
 }
@@ -33,7 +32,7 @@ type metrics struct {
 func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 	totalSynced, err := meter.Int64ObservableGauge(
 		"hdr_total_synced_headers",
-metric.WithDescription("total synced headers shows how many headers have been synced since runtime"),
+		metric.WithDescription("total synced headers shows how many headers have been synced"),
 	)
 	if err != nil {
 		return nil, err
@@ -41,7 +40,7 @@ metric.WithDescription("total synced headers shows how many headers have been sy
 
 	syncLoopStarted, err := meter.Int64Counter(
 		"hdr_sync_loop_started",
-metric.WithDescription("sync loop started records timestamp of a new sync job"),
+		metric.WithDescription("sync loop started shows that syncing is in progress"),
 	)
 	if err != nil {
 		return nil, err
