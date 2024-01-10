@@ -122,13 +122,13 @@ func (m *metrics) recordTotalSynced(totalSynced int) {
 	})
 }
 
-func (m *metrics) recordSyncLoopStarted(ctx context.Context) {
+func (m *metrics) syncingStarted(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.syncLoopStarted.Add(ctx, 1)
 	})
 }
 
-func (m *metrics) recordTrustedPeersOutOfSync(ctx context.Context) {
+func (m *metrics) peersOutOufSync(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.trustedPeersOutOfSync.Add(ctx, 1)
 	})
@@ -158,4 +158,11 @@ func (m *metrics) observe(ctx context.Context, observeFn func(context.Context)) 
 		ctx = context.Background()
 	}
 	observeFn(ctx)
+}
+
+func (m *metrics) Close() error {
+	if m == nil {
+		return nil
+	}
+	return m.syncReg.Unregister()
 }

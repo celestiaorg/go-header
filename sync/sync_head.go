@@ -103,7 +103,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
 	}
 	log.Warn("trusted peer is out of sync")
-	s.metrics.recordTrustedPeersOutOfSync(s.ctx)
+	s.metrics.peersOutOufSync(s.ctx)
 	return trustHead, nil
 }
 

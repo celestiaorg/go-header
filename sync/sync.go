@@ -109,7 +109,7 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 // Stop stops Syncer.
 func (s *Syncer[H]) Stop(context.Context) error {
 	s.cancel()
-	return nil
+	return s.metrics.Close()
 }
 
 // SyncWait blocks until ongoing sync is done.
@@ -180,7 +180,7 @@ func (s *Syncer[H]) syncLoop() {
 	for {
 		select {
 		case <-s.triggerSync:
-			s.metrics.recordSyncLoopStarted(s.ctx)
+			s.metrics.syncingStarted(s.ctx)
 			s.sync(s.ctx)
 		case <-s.ctx.Done():
 			return
