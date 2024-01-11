@@ -26,11 +26,9 @@ type metrics struct {
 	blockTime      metric.Float64Histogram
 	headerReceived time.Time
 	prevHeader     time.Time
-
-	headersThreshold time.Duration
 }
 
-func newMetrics(headersThreshold time.Duration) (*metrics, error) {
+func newMetrics() (*metrics, error) {
 	totalSynced, err := meter.Int64ObservableGauge(
 		"hdr_total_synced_headers",
 		metric.WithDescription("total synced headers shows how many headers have been synced"),
@@ -97,7 +95,6 @@ func newMetrics(headersThreshold time.Duration) (*metrics, error) {
 		readHeader:            readHeader,
 		blockTime:             blockTime,
 		subjectiveHeadInst:    subjectiveHead,
-		headersThreshold:      headersThreshold,
 	}
 
 	m.syncReg, err = meter.RegisterCallback(m.observeMetrics, m.totalSyncedInst, m.subjectiveHeadInst)
