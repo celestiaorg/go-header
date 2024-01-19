@@ -5,9 +5,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
+
+var subsMeter = otel.Meter("header/p2p-subs/")
 
 const (
 	statusKey    = "status"
@@ -30,35 +33,35 @@ type subscriberMetrics struct {
 
 func newSubscriberMetrics() (m *subscriberMetrics, err error) {
 	m = new(subscriberMetrics)
-	m.messageNumInst, err = meter.Int64Counter(
+	m.messageNumInst, err = subsMeter.Int64Counter(
 		"hdr_p2p_sub_msg_num_counter",
 		metric.WithDescription("header message count"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.messageSizeInst, err = meter.Int64Histogram(
+	m.messageSizeInst, err = subsMeter.Int64Histogram(
 		"hdr_p2p_sub_msg_size_hist",
 		metric.WithDescription("valid header message size"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.messageTimeInst, err = meter.Float64Histogram(
+	m.messageTimeInst, err = subsMeter.Float64Histogram(
 		"hdr_p2p_sub_msg_time_hist",
 		metric.WithDescription("valid header message propagation time"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.subscriptionNumInst, err = meter.Int64ObservableGauge(
+	m.subscriptionNumInst, err = subsMeter.Int64ObservableGauge(
 		"hdr_p2p_sub_num_gauge",
 		metric.WithDescription("number of active header message subscriptions"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	m.subscriptionNumReg, err = meter.RegisterCallback(m.subscriptionCallback, m.subscriptionNumInst)
+	m.subscriptionNumReg, err = subsMeter.RegisterCallback(m.subscriptionCallback, m.subscriptionNumInst)
 	if err != nil {
 		return nil, err
 	}

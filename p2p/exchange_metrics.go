@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"time"
 
@@ -31,17 +30,16 @@ type exchangeMetrics struct {
 	responseSizeInst    metric.Int64Histogram
 	responseTimeInst    metric.Float64Histogram
 
+	clientReg metric.Registration
+
 	trackerPeersNum     atomic.Int64
 	trackedPeersNumInst metric.Int64ObservableGauge
-	trackedPeersNumReg  metric.Registration
 
 	disconnectedPeersNum     atomic.Int64
 	disconnectedPeersNumInst metric.Int64ObservableGauge
-	disconnectedPeersNumReg  metric.Registration
 
 	blockedPeersNum     atomic.Int64
 	blockedPeersNumInst metric.Int64ObservableGauge
-	blockedPeersNumReg  metric.Registration
 }
 
 func newExchangeMetrics() (m *exchangeMetrics, err error) {
@@ -74,18 +72,10 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.trackedPeersNumReg, err = meter.RegisterCallback(m.observeTrackedPeers, m.trackedPeersNumInst)
-	if err != nil {
-		return nil, err
-	}
 	m.disconnectedPeersNumInst, err = meter.Int64ObservableGauge(
 		"hdr_p2p_exch_clnt_disconn_peer_num_gauge",
 		metric.WithDescription("exchange client tracked disconnected peers number"),
 	)
-	if err != nil {
-		return nil, err
-	}
-	m.disconnectedPeersNumReg, err = meter.RegisterCallback(m.observeDisconnectedPeers, m.disconnectedPeersNumInst)
 	if err != nil {
 		return nil, err
 	}
@@ -96,11 +86,24 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.blockedPeersNumReg, err = meter.RegisterCallback(m.observeBlockedPeers, m.blockedPeersNumInst)
+
+	m.clientReg, err = meter.RegisterCallback(
+		m.observeMetrics,
+		m.trackedPeersNumInst,
+		m.disconnectedPeersNumInst,
+		m.blockedPeersNumInst,
+	)
 	if err != nil {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (m *exchangeMetrics) observeMetrics(ctx context.Context, obs metric.Observer) error {
+	_ = m.observeTrackedPeers(ctx, obs)
+	_ = m.observeDisconnectedPeers(ctx, obs)
+	_ = m.observeBlockedPeers(ctx, obs)
+	return nil
 }
 
 func (m *exchangeMetrics) head(ctx context.Context, duration time.Duration, headersReceived int, tp, status string) {
@@ -177,8 +180,5 @@ func (m *exchangeMetrics) Close() (err error) {
 	if m == nil {
 		return nil
 	}
-
-	err = errors.Join(err, m.trackedPeersNumReg.Unregister())
-	err = errors.Join(err, m.disconnectedPeersNumReg.Unregister())
-	return err
+	return m.clientReg.Unregister()
 }
