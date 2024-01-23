@@ -99,10 +99,10 @@ func newExchangeMetrics() (m *exchangeMetrics, err error) {
 	return m, nil
 }
 
-func (m *exchangeMetrics) observeMetrics(ctx context.Context, obs metric.Observer) error {
-	_ = m.observeTrackedPeers(ctx, obs)
-	_ = m.observeDisconnectedPeers(ctx, obs)
-	_ = m.observeBlockedPeers(ctx, obs)
+func (m *exchangeMetrics) observeMetrics(_ context.Context, obs metric.Observer) error {
+	obs.ObserveInt64(m.trackedPeersNumInst, m.trackerPeersNum.Load())
+	obs.ObserveInt64(m.disconnectedPeersNumInst, m.disconnectedPeersNum.Load())
+	obs.ObserveInt64(m.blockedPeersNumInst, m.blockedPeersNum.Load())
 	return nil
 }
 
@@ -148,21 +148,6 @@ func (m *exchangeMetrics) peerBlocked() {
 	m.observe(context.Background(), func(ctx context.Context) {
 		m.blockedPeersNum.Add(1)
 	})
-}
-
-func (m *exchangeMetrics) observeTrackedPeers(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.trackedPeersNumInst, m.trackerPeersNum.Load())
-	return nil
-}
-
-func (m *exchangeMetrics) observeDisconnectedPeers(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.disconnectedPeersNumInst, m.disconnectedPeersNum.Load())
-	return nil
-}
-
-func (m *exchangeMetrics) observeBlockedPeers(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.blockedPeersNumInst, m.blockedPeersNum.Load())
-	return nil
 }
 
 func (m *exchangeMetrics) observe(ctx context.Context, observeFn func(context.Context)) {
