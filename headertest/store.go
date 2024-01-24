@@ -62,7 +62,11 @@ func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 }
 
 func (m *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
-	return m.Headers[height], nil
+	if header, exists := m.Headers[height]; exists {
+		return header, nil
+	}
+	var zero H
+	return zero, header.ErrNotFound
 }
 
 func (m *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
