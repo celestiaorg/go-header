@@ -31,17 +31,20 @@ type exchangeMetrics struct {
 	responseSizeInst    metric.Int64Histogram
 	responseTimeInst    metric.Float64Histogram
 
-	trackerPeersNum     atomic.Int64
 	trackedPeersNumInst metric.Int64ObservableGauge
 	trackedPeersNumReg  metric.Registration
 
-	disconnectedPeersNum     atomic.Int64
 	disconnectedPeersNumInst metric.Int64ObservableGauge
 	disconnectedPeersNumReg  metric.Registration
 
-	blockedPeersNum     atomic.Int64
 	blockedPeersNumInst metric.Int64ObservableGauge
 	blockedPeersNumReg  metric.Registration
+
+	trackerPeersNum atomic.Int64
+
+	disconnectedPeersNum atomic.Int64
+
+	blockedPeersNum atomic.Int64
 }
 
 func newExchangeMetrics() (m *exchangeMetrics, err error) {

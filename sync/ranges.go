@@ -9,9 +9,12 @@ import (
 // ranges keeps non-overlapping and non-adjacent header ranges which are used to cache headers (in
 // ascending order). This prevents unnecessary / duplicate network requests for additional headers
 // during sync.
+//
+// @ramin: allowing this one to place the syncRWMutex at bottom of
+// struct as the alignment allows 32bytes -> 8
 type ranges[H header.Header[H]] struct {
-	lk     sync.RWMutex
 	ranges []*headerRange[H]
+	lk     sync.RWMutex
 }
 
 // Head returns the highest Header in all ranges if any.
@@ -87,14 +90,14 @@ func (rs *ranges[H]) First() (*headerRange[H], bool) {
 }
 
 type headerRange[H header.Header[H]] struct {
-	lk      sync.RWMutex
 	headers []H
 	start   uint64
+	lk      sync.RWMutex
 }
 
 func newRange[H header.Header[H]](h H) *headerRange[H] {
 	return &headerRange[H]{
-		start:   uint64(h.Height()),
+		start:   h.Height(),
 		headers: []H{h},
 	}
 }
@@ -142,7 +145,7 @@ func (r *headerRange[H]) Remove(end uint64) {
 	amnt := r.rangeAmount(end)
 	r.headers = r.headers[amnt:]
 	if len(r.headers) != 0 {
-		r.start = uint64(r.headers[0].Height())
+		r.start = r.headers[0].Height()
 	}
 }
 

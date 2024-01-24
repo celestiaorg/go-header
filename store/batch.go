@@ -13,6 +13,8 @@ import (
 // unlike the Store which keeps 'hash -> header' and 'height -> hash'.
 // The approach simplifies implementation for the batch and
 // makes it better optimized for the GetByHeight case which is what we need.
+//
+//nolint:govet
 type batch[H header.Header[H]] struct {
 	lk      sync.RWMutex
 	heights map[string]uint64

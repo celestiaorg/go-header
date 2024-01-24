@@ -9,6 +9,8 @@ import (
 )
 
 // syncGetter is a Getter wrapper that ensure only one Head call happens at the time
+//
+//nolint:govet
 type syncGetter[H header.Header[H]] struct {
 	getterLk   sync.RWMutex
 	isGetterLk atomic.Bool

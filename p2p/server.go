@@ -242,10 +242,10 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 
 		log.Debugw("server: serving partial range",
 			"prevMaxHeight", to,
-			"newMaxHeight", uint64(head.Height())+1,
+			"newMaxHeight", head.Height()+1,
 		)
 		// change `to` height to return a partial range
-		to = uint64(head.Height()) + 1
+		to = head.Height() + 1
 	}
 
 	headersByRange, err := serv.store.GetRange(ctx, from, to)

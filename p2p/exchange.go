@@ -34,8 +34,8 @@ var maxUntrustedHeadRequests = 4
 // Exchange enables sending outbound HeaderRequests to the network as well as
 // handling inbound HeaderRequests from the network.
 type Exchange[H header.Header[H]] struct {
-	ctx    context.Context
 	cancel context.CancelFunc
+	ctx    context.Context
 
 	protocolID protocol.ID
 	host       host.Host

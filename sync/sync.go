@@ -30,26 +30,30 @@ var log = logging.Logger("header/sync")
 //   - Sets as the new Subjective Head, which
 //   - if there is a gap between the previous and the new Subjective Head
 //   - Triggers s.syncLoop and saves the Subjective Head in the pending so s.syncLoop can access it
+//
+//nolint:govet
 type Syncer[H header.Header[H]] struct {
-	sub     header.Subscriber[H] // to subscribe for new Network Heads
-	store   syncStore[H]         // to store all the headers to
-	getter  syncGetter[H]        // to fetch headers from
-	metrics *metrics
-
 	// stateLk protects state which represents the current or latest sync
 	stateLk sync.RWMutex
 	state   State
 
-	// signals to start syncing
-	triggerSync chan struct{}
-	// pending keeps ranges of valid new network headers awaiting to be appended to store
-	pending ranges[H]
 	// incomingMu ensures only one incoming network head candidate is processed at the time
 	incomingMu sync.Mutex
+
+	store   syncStore[H]         // to store all the headers to
+	sub     header.Subscriber[H] // to subscribe for new Network Heads
+	getter  syncGetter[H]        // to fetch headers from
+	metrics *metrics
 
 	// controls lifecycle for syncLoop
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// signals to start syncing
+	triggerSync chan struct{}
+
+	// pending keeps ranges of valid new network headers awaiting to be appended to store
+	pending ranges[H]
 
 	Params *Parameters
 }
@@ -126,15 +130,15 @@ func (s *Syncer[H]) SyncWait(ctx context.Context) error {
 
 // State collects all the information about a sync.
 type State struct {
+	Start      time.Time   `json:"start"`
+	End        time.Time   `json:"end"`
+	Error      string      `json:"error,omitempty"` // the error that might happen within a sync
+	FromHash   header.Hash `json:"from_hash"`
+	ToHash     header.Hash `json:"to_hash"`
 	ID         uint64      `json:"id"`          // incrementing ID of a sync
 	Height     uint64      `json:"height"`      // height at the moment when State is requested for a sync
 	FromHeight uint64      `json:"from_height"` // the starting point of a sync
 	ToHeight   uint64      `json:"to_height"`   // the ending point of a sync
-	FromHash   header.Hash `json:"from_hash"`
-	ToHash     header.Hash `json:"to_hash"`
-	Start      time.Time   `json:"start"`
-	End        time.Time   `json:"end"`
-	Error      string      `json:"error,omitempty"` // the error that might happen within a sync
 }
 
 // Finished returns true if sync is done, false otherwise.
@@ -158,7 +162,7 @@ func (s *Syncer[H]) State() State {
 
 	head, err := s.store.Head(s.ctx)
 	if err == nil {
-		state.Height = uint64(head.Height())
+		state.Height = head.Height()
 	} else if state.Error == "" {
 		// don't ignore the error if we can show it in the state
 		state.Error = err.Error()
@@ -239,8 +243,8 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) {
 	s.stateLk.Lock()
 	s.state.ID++
-	s.state.FromHeight = uint64(fromHead.Height()) + 1
-	s.state.ToHeight = uint64(toHead.Height())
+	s.state.FromHeight = fromHead.Height() + 1
+	s.state.ToHeight = toHead.Height()
 	s.state.FromHash = fromHead.Hash()
 	s.state.ToHash = toHead.Hash()
 	s.state.Start = time.Now()

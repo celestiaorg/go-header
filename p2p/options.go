@@ -18,6 +18,9 @@ type Option[T parameters] func(*T)
 
 // ServerParameters is the set of parameters that must be configured for the exchange.
 type ServerParameters struct {
+	// networkID is a network that will be used to create a protocol.ID
+	// Is empty by default
+	networkID string
 	// WriteDeadline sets the timeout for sending messages to the stream
 	WriteDeadline time.Duration
 	// ReadDeadline sets the timeout for reading messages from the stream
@@ -25,9 +28,6 @@ type ServerParameters struct {
 	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
 	// from another peer.
 	RangeRequestTimeout time.Duration
-	// networkID is a network that will be used to create a protocol.ID
-	// Is empty by default
-	networkID string
 	// metrics is a flag that enables metrics collection.
 	metrics bool
 }
@@ -57,7 +57,7 @@ func (p *ServerParameters) Validate() error {
 
 func WithMetrics[T parameters]() Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
+		switch t := any(p).(type) {
 		case *ServerParameters:
 			t.metrics = true
 		case *ClientParameters:
@@ -123,19 +123,19 @@ func WithParams[T parameters](params T) Option[T] {
 
 // ClientParameters is the set of parameters that must be configured for the exchange.
 type ClientParameters struct {
+	// pidstore is an optional interface used to periodically dump peers
+	pidstore PeerIDStore
+	// networkID is a network that will be used to create a protocol.ID
+	networkID string
+	// chainID is an identifier of the chain.
+	chainID string
 	// MaxHeadersPerRangeRequest defines the max amount of headers that can be requested per 1 request.
 	MaxHeadersPerRangeRequest uint64
 	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
 	// from another peer.
 	RangeRequestTimeout time.Duration
-	// networkID is a network that will be used to create a protocol.ID
-	networkID string
-	// chainID is an identifier of the chain.
-	chainID string
 	// metrics is a flag that enables metrics collection.
 	metrics bool
-	// pidstore is an optional interface used to periodically dump peers
-	pidstore PeerIDStore
 }
 
 // DefaultClientParameters returns the default params to configure the store.
@@ -178,8 +178,7 @@ func WithMaxHeadersPerRangeRequest[T ClientParameters](amount uint64) Option[T] 
 // `chainID` parameter.
 func WithChainID[T ClientParameters](chainID string) Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
-		case *ClientParameters:
+		if t, ok := any(p).(*ClientParameters); ok {
 			t.chainID = chainID
 		}
 	}
@@ -189,8 +188,7 @@ func WithChainID[T ClientParameters](chainID string) Option[T] {
 // inside the peerTracker.
 func WithPeerIDStore[T ClientParameters](pidstore PeerIDStore) Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
-		case *ClientParameters:
+		if t, ok := any(p).(*ClientParameters); ok {
 			t.pidstore = pidstore
 		}
 	}

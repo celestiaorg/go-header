@@ -13,7 +13,11 @@ import (
 )
 
 // NewTestStore creates initialized and started in memory header Store which is useful for testing.
-func NewTestStore(ctx context.Context, t *testing.T, head *headertest.DummyHeader) header.Store[*headertest.DummyHeader] {
+func NewTestStore(
+	ctx context.Context,
+	t *testing.T,
+	head *headertest.DummyHeader,
+) header.Store[*headertest.DummyHeader] {
 	store, err := NewStoreWithHead(ctx, sync.MutexWrap(datastore.NewMapDatastore()), head)
 	require.NoError(t, err)
 

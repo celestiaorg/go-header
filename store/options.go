@@ -12,6 +12,11 @@ type Option func(*Parameters)
 
 // Parameters is the set of parameters that must be configured for the store.
 type Parameters struct {
+
+	// storePrefix defines the prefix used to wrap the store
+	// OPTIONAL
+	storePrefix datastore.Key
+
 	// StoreCacheSize defines the maximum amount of entries in the Header Store cache.
 	StoreCacheSize int
 
@@ -21,10 +26,6 @@ type Parameters struct {
 	// WriteBatchSize defines the size of the batched header flush.
 	// Headers are written in batches not to thrash the underlying Datastore with writes.
 	WriteBatchSize int
-
-	// storePrefix defines the prefix used to wrap the store
-	// OPTIONAL
-	storePrefix datastore.Key
 
 	// metrics is a flag that enables metrics collection
 	metrics bool

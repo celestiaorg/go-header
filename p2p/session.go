@@ -29,21 +29,22 @@ func withValidation[H header.Header[H]](from H) option[H] {
 // session aims to divide a range of headers
 // into several smaller requests among different peers.
 type session[H header.Header[H]] struct {
-	host       host.Host
-	protocolID protocol.ID
-	queue      *peerQueue
+	host host.Host
+
+	// Otherwise, it will be nil.
+	// `from` is set when additional validation for range is needed.
+	from H
+
+	ctx   context.Context
+	queue *peerQueue
 	// peerTracker contains discovered peers with records that describes their activity.
 	peerTracker *peerTracker
 	metrics     *exchangeMetrics
 
-	// Otherwise, it will be nil.
-	// `from` is set when additional validation for range is needed.
-	from           H
+	cancel         context.CancelFunc
+	reqCh          chan *p2p_pb.HeaderRequest
+	protocolID     protocol.ID
 	requestTimeout time.Duration
-
-	ctx    context.Context
-	cancel context.CancelFunc
-	reqCh  chan *p2p_pb.HeaderRequest
 }
 
 func newSession[H header.Header[H]](
