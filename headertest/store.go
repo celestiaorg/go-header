@@ -3,6 +3,7 @@ package headertest
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/celestiaorg/go-header"
@@ -76,6 +77,10 @@ func (m *Store[H]) GetRangeByHeight(ctx context.Context, fromHead H, to uint64) 
 
 func (m *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
 	amount := to - from
+	if amount == 0 {
+		return nil, fmt.Errorf("no headers requested")
+	}
+
 	headers := make([]H, amount)
 
 	// As the requested range is [from; to),
