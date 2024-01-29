@@ -158,7 +158,7 @@ func (s *Syncer[H]) State() State {
 
 	head, err := s.store.Head(s.ctx)
 	if err == nil {
-		state.Height = uint64(head.Height())
+		state.Height = head.Height()
 	} else if state.Error == "" {
 		// don't ignore the error if we can show it in the state
 		state.Error = err.Error()
@@ -240,8 +240,8 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) {
 	s.stateLk.Lock()
 	s.state.ID++
-	s.state.FromHeight = uint64(fromHead.Height()) + 1
-	s.state.ToHeight = uint64(toHead.Height())
+	s.state.FromHeight = fromHead.Height() + 1
+	s.state.ToHeight = toHead.Height()
 	s.state.FromHash = fromHead.Hash()
 	s.state.ToHash = toHead.Hash()
 	s.state.Start = time.Now()
@@ -339,7 +339,5 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 	if err != nil {
 		return err
 	}
-
-	s.metrics.recordTotalSynced(len(headers))
 	return nil
 }

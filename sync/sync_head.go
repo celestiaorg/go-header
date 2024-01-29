@@ -126,7 +126,7 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 			"hash", netHead.Hash().String(),
 			"err", err)
 	}
-	s.metrics.observeNewSubjectiveHead(s.ctx, int64(netHead.Height()), netHead.Time())
+	s.metrics.newSubjectiveHead(s.ctx, netHead.Height(), netHead.Time())
 
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {

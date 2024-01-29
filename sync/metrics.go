@@ -12,31 +12,21 @@ import (
 var meter = otel.Meter("header/sync")
 
 type metrics struct {
-	syncReg            metric.Registration
 	subjectiveHeadInst metric.Int64ObservableGauge
-	totalSyncedInst    metric.Int64ObservableGauge
 
-	totalSynced           atomic.Int64
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
 	laggingHeadersStart   metric.Int64Counter
 	readHeader            metric.Int64Counter
 
-	subjectiveHead atomic.Int64
-	blockTime      metric.Float64Histogram
-	headerReceived time.Time
-	prevHeader     time.Time
+	subjectiveHead    atomic.Int64
+	subjectiveHeadReg metric.Registration
+
+	blockTime  metric.Float64Histogram
+	prevHeader time.Time
 }
 
 func newMetrics() (*metrics, error) {
-	totalSynced, err := meter.Int64ObservableGauge(
-		"hdr_total_synced_headers",
-		metric.WithDescription("total synced headers shows how many headers have been synced"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	syncLoopStarted, err := meter.Int64Counter(
 		"hdr_sync_loop_started",
 		metric.WithDescription("sync loop started shows that syncing is in progress"),
@@ -88,7 +78,6 @@ func newMetrics() (*metrics, error) {
 	}
 
 	m := &metrics{
-		totalSyncedInst:       totalSynced,
 		syncLoopStarted:       syncLoopStarted,
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		laggingHeadersStart:   laggingHeadersStart,
@@ -97,7 +86,7 @@ func newMetrics() (*metrics, error) {
 		subjectiveHeadInst:    subjectiveHead,
 	}
 
-	m.syncReg, err = meter.RegisterCallback(m.observeMetrics, m.totalSyncedInst, m.subjectiveHeadInst)
+	m.subjectiveHeadReg, err = meter.RegisterCallback(m.newHead, m.subjectiveHeadInst)
 	if err != nil {
 		return nil, err
 	}
@@ -105,29 +94,9 @@ func newMetrics() (*metrics, error) {
 	return m, nil
 }
 
-func (m *metrics) observeMetrics(ctx context.Context, obs metric.Observer) error {
-	err := m.observeTotalSynced(ctx, obs)
-	if err != nil {
-		return err
-	}
-
-	return m.observeNewHead(ctx, obs)
-}
-
-func (m *metrics) observeTotalSynced(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.totalSyncedInst, m.totalSynced.Load())
-	return nil
-}
-
-func (m *metrics) observeNewHead(_ context.Context, obs metric.Observer) error {
+func (m *metrics) newHead(_ context.Context, obs metric.Observer) error {
 	obs.ObserveInt64(m.subjectiveHeadInst, m.subjectiveHead.Load())
 	return nil
-}
-
-func (m *metrics) recordTotalSynced(totalSynced int) {
-	m.observe(context.Background(), func(_ context.Context) {
-		m.totalSynced.Add(int64(totalSynced))
-	})
 }
 
 func (m *metrics) syncingStarted(ctx context.Context) {
@@ -154,15 +123,13 @@ func (m *metrics) readHeaderGetter(ctx context.Context) {
 	})
 }
 
-func (m *metrics) observeNewSubjectiveHead(ctx context.Context, height int64, timestamp time.Time) {
+func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.subjectiveHead.Store(height)
+		m.subjectiveHead.Store(int64(height))
 
 		if !m.prevHeader.IsZero() {
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
 		}
-		m.prevHeader = timestamp
-		m.headerReceived = time.Now()
 	})
 }
 
@@ -180,5 +147,5 @@ func (m *metrics) Close() error {
 	if m == nil {
 		return nil
 	}
-	return m.syncReg.Unregister()
+	return m.subjectiveHeadReg.Unregister()
 }
