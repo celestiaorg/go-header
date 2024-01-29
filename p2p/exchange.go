@@ -114,18 +114,23 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
 	log.Debug("requesting head")
 
-	reqCtx := ctx
-	startTime := time.Now()
+	var (
+		cancel context.CancelFunc
+
+		reqCtx    = ctx
+		sub       = time.Second * 5
+		startTime = time.Now()
+	)
+
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 90% of caller's set deadline for requests
 		// and give leftover to determine the bestHead from gathered responses
 		// this avoids DeadlineExceeded error when any of the peers are unresponsive
-
-		sub := deadline.Sub(startTime) * 9 / 10
-		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
-		defer cancel()
+		sub = deadline.Sub(startTime) * 9 / 10
 	}
+
+	reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
+	defer cancel()
 
 	reqParams := header.HeadParams[H]{}
 	for _, opt := range opts {
