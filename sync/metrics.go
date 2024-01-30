@@ -16,8 +16,8 @@ type metrics struct {
 
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
-	laggingHeadersStart   metric.Int64Counter
-	readHeader            metric.Int64Counter
+	unrecentHeader        metric.Int64Counter
+	subjectiveInit        metric.Int64Counter
 
 	subjectiveHead    atomic.Int64
 	subjectiveHeadReg metric.Registration
@@ -36,25 +36,25 @@ func newMetrics() (*metrics, error) {
 	}
 
 	trustedPeersOutOfSync, err := meter.Int64Counter(
-		"hdr_tr_peers_out_of_sync",
-		metric.WithDescription("trusted peers out of sync"),
+		"hdr_sync_trust_peers_out_of_sync",
+		metric.WithDescription("trusted peers out of sync and gave outdated header"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	laggingHeadersStart, err := meter.Int64Counter(
-		"hdr_sync_lagging_hdr_start",
-		metric.WithDescription("lagging header start"),
+	unrecentHeader, err := meter.Int64Counter(
+		"hdr_sync_unrecent_header",
+		metric.WithDescription("tracks every time Syncer returns an unrecent header"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	readHeader, err := meter.Int64Counter(
-		"hdr_sync_getter_read",
+	subjectiveInit, err := meter.Int64Counter(
+		"hdr_sync_subjective_init",
 		metric.WithDescription(
-			"sync getter used to get the header instead of receiving it through the subscription",
+			"tracks how many times is the node initialized ",
 		),
 	)
 	if err != nil {
@@ -80,8 +80,8 @@ func newMetrics() (*metrics, error) {
 	m := &metrics{
 		syncLoopStarted:       syncLoopStarted,
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
-		laggingHeadersStart:   laggingHeadersStart,
-		readHeader:            readHeader,
+		unrecentHeader:        unrecentHeader,
+		subjectiveInit:        subjectiveInit,
 		blockTime:             blockTime,
 		subjectiveHeadInst:    subjectiveHead,
 	}
@@ -107,19 +107,19 @@ func (m *metrics) syncingStarted(ctx context.Context) {
 
 func (m *metrics) laggingNetworkHead(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.laggingHeadersStart.Add(ctx, 1)
+		m.unrecentHeader.Add(ctx, 1)
 	})
 }
 
-func (m *metrics) peersOutOufSync(ctx context.Context) {
+func (m *metrics) trustedPeersOutOufSync(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.trustedPeersOutOfSync.Add(ctx, 1)
 	})
 }
 
-func (m *metrics) readHeaderGetter(ctx context.Context) {
+func (m *metrics) subjectiveInitialization(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.readHeader.Add(ctx, 1)
+		m.subjectiveInit.Add(ctx, 1)
 	})
 }
 
