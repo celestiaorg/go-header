@@ -28,7 +28,7 @@ type metrics struct {
 
 func newMetrics() (*metrics, error) {
 	syncLoopStarted, err := meter.Int64Counter(
-		"hdr_sync_loop_started",
+		"hdr_sync_loop_started_counter",
 		metric.WithDescription("sync loop started shows that syncing is in progress"),
 	)
 	if err != nil {
@@ -36,7 +36,7 @@ func newMetrics() (*metrics, error) {
 	}
 
 	trustedPeersOutOfSync, err := meter.Int64Counter(
-		"hdr_sync_trust_peers_out_of_sync",
+		"hdr_sync_trust_peers_out_of_sync_counter",
 		metric.WithDescription("trusted peers out of sync and gave outdated header"),
 	)
 	if err != nil {
@@ -44,7 +44,7 @@ func newMetrics() (*metrics, error) {
 	}
 
 	unrecentHeader, err := meter.Int64Counter(
-		"hdr_sync_unrecent_header",
+		"hdr_sync_unrecent_header_counter",
 		metric.WithDescription("tracks every time Syncer returns an unrecent header"),
 	)
 	if err != nil {
@@ -52,7 +52,7 @@ func newMetrics() (*metrics, error) {
 	}
 
 	subjectiveInit, err := meter.Int64Counter(
-		"hdr_sync_subjective_init",
+		"hdr_sync_subjective_init_counter",
 		metric.WithDescription(
 			"tracks how many times is the node initialized ",
 		),
@@ -62,7 +62,7 @@ func newMetrics() (*metrics, error) {
 	}
 
 	subjectiveHead, err := meter.Int64ObservableGauge(
-		"hdr_sync_subjective_head",
+		"hdr_sync_subjective_head_gauge",
 		metric.WithDescription("subjective head height"),
 	)
 	if err != nil {
@@ -70,7 +70,7 @@ func newMetrics() (*metrics, error) {
 	}
 
 	blockTime, err := meter.Float64Histogram(
-		"hdr_sync_actual_blockTime_ts",
+		"hdr_sync_actual_blockTime_ts_hist",
 		metric.WithDescription("duration between creation of 2 blocks"),
 	)
 	if err != nil {
@@ -105,7 +105,7 @@ func (m *metrics) syncingStarted(ctx context.Context) {
 	})
 }
 
-func (m *metrics) laggingNetworkHead(ctx context.Context) {
+func (m *metrics) unrecentHead(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.unrecentHeader.Add(ctx, 1)
 	})

@@ -34,12 +34,12 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		// so just recursively get it
 		return s.Head(ctx)
 	}
-	s.metrics.laggingNetworkHead(s.ctx)
 	defer s.getter.Unlock()
 	// limit time to get a recent header
 	// if we can't get it - give what we have
 	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
 	defer cancel()
+	s.metrics.unrecentHead(s.ctx)
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
