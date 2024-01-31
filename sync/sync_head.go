@@ -25,12 +25,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return sbjHead, nil
 	}
 	// otherwise, request head from the network
-	//
-	// TODO(@Wondertan): Here is another potential networking optimization:
-	//  * From sbjHead's timestamp and current time predict the time to the next header(TNH)
-	//  * If now >= TNH && now <= TNH + (THP) header propagation time
-	//    * Wait for header to arrive instead of requesting it
-	//  * This way we don't request as we know the new network header arrives exactly
+	// TODO: Besides requesting we should listen for new gossiped headers and cancel request if so
 	//
 	// single-flight protection
 	// ensure only one Head is requested at the time
