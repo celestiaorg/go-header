@@ -6,21 +6,30 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 var meter = otel.Meter("header/sync")
 
 type metrics struct {
-	subjectiveHeadInst metric.Int64ObservableGauge
+	syncerReg metric.Registration
+
+	subjectiveHeadInst  metric.Int64ObservableGauge
+	syncLoopRunningInst metric.Int64ObservableGauge
 
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
 	unrecentHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
 
-	subjectiveHead    atomic.Int64
-	subjectiveHeadReg metric.Registration
+	subjectiveHead atomic.Int64
+
+	syncLoopDurationHist metric.Float64Histogram
+	syncLoopActive       atomic.Int64
+	syncStartedTs        time.Time
+
+	requestRangeTimeHist metric.Float64Histogram
 
 	blockTime  metric.Float64Histogram
 	prevHeader time.Time
@@ -69,6 +78,26 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
+	syncLoopDurationHist, err := meter.Float64Histogram(
+		"hdr_sync_loop_time_hist",
+		metric.WithDescription("tracks the duration of syncing"))
+	if err != nil {
+		return nil, err
+	}
+
+	requestRangeTimeHist, err := meter.Float64Histogram("hdr_sync_range_request_time_hist",
+		metric.WithDescription("tracks the duration of GetRangeByHeight requests"))
+	if err != nil {
+		return nil, err
+	}
+
+	syncLoopRunningInst, err := meter.Int64ObservableGauge(
+		"hdr_sync_loop_status_gauge",
+		metric.WithDescription("reports whether syncing is active or not"))
+	if err != nil {
+		return nil, err
+	}
+
 	blockTime, err := meter.Float64Histogram(
 		"hdr_sync_actual_blockTime_ts_hist",
 		metric.WithDescription("duration between creation of 2 blocks"),
@@ -82,11 +111,14 @@ func newMetrics() (*metrics, error) {
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		unrecentHeader:        unrecentHeader,
 		subjectiveInit:        subjectiveInit,
+		syncLoopDurationHist:  syncLoopDurationHist,
+		syncLoopRunningInst:   syncLoopRunningInst,
+		requestRangeTimeHist:  requestRangeTimeHist,
 		blockTime:             blockTime,
 		subjectiveHeadInst:    subjectiveHead,
 	}
 
-	m.subjectiveHeadReg, err = meter.RegisterCallback(m.newHead, m.subjectiveHeadInst)
+	m.syncerReg, err = meter.RegisterCallback(m.observeMetrics, m.subjectiveHeadInst, m.syncLoopRunningInst)
 	if err != nil {
 		return nil, err
 	}
@@ -94,14 +126,24 @@ func newMetrics() (*metrics, error) {
 	return m, nil
 }
 
-func (m *metrics) newHead(_ context.Context, obs metric.Observer) error {
+func (m *metrics) observeMetrics(_ context.Context, obs metric.Observer) error {
 	obs.ObserveInt64(m.subjectiveHeadInst, m.subjectiveHead.Load())
+	obs.ObserveInt64(m.syncLoopRunningInst, m.syncLoopActive.Load())
 	return nil
 }
 
-func (m *metrics) syncingStarted(ctx context.Context) {
+func (m *metrics) syncStarted(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
+		m.syncStartedTs = time.Now()
 		m.syncLoopStarted.Add(ctx, 1)
+		m.syncLoopActive.Store(1)
+	})
+}
+
+func (m *metrics) syncFinished(ctx context.Context) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.syncLoopActive.Store(0)
+		m.syncLoopDurationHist.Record(ctx, time.Since(m.syncStartedTs).Seconds())
 	})
 }
 
@@ -121,6 +163,14 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.subjectiveInit.Add(ctx, 1)
 	})
+}
+
+func (m *metrics) getRangeRequestTime(ctx context.Context, duration time.Duration, amount int, failed bool) {
+	m.requestRangeTimeHist.Record(ctx, duration.Seconds(),
+		metric.WithAttributes(
+			attribute.Int("headers amount", amount),
+			attribute.Bool("request failed", failed),
+		))
 }
 
 func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
@@ -147,5 +197,5 @@ func (m *metrics) Close() error {
 	if m == nil {
 		return nil
 	}
-	return m.subjectiveHeadReg.Unregister()
+	return m.syncerReg.Unregister()
 }
