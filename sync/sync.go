@@ -319,7 +319,7 @@ func (s *Syncer[H]) requestHeaders(
 		now := time.Now()
 		to := fromHead.Height() + size + 1
 		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
-		s.metrics.getRangeRequestTime(s.ctx, time.Since(now), int(size), err != nil)
+		s.metrics.getRangeRequestTime(s.ctx, time.Since(now), int(size)/100, err != nil)
 		if err != nil {
 			return err
 		}
