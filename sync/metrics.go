@@ -166,11 +166,13 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 }
 
 func (m *metrics) getRangeRequestTime(ctx context.Context, duration time.Duration, amount int, failed bool) {
-	m.requestRangeTimeHist.Record(ctx, duration.Seconds(),
-		metric.WithAttributes(
-			attribute.Int("headers amount", amount),
-			attribute.Bool("request failed", failed),
-		))
+	m.observe(ctx, func(ctx context.Context) {
+		m.requestRangeTimeHist.Record(ctx, duration.Seconds(),
+			metric.WithAttributes(
+				attribute.Int("headers amount", amount),
+				attribute.Bool("request failed", failed),
+			))
+	})
 }
 
 func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
