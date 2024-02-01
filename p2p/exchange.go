@@ -176,11 +176,10 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 			ctx = baggage.ContextWithBaggage(ctx, b)
 			_, newSpan := span.TracerProvider().Tracer("requesting peer").Start(ctx, "")
 			defer newSpan.End()
-			newSpan.AddEvent("sending request to peer")
 
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
-				newSpan.AddEvent("request failed", trace.WithAttributes(attribute.String("error", err.Error())))
+				newSpan.SetStatus(codes.Error, err.Error())
 				log.Errorw("head request to peer failed", "peer", from, "err", err)
 				headerRespCh <- zero
 				return
@@ -193,12 +192,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 					if errors.As(err, &verErr) && verErr.SoftFailure {
 						log.Debugw("received head from tracked peer that soft-failed verification",
 							"tracked peer", from, "err", err)
-
-						newSpan.AddEvent("soft-failed verification header received",
-							trace.WithAttributes(
-								attribute.String("error", err.Error())),
-						)
-
+						newSpan.SetStatus(codes.Error, err.Error())
 						headerRespCh <- headers[0]
 						return
 					}
@@ -208,17 +202,12 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 					}
 					logF("verifying head received from tracked peer", "tracked peer", from,
 						"height", headers[0].Height(), "err", err)
-
-					newSpan.AddEvent("verifying head received",
-						trace.WithAttributes(
-							attribute.Int64("height", int64(headers[0].Height())),
-							attribute.String("error", err.Error())),
-					)
+					newSpan.SetStatus(codes.Error, err.Error())
 					headerRespCh <- zero
 					return
 				}
 			}
-			newSpan.AddEvent("request succeeded")
+			newSpan.SetStatus(codes.Ok, "")
 			// request ensures that the result slice will have at least one Header
 			headerRespCh <- headers[0]
 		}(from)
