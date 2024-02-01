@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("header/server")
+	tracerServ = otel.Tracer("header/server")
 )
 
 // ExchangeServer represents the server-side component for
@@ -173,7 +173,7 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 	log.Debugw("server: handling header request", "hash", header.Hash(hash).String())
 	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
 	defer cancel()
-	ctx, span := tracer.Start(ctx, "request-by-hash", trace.WithAttributes(
+	ctx, span := tracerServ.Start(ctx, "request-by-hash", trace.WithAttributes(
 		attribute.String("hash", header.Hash(hash).String()),
 	))
 	defer span.End()
@@ -204,7 +204,7 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 	}
 
 	startTime := time.Now()
-	ctx, span := tracer.Start(serv.ctx, "request-range", trace.WithAttributes(
+	ctx, span := tracerServ.Start(serv.ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
 	defer span.End()
@@ -273,7 +273,7 @@ func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
 	log.Debug("server: handling head request")
 	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
 	defer cancel()
-	ctx, span := tracer.Start(ctx, "request-head")
+	ctx, span := tracerServ.Start(ctx, "request-head")
 	defer span.End()
 
 	head, err := serv.store.Head(ctx)

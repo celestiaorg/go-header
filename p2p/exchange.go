@@ -14,12 +14,20 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
-var log = logging.Logger("header/p2p")
+var (
+	log = logging.Logger("header/p2p")
+
+	tracerClient = otel.Tracer("header/p2p-client")
+)
 
 // minHeadResponses is the minimum number of headers of the same height
 // received from peers to determine the network head. If all trusted peers
@@ -113,6 +121,8 @@ func (ex *Exchange[H]) Stop(ctx context.Context) error {
 // and return the highest one.
 func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
 	log.Debug("requesting head")
+	ctx, span := tracerClient.Start(ctx, "head")
+	defer span.End()
 
 	reqCtx := ctx
 	startTime := time.Now()
@@ -157,8 +167,15 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	)
 	for _, from := range peers {
 		go func(from peer.ID) {
+			_, newSpan := tracerClient.Start(
+				ctx, "requesting peer",
+				trace.WithAttributes(attribute.String("peerID", from.String())),
+			)
+			defer newSpan.End()
+			
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
+				newSpan.SetStatus(codes.Error, err.Error())
 				log.Errorw("head request to peer failed", "peer", from, "err", err)
 				headerRespCh <- zero
 				return
@@ -171,6 +188,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 					if errors.As(err, &verErr) && verErr.SoftFailure {
 						log.Debugw("received head from tracked peer that soft-failed verification",
 							"tracked peer", from, "err", err)
+						newSpan.SetStatus(codes.Error, err.Error())
 						headerRespCh <- headers[0]
 						return
 					}
@@ -180,10 +198,12 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 					}
 					logF("verifying head received from tracked peer", "tracked peer", from,
 						"height", headers[0].Height(), "err", err)
+					newSpan.SetStatus(codes.Error, err.Error())
 					headerRespCh <- zero
 					return
 				}
 			}
+			newSpan.SetStatus(codes.Ok, "")
 			// request ensures that the result slice will have at least one Header
 			headerRespCh <- headers[0]
 		}(from)
@@ -206,11 +226,12 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				status = headStatusTimeout
 			}
-
+			span.SetStatus(codes.Error, fmt.Sprintf("head request %s", status))
 			ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, status)
 			return zero, ctx.Err()
 		case <-ex.ctx.Done():
 			ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusCanceled)
+			span.SetStatus(codes.Error, "exchange client stopped")
 			return zero, ex.ctx.Err()
 		}
 	}
@@ -218,10 +239,12 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	head, err := bestHead[H](headers)
 	if err != nil {
 		ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusNoHeaders)
+		span.SetStatus(codes.Error, headStatusNoHeaders)
 		return zero, err
 	}
 
 	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
+	span.SetStatus(codes.Ok, "")
 	return head, nil
 }
 
@@ -230,10 +253,17 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 // thereafter.
 func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	log.Debugw("requesting header", "height", height)
+	ctx, span := tracerClient.Start(ctx, "get-by-height",
+		trace.WithAttributes(
+			attribute.Int64("height", int64(height)),
+		))
+	defer span.End()
 	var zero H
 	// sanity check height
 	if height == 0 {
-		return zero, fmt.Errorf("specified request height must be greater than 0")
+		err := fmt.Errorf("specified request height must be greater than 0")
+		span.SetStatus(codes.Error, err.Error())
+		return zero, err
 	}
 	// create request
 	req := &p2p_pb.HeaderRequest{
@@ -242,8 +272,10 @@ func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error
 	}
 	headers, err := ex.performRequest(ctx, req)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return zero, err
 	}
+	span.SetStatus(codes.Ok, "")
 	return headers[0], nil
 }
 
@@ -254,19 +286,36 @@ func (ex *Exchange[H]) GetRangeByHeight(
 	from H,
 	to uint64,
 ) ([]H, error) {
+	ctx, span := tracerClient.Start(ctx, "get-range-by-height",
+		trace.WithAttributes(
+			attribute.Int64("from", int64(from.Height())),
+			attribute.Int64("to", int64(to)),
+		))
+	defer span.End()
 	session := newSession[H](
 		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, ex.metrics, withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
 	amount := to - (from.Height() + 1)
-	return session.getRangeByHeight(ctx, from.Height()+1, amount, ex.Params.MaxHeadersPerRangeRequest)
+	result, err := session.getRangeByHeight(ctx, from.Height()+1, amount, ex.Params.MaxHeadersPerRangeRequest)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, nil
 }
 
 // Get performs a request for the Header by the given hash corresponding
 // to the RawHeader. Note that the Header must be verified thereafter.
 func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	log.Debugw("requesting header", "hash", hash.String())
+	ctx, span := tracerClient.Start(ctx, "get-by-hash",
+		trace.WithAttributes(
+			attribute.String("hash", hash.String()),
+		))
+	defer span.End()
 	var zero H
 	// create request
 	req := &p2p_pb.HeaderRequest{
@@ -275,12 +324,16 @@ func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	}
 	headers, err := ex.performRequest(ctx, req)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return zero, err
 	}
 
 	if !bytes.Equal(headers[0].Hash(), hash) {
-		return zero, fmt.Errorf("incorrect hash in header: expected %x, got %x", hash, headers[0].Hash())
+		err = fmt.Errorf("incorrect hash in header: expected %x, got %x", hash, headers[0].Hash())
+		span.SetStatus(codes.Error, err.Error())
+		return zero, err
 	}
+	span.SetStatus(codes.Ok, "")
 	return headers[0], nil
 }
 
