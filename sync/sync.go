@@ -109,7 +109,7 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 // Stop stops Syncer.
 func (s *Syncer[H]) Stop(context.Context) error {
 	s.cancel()
-	return nil
+	return s.metrics.Close()
 }
 
 // SyncWait blocks until ongoing sync is done.
@@ -158,7 +158,7 @@ func (s *Syncer[H]) State() State {
 
 	head, err := s.store.Head(s.ctx)
 	if err == nil {
-		state.Height = uint64(head.Height())
+		state.Height = head.Height()
 	} else if state.Error == "" {
 		// don't ignore the error if we can show it in the state
 		state.Error = err.Error()
@@ -180,7 +180,9 @@ func (s *Syncer[H]) syncLoop() {
 	for {
 		select {
 		case <-s.triggerSync:
+			s.metrics.syncStarted(s.ctx)
 			s.sync(s.ctx)
+			s.metrics.syncFinished(s.ctx)
 		case <-s.ctx.Done():
 			return
 		}
@@ -239,8 +241,8 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 func (s *Syncer[H]) doSync(ctx context.Context, fromHead, toHead H) (err error) {
 	s.stateLk.Lock()
 	s.state.ID++
-	s.state.FromHeight = uint64(fromHead.Height()) + 1
-	s.state.ToHeight = uint64(toHead.Height())
+	s.state.FromHeight = fromHead.Height() + 1
+	s.state.ToHeight = toHead.Height()
 	s.state.FromHash = fromHead.Hash()
 	s.state.ToHash = toHead.Hash()
 	s.state.Start = time.Now()
@@ -315,7 +317,10 @@ func (s *Syncer[H]) requestHeaders(
 		}
 
 		to := fromHead.Height() + size + 1
+		s.metrics.rangeRequestStart()
 		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
+		s.metrics.updateGetRangeRequestInfo(s.ctx, int(size)/100, err != nil)
+		s.metrics.rangeRequestStop()
 		if err != nil {
 			return err
 		}
@@ -338,7 +343,5 @@ func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
 	if err != nil {
 		return err
 	}
-
-	s.metrics.recordTotalSynced(len(headers))
 	return nil
 }

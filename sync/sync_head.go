@@ -39,6 +39,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	// if we can't get it - give what we have
 	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
 	defer cancel()
+	s.metrics.unrecentHead(s.ctx)
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
@@ -85,10 +86,12 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		return s.subjectiveHead(ctx)
 	}
 	defer s.getter.Unlock()
+
 	trustHead, err := s.getter.Head(ctx)
 	if err != nil {
 		return trustHead, err
 	}
+	s.metrics.subjectiveInitialization(s.ctx)
 	// and set it as the new subjective head without validation,
 	// or, in other words, do 'automatic subjective initialization'
 	// NOTE: we avoid validation as the head expired to prevent possibility of the Long-Range Attack
@@ -103,6 +106,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
 	}
 	log.Warn("trusted peer is out of sync")
+	s.metrics.trustedPeersOutOufSync(s.ctx)
 	return trustHead, nil
 }
 
@@ -121,6 +125,7 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 			"hash", netHead.Hash().String(),
 			"err", err)
 	}
+	s.metrics.newSubjectiveHead(s.ctx, netHead.Height(), netHead.Time())
 
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {
