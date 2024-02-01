@@ -316,10 +316,11 @@ func (s *Syncer[H]) requestHeaders(
 			size = amount
 		}
 
-		now := time.Now()
 		to := fromHead.Height() + size + 1
+		s.metrics.rangeRequestStart()
 		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
-		s.metrics.getRangeRequestTime(s.ctx, time.Since(now), int(size)/100, err != nil)
+		s.metrics.updateGetRangeRequestInfo(s.ctx, int(size)/100, err != nil)
+		s.metrics.rangeRequestStop()
 		if err != nil {
 			return err
 		}

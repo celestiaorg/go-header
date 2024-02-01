@@ -30,6 +30,7 @@ type metrics struct {
 	syncStartedTs        time.Time
 
 	requestRangeTimeHist metric.Float64Histogram
+	requestRangeStartTs  time.Time
 
 	blockTime  metric.Float64Histogram
 	prevHeader time.Time
@@ -165,9 +166,9 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 	})
 }
 
-func (m *metrics) getRangeRequestTime(ctx context.Context, duration time.Duration, amount int, failed bool) {
+func (m *metrics) updateGetRangeRequestInfo(ctx context.Context, amount int, failed bool) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.requestRangeTimeHist.Record(ctx, duration.Seconds(),
+		m.requestRangeTimeHist.Record(ctx, time.Since(m.requestRangeStartTs).Seconds(),
 			metric.WithAttributes(
 				attribute.Int("headers amount", amount),
 				attribute.Bool("request failed", failed),
@@ -183,6 +184,20 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
 		}
 	})
+}
+
+func (m *metrics) rangeRequestStart() {
+	if m == nil {
+		return
+	}
+	m.requestRangeStartTs = time.Now()
+}
+
+func (m *metrics) rangeRequestStop() {
+	if m == nil {
+		return
+	}
+	m.requestRangeStartTs = time.Time{}
 }
 
 func (m *metrics) observe(ctx context.Context, observeFn func(context.Context)) {
