@@ -167,12 +167,12 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	)
 	for _, from := range peers {
 		go func(from peer.ID) {
-			_, newSpan := span.TracerProvider().Tracer("requesting peer").Start(
-				ctx, "",
+			_, newSpan := tracerClient.Start(
+				ctx, "requesting peer",
 				trace.WithAttributes(attribute.String("peerID", from.String())),
 			)
 			defer newSpan.End()
-
+			
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
 				newSpan.SetStatus(codes.Error, err.Error())
