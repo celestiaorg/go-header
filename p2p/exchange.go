@@ -16,7 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
@@ -168,12 +167,10 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	)
 	for _, from := range peers {
 		go func(from peer.ID) {
-			// can skip error handling here as it returns an error if sanity check fails.
-			// we can be sure that our strings are ok.
-			peerIDBaggage, _ := baggage.NewMember("peerID", from.String())
-			b, _ := baggage.New(peerIDBaggage)
-			baggageCtx := baggage.ContextWithBaggage(ctx, b)
-			_, newSpan := span.TracerProvider().Tracer("requesting peer").Start(baggageCtx, "")
+			_, newSpan := span.TracerProvider().Tracer("requesting peer").Start(
+				ctx, "",
+				trace.WithAttributes(attribute.String("peerID", from.String())),
+			)
 			defer newSpan.End()
 
 			headers, err := ex.request(reqCtx, from, headerReq)
