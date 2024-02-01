@@ -11,8 +11,10 @@ import (
 // Head returns the Network Head.
 //
 // Known subjective head is considered network head if it is recent enough(now-timestamp<=blocktime)
-// Otherwise, head is requested from a trusted peer and
+// Otherwise, we attempt to request recent network head from a trusted peer and
 // set as the new subjective head, assuming that trusted peer is always fully synced.
+//
+// The request is limited with 2 seconds and otherwise potentially unrecent header is returned.
 func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
@@ -23,12 +25,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return sbjHead, nil
 	}
 	// otherwise, request head from the network
-	//
-	// TODO(@Wondertan): Here is another potential networking optimization:
-	//  * From sbjHead's timestamp and current time predict the time to the next header(TNH)
-	//  * If now >= TNH && now <= TNH + (THP) header propagation time
-	//    * Wait for header to arrive instead of requesting it
-	//  * This way we don't request as we know the new network header arrives exactly
+	// TODO: Besides requesting we should listen for new gossiped headers and cancel request if so
 	//
 	// single-flight protection
 	// ensure only one Head is requested at the time
@@ -38,7 +35,11 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
-	netHead, err := s.getter.Head(ctx, header.WithTrustedHead[H](sbjHead))
+	// limit time to get a recent header
+	// if we can't get it - give what we have
+	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
+	defer cancel()
+	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
 		return s.subjectiveHead(ctx)
