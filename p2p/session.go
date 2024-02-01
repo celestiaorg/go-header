@@ -224,13 +224,17 @@ func (s *session[H]) doRequest(
 
 	remainingHeaders := req.Amount - uint64(len(h))
 
-	span.SetStatus(codes.Ok, fmt.Sprintf("request succeed. remaining header %d", remainingHeaders))
+	span.SetStatus(codes.Ok, "")
 
 	// update peer stats
 	stat.updateStats(size, duration)
 
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
+		span.AddEvent("remaining headers", trace.WithAttributes(
+			attribute.Int64("amount", int64(remainingHeaders))),
+		)
+
 		from := h[uint64(len(h))-1].Height()
 		select {
 		case <-s.ctx.Done():
