@@ -175,8 +175,6 @@ func (s *session[H]) doRequest(
 		attribute.Int64("from", int64(req.GetOrigin())),
 		attribute.Int64("amount", int64(req.Amount)),
 	))
-
-	defer span.SetStatus(codes.Ok, "")
 	defer span.End()
 
 	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
@@ -185,8 +183,7 @@ func (s *session[H]) doRequest(
 	r, size, duration, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
 	s.metrics.response(ctx, size, duration, err)
 	if err != nil {
-		span.AddEvent("error during range fetching", trace.WithAttributes(
-			attribute.String("error", err.Error())))
+		span.SetStatus(codes.Error, err.Error())
 		// we should not punish peer at this point and should try to parse responses, despite that error
 		// was received.
 		log.Debugw("requesting headers from peer failed", "peer", stat.peerID, "err", err)
@@ -194,8 +191,7 @@ func (s *session[H]) doRequest(
 
 	h, err := s.processResponses(r)
 	if err != nil {
-		span.AddEvent("processing response failed", trace.WithAttributes(
-			attribute.String("error", err.Error())))
+		span.SetStatus(codes.Error, err.Error())
 		logFn := log.Errorw
 
 		switch err {
@@ -228,8 +224,7 @@ func (s *session[H]) doRequest(
 
 	remainingHeaders := req.Amount - uint64(len(h))
 
-	span.AddEvent("request succeed", trace.WithAttributes(
-		attribute.Int64("remaining headers", int64(remainingHeaders))))
+	span.SetStatus(codes.Ok, fmt.Sprintf("request succeed. remaining header %d", remainingHeaders))
 
 	// update peer stats
 	stat.updateStats(size, duration)
