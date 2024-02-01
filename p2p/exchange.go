@@ -167,6 +167,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		headerRespCh = make(chan H, len(peers))
 	)
 	for _, from := range peers {
+		ctx := ctx
 		go func(from peer.ID) {
 			// can skip error handling here as it returns an error if sanity check fails.
 			// we can be sure that our strings are ok.
