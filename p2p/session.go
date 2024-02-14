@@ -213,6 +213,9 @@ func (s *session[H]) doRequest(
 			"err", err,
 			"peer", stat.peerID,
 		)
+		if errors.Is(err, header.ErrNotFound) {
+			s.queue.push(stat)
+		}
 		return
 	}
 
