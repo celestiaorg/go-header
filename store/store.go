@@ -424,7 +424,7 @@ func (s *Store[H]) flushLoop() {
 		if err != nil {
 			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
 			// TODO(@Wondertan): Should this be a fatal error case with os.Exit?
-			log.Errorw("writing header batch", "from", from, "to", to)
+			log.Errorw("writing header batch", "from", from, "to", to, "err", err)
 			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
 			continue
 		}
