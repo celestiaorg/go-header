@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"context"
-	"sort"
 	"sync"
 	"time"
 
@@ -18,8 +17,6 @@ const (
 	defaultScore float32 = 1
 	// maxPeerTrackerSize specifies the max amount of peers that can be added to the peerTracker.
 	maxPeerTrackerSize = 100
-	// minPeerTrackerSizeBeforeGC specifies the minimum amount of tracked peers before the peerTracker starts removing peers with lower peer scores.
-	minPeerTrackerSizeBeforeGC = 10
 )
 
 var (
@@ -244,7 +241,6 @@ func (p *peerTracker) gc() {
 			return
 		case <-ticker.C:
 			p.cleanUpDisconnectedPeers()
-			p.cleanUpTrackedPeers()
 			p.dumpPeers(p.ctx)
 		}
 	}
@@ -263,33 +259,6 @@ func (p *peerTracker) cleanUpDisconnectedPeers() {
 		}
 	}
 	p.metrics.peersDisconnected(-deletedDisconnectedNum)
-}
-
-func (p *peerTracker) cleanUpTrackedPeers() {
-	p.peerLk.Lock()
-	defer p.peerLk.Unlock()
-
-	if len(p.trackedPeers) <= minPeerTrackerSizeBeforeGC {
-		return
-	}
-
-	var deletedTrackedNum int
-	orderedPeers := make([]*peerStat, 0, len(p.trackedPeers))
-	for _, peer := range p.trackedPeers {
-		orderedPeers = append(orderedPeers, peer)
-	}
-	sort.Slice(orderedPeers, func(i, j int) bool {
-		return orderedPeers[i].peerScore < orderedPeers[j].peerScore
-	})
-
-	for _, peer := range orderedPeers[:len(orderedPeers)-minPeerTrackerSizeBeforeGC] {
-		if peer.peerScore > defaultScore {
-			break
-		}
-		delete(p.trackedPeers, peer.peerID)
-		deletedTrackedNum++
-	}
-	p.metrics.peersTracked(-deletedTrackedNum)
 }
 
 // dumpPeers stores peers to the peerTracker's PeerIDStore if
