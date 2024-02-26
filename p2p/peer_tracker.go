@@ -12,12 +12,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 )
 
-const (
-	// defaultScore specifies the score for newly connected peers.
-	defaultScore float32 = 1
-	// maxPeerTrackerSize specifies the max amount of peers that can be added to the peerTracker.
-	maxPeerTrackerSize = 100
-)
+// defaultScore specifies the score for newly connected peers.
+const defaultScore float32 = 1
 
 var (
 	// maxAwaitingTime specifies the duration that gives to the disconnected peer to be back online,
@@ -174,13 +170,6 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
-	// skip adding the peer to avoid overfilling of the peerTracker with unused peers if:
-	// peerTracker reaches the maxTrackerSize and there are more connected peers
-	// than disconnected peers.
-	if len(p.trackedPeers)+len(p.disconnectedPeers) > maxPeerTrackerSize &&
-		len(p.trackedPeers) > len(p.disconnectedPeers) {
-		return
-	}
 
 	// additional check in p.trackedPeers should be done,
 	// because libp2p does not emit multiple Connected events per 1 peer
