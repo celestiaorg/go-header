@@ -35,9 +35,16 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
+
+	// Set default timeout value
+	timeoutDuration := 2 * time.Second
+	// Check if maxAwait is set and use it if it's greater than zero
+	if s.state.MaxAwait > 0 {
+		timeoutDuration = s.state.MaxAwait
+	}
 	// limit time to get a recent header
 	// if we can't get it - give what we have
-	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
+	reqCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
 	defer cancel()
 	s.metrics.unrecentHead(s.ctx)
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
