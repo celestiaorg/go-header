@@ -39,8 +39,8 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	// Set default timeout value
 	timeoutDuration := 2 * time.Second
 	// Check if maxAwait is set and use it if it's greater than zero
-	if s.state.MaxAwait > 0 {
-		timeoutDuration = s.state.MaxAwait
+	if s.maxAwait > 0 {
+		timeoutDuration = s.maxAwait
 	}
 	// limit time to get a recent header
 	// if we can't get it - give what we have

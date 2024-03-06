@@ -51,6 +51,9 @@ type Syncer[H header.Header[H]] struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// max time to wait for a header
+	maxAwait time.Duration
+
 	Params *Parameters
 }
 
@@ -126,16 +129,15 @@ func (s *Syncer[H]) SyncWait(ctx context.Context) error {
 
 // State collects all the information about a sync.
 type State struct {
-	ID         uint64        `json:"id"`          // incrementing ID of a sync
-	Height     uint64        `json:"height"`      // height at the moment when State is requested for a sync
-	FromHeight uint64        `json:"from_height"` // the starting point of a sync
-	ToHeight   uint64        `json:"to_height"`   // the ending point of a sync
-	FromHash   header.Hash   `json:"from_hash"`
-	ToHash     header.Hash   `json:"to_hash"`
-	Start      time.Time     `json:"start"`
-	End        time.Time     `json:"end"`
-	MaxAwait   time.Duration `json:"max_await,omitempty"` // max time to wait for a header
-	Error      string        `json:"error,omitempty"`     // the error that might happen within a sync
+	ID         uint64      `json:"id"`          // incrementing ID of a sync
+	Height     uint64      `json:"height"`      // height at the moment when State is requested for a sync
+	FromHeight uint64      `json:"from_height"` // the starting point of a sync
+	ToHeight   uint64      `json:"to_height"`   // the ending point of a sync
+	FromHash   header.Hash `json:"from_hash"`
+	ToHash     header.Hash `json:"to_hash"`
+	Start      time.Time   `json:"start"`
+	End        time.Time   `json:"end"`
+	Error      string      `json:"error,omitempty"` // the error that might happen within a sync
 }
 
 // Finished returns true if sync is done, false otherwise.
