@@ -29,13 +29,22 @@ type Parameters struct {
 	// considered "recent". The default is blockTime + 5 seconds.
 	recencyThreshold time.Duration
 	// metrics is a flag that enables metrics collection.
-	metrics bool
+	// maxAwait is the maximum duration to wait for a new header to be received.
+	//
+	// This parameter defines the upper bound on the time the system is willing
+	// to wait for a header before considering the possibility of a network or
+	// validator issue. It acts as a safeguard against indefinite waiting periods
+	// and helps maintain the responsiveness of the system.
+	// default value is set to 2 seconds.
+	maxAwait time.Duration
+	metrics  bool
 }
 
 // DefaultParameters returns the default params to configure the syncer.
 func DefaultParameters() Parameters {
 	return Parameters{
 		TrustingPeriod: 336 * time.Hour, // tendermint's default trusting period
+		maxAwait:       2 * time.Second, // default maxAwait value
 	}
 }
 
@@ -74,6 +83,13 @@ func WithRecencyThreshold(threshold time.Duration) Option {
 func WithTrustingPeriod(duration time.Duration) Option {
 	return func(p *Parameters) {
 		p.TrustingPeriod = duration
+	}
+}
+
+// WithMaxAwait is a functional option that configures the `maxAwait` parameter.
+func WithMaxAwait(duration time.Duration) Option {
+	return func(p *Parameters) {
+		p.maxAwait = duration
 	}
 }
 

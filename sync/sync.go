@@ -51,9 +51,6 @@ type Syncer[H header.Header[H]] struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	// max time to wait for a header
-	maxAwait time.Duration
-
 	Params *Parameters
 }
 
