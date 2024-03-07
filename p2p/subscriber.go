@@ -75,8 +75,8 @@ func NewSubscriber[H header.Header[H]](
 	}, nil
 }
 
-// Start starts the Subscriber, registering a topic validator for the "header-sub"
-// topic and joining it.
+// Start starts the Subscriber and joins the instance's topic. SetVerifier must
+// be called separately to ensure a validator is mounted on the topic.
 func (s *Subscriber[H]) Start(context.Context) (err error) {
 	log.Infow("joining topic", "topic ID", s.pubsubTopicID)
 	s.topic, err = s.pubsub.Join(s.pubsubTopicID, pubsub.WithTopicMessageIdFn(s.msgID))
@@ -85,14 +85,15 @@ func (s *Subscriber[H]) Start(context.Context) (err error) {
 
 // Stop closes the topic and unregisters its validator.
 func (s *Subscriber[H]) Stop(context.Context) error {
-	err := s.pubsub.UnregisterTopicValidator(s.pubsubTopicID)
-	if err != nil {
-		log.Warnf("unregistering validator: %s", err)
+	regErr := s.pubsub.UnregisterTopicValidator(s.pubsubTopicID)
+	if regErr != nil {
+		// do not return this error as it is non-critical and usually
+		// means that a validator was not mounted.
+		log.Warnf("unregistering validator: %s", regErr)
 	}
 
-	err = errors.Join(err, s.topic.Close())
-	err = errors.Join(err, s.metrics.Close())
-	return err
+	err := s.topic.Close()
+	return errors.Join(err, s.metrics.Close())
 }
 
 // SetVerifier set given verification func as Header PubSub topic validator
