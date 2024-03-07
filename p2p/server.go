@@ -99,7 +99,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	pbreq := new(p2p_pb.HeaderRequest)
 	_, err = serde.Read(stream, pbreq)
 	if err != nil {
-		log.Errorw("server: reading header request from stream", "err", err)
+		log.Warnw("server: reading header request from stream", "err", err)
 		stream.Reset() //nolint:errcheck
 		return
 	}
@@ -115,7 +115,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	case *p2p_pb.HeaderRequest_Origin:
 		headers, err = serv.handleRequest(pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
 	default:
-		log.Error("server: invalid data type received")
+		log.Warn("server: invalid data type received")
 		stream.Reset() //nolint:errcheck
 		return
 	}
@@ -147,14 +147,14 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		if !h.IsZero() {
 			bin, err = h.MarshalBinary()
 			if err != nil {
-				log.Errorw("server: marshaling header to proto", "height", h.Height, "err", err)
+				log.Warnw("server: marshaling header to proto", "height", h.Height, "err", err)
 				stream.Reset() //nolint:errcheck
 				return
 			}
 		}
 		_, err = serde.Write(stream, &p2p_pb.HeaderResponse{Body: bin, StatusCode: code})
 		if err != nil {
-			log.Errorw("server: writing header to stream", "err", err)
+			log.Warnw("server: writing header to stream", "err", err)
 			stream.Reset() //nolint:errcheck
 			return
 		}
