@@ -87,6 +87,8 @@ func (s *Subscriber[H]) Start(context.Context) (err error) {
 func (s *Subscriber[H]) Stop(context.Context) error {
 	regErr := s.pubsub.UnregisterTopicValidator(s.pubsubTopicID)
 	if regErr != nil {
+		// do not return this error as it is non-critical and usually
+		// means that a validator was not mounted.
 		log.Warnf("unregistering validator: %s", regErr)
 	}
 
