@@ -20,7 +20,7 @@ type metrics struct {
 
 	syncLoopStarted       metric.Int64Counter
 	trustedPeersOutOfSync metric.Int64Counter
-	unrecentHeader        metric.Int64Counter
+	outdatedHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
 
 	subjectiveHead atomic.Int64
@@ -53,9 +53,9 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
-	unrecentHeader, err := meter.Int64Counter(
-		"hdr_sync_unrecent_header_counter",
-		metric.WithDescription("tracks every time Syncer returns an unrecent header"),
+	outdatedHeader, err := meter.Int64Counter(
+		"hdr_sync_outdated_head_counter",
+		metric.WithDescription("tracks every time Syncer returns an outdated head"),
 	)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func newMetrics() (*metrics, error) {
 	m := &metrics{
 		syncLoopStarted:       syncLoopStarted,
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
-		unrecentHeader:        unrecentHeader,
+		outdatedHeader:        outdatedHeader,
 		subjectiveInit:        subjectiveInit,
 		syncLoopDurationHist:  syncLoopDurationHist,
 		syncLoopRunningInst:   syncLoopRunningInst,
@@ -148,9 +148,9 @@ func (m *metrics) syncFinished(ctx context.Context) {
 	})
 }
 
-func (m *metrics) unrecentHead(ctx context.Context) {
+func (m *metrics) outdatedHead(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.unrecentHeader.Add(ctx, 1)
+		m.outdatedHeader.Add(ctx, 1)
 	})
 }
 
