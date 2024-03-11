@@ -8,6 +8,8 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
+// headRequestTimeout is the amount of time the syncer is willing to wait for
+// the exchange to request the head of the chain from the network.
 var headRequestTimeout = time.Second * 2
 
 // Head returns the Network Head.
@@ -26,8 +28,6 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
 		return sbjHead, nil
 	}
-	// otherwise, request head from the network
-	s.metrics.outdatedHead(s.ctx)
 
 	// single-flight protection ensure only one Head is requested at the time
 	if !s.getter.Lock() {
@@ -36,6 +36,8 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
+
+	s.metrics.outdatedHead(s.ctx)
 
 	reqCtx, cancel := context.WithTimeout(ctx, headRequestTimeout)
 	defer cancel()
