@@ -8,6 +8,10 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
+// headRequestTimeout is the amount of time the syncer is willing to wait for
+// the exchange to request the head of the chain from the network.
+var headRequestTimeout = time.Second * 2
+
 // Head returns the Network Head.
 //
 // Known subjective head is considered network head if it is recent enough(now-timestamp<=blocktime)
@@ -24,27 +28,25 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
 		return sbjHead, nil
 	}
-	// otherwise, request head from the network
-	// TODO: Besides requesting we should listen for new gossiped headers and cancel request if so
-	//
-	// single-flight protection
-	// ensure only one Head is requested at the time
+
+	// single-flight protection ensure only one Head is requested at the time
 	if !s.getter.Lock() {
 		// means that other routine held the lock and set the subjective head for us,
 		// so just recursively get it
 		return s.Head(ctx)
 	}
 	defer s.getter.Unlock()
-	// limit time to get a recent header
-	// if we can't get it - give what we have
-	reqCtx, cancel := context.WithTimeout(ctx, time.Second*2) // TODO(@vgonkivs): make timeout configurable
+
+	s.metrics.outdatedHead(s.ctx)
+
+	reqCtx, cancel := context.WithTimeout(ctx, headRequestTimeout)
 	defer cancel()
-	s.metrics.unrecentHead(s.ctx)
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
 		return s.subjectiveHead(ctx)
 	}
+
 	// process and validate netHead fetched from trusted peers
 	// NOTE: We could trust the netHead like we do during 'automatic subjective initialization'
 	// but in this case our subjective head is not expired, so we should verify netHead
