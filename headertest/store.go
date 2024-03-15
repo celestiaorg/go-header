@@ -80,12 +80,11 @@ func (m *Store[H]) GetRangeByHeight(ctx context.Context, fromHead H, to uint64) 
 }
 
 func (m *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
-	amount := to - from
-	if amount == 0 {
-		return nil, fmt.Errorf("no headers requested")
+	if to <= from {
+		return nil, fmt.Errorf("malformed range, from: %d, to: %d", from, to)
 	}
 
-	headers := make([]H, amount)
+	headers := make([]H, to-from)
 
 	// As the requested range is [from; to),
 	// check that (to-1) height in request is less than
