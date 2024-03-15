@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libpeer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 )
 
@@ -37,6 +40,8 @@ type peerTracker struct {
 	// online until pruneDeadline, it will be removed and its score will be lost
 	disconnectedPeers map[libpeer.ID]*peerStat
 
+	protocolID protocol.ID
+
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
 	pidstore PeerIDStore
@@ -51,6 +56,7 @@ type peerTracker struct {
 func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
+	protocolID protocol.ID,
 	pidstore PeerIDStore,
 	metrics *exchangeMetrics,
 ) *peerTracker {
@@ -58,6 +64,7 @@ func newPeerTracker(
 	return &peerTracker{
 		host:              h,
 		connGater:         connGater,
+		protocolID:        protocolID,
 		metrics:           metrics,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
@@ -105,7 +112,16 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 
 // connectToPeer attempts to connect to the given peer.
 func (p *peerTracker) connectToPeer(ctx context.Context, peer libpeer.ID) {
-	err := p.host.Connect(ctx, p.host.Peerstore().PeerInfo(peer))
+	// check that peer supports our protocol id.
+	protocol, err := p.host.Peerstore().SupportsProtocols(peer, p.protocolID)
+	if err != nil {
+		return
+	}
+	if !slices.Contains(protocol, p.protocolID) {
+		return
+	}
+
+	err = p.host.Connect(ctx, p.host.Peerstore().PeerInfo(peer))
 	if err != nil {
 		log.Debugw("failed to connect to peer", "id", peer.String(), "err", err)
 		return
@@ -123,27 +139,50 @@ func (p *peerTracker) track() {
 		p.connected(c.RemotePeer())
 	}
 
-	subs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	connSubs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerConnectednessChanged", "err", err)
+		return
+	}
+
+	identifySub, err := p.host.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
+	if err != nil {
+		log.Errorw("subscribing to EvtPeerIdentificationCompleted", "err", err)
+		return
+	}
+
+	protocolSub, err := p.host.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
+	if err != nil {
+		log.Errorw("subscribing to EvtPeerProtocolsUpdated", "err", err)
 		return
 	}
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			err = subs.Close()
+			err = connSubs.Close()
+			errors.Join(err, identifySub.Close(), protocolSub.Close())
 			if err != nil {
-				log.Errorw("closing subscription", "err", err)
+				log.Errorw("closing subscriptions", "err", err)
 			}
 			return
-		case subscription := <-subs.Out():
-			ev := subscription.(event.EvtPeerConnectednessChanged)
-			switch ev.Connectedness {
-			case network.Connected:
-				p.connected(ev.Peer)
-			case network.NotConnected:
+		case connSubscription := <-connSubs.Out():
+			ev := connSubscription.(event.EvtPeerConnectednessChanged)
+			if network.NotConnected == ev.Connectedness {
 				p.disconnected(ev.Peer)
+			}
+		case subscription := <-identifySub.Out():
+			ev := subscription.(event.EvtPeerIdentificationCompleted)
+			p.connected(ev.Peer)
+		case subscription := <-protocolSub.Out():
+			ev := subscription.(event.EvtPeerProtocolsUpdated)
+			if slices.Contains(ev.Removed, p.protocolID) {
+				p.disconnected(ev.Peer)
+				break
+			}
+
+			if slices.Contains(ev.Added, p.protocolID) {
+				p.connected(ev.Peer)
 			}
 		}
 	}
@@ -165,6 +204,9 @@ func (p *peerTracker) getPeers(max int) []libpeer.ID {
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
+	if err := pID.Validate(); err != nil {
+		return
+	}
 	if p.host.ID() == pID {
 		return
 	}
@@ -176,11 +218,22 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 		}
 	}
 
+	// check that peer supports our protocol id.
+	protocol, err := p.host.Peerstore().SupportsProtocols(pID, p.protocolID)
+	if err != nil {
+		return
+	}
+	if !slices.Contains(protocol, p.protocolID) {
+		return
+	}
+
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
 
-	// additional check in p.trackedPeers should be done,
-	// because libp2p does not emit multiple Connected events per 1 peer
+	if _, ok := p.trackedPeers[pID]; ok {
+		return
+	}
+
 	stats, ok := p.disconnectedPeers[pID]
 	if !ok {
 		stats = &peerStat{peerID: pID, peerScore: defaultScore}
@@ -193,6 +246,10 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 }
 
 func (p *peerTracker) disconnected(pID libpeer.ID) {
+	if err := pID.Validate(); err != nil {
+		return
+	}
+
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
 	stats, ok := p.trackedPeers[pID]
@@ -295,6 +352,10 @@ func (p *peerTracker) stop(ctx context.Context) error {
 
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
 func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
+	if err := pID.Validate(); err != nil {
+		return
+	}
+
 	// add peer to the blacklist, so we can't connect to it in the future.
 	err := p.connGater.BlockPeer(pID)
 	if err != nil {
