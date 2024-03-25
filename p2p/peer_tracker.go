@@ -72,23 +72,18 @@ func newPeerTracker(
 	}
 }
 
-// bootstrap will bootstrap the peerTracker with the given trusted peers and if
+// bootstrap will initiate connections to the given trusted peers and if
 // a pidstore was given, will also attempt to bootstrap the tracker with previously
 // seen peers.
 //
 // NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
 func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error {
-	// bootstrap connections to trusted
-	wg := sync.WaitGroup{}
-	wg.Add(len(trusted))
-	defer wg.Wait()
+	connectCtx, cancel := context.WithTimeout(context.Background(), time.Second*60)
+	defer cancel()
+
 	for _, trust := range trusted {
-		trust := trust
-		go func() {
-			defer wg.Done()
-			p.connectToPeer(ctx, trust)
-		}()
+		go p.connectToPeer(connectCtx, trust)
 	}
 
 	// short-circuit if pidstore was not provided
@@ -102,7 +97,7 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 	}
 
 	for _, peer := range prevSeen {
-		go p.connectToPeer(ctx, peer)
+		go p.connectToPeer(connectCtx, peer)
 	}
 	return nil
 }
