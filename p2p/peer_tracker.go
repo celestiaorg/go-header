@@ -112,6 +112,8 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 
 // connectToPeer attempts to connect to the given peer.
 func (p *peerTracker) connectToPeer(ctx context.Context, peer libpeer.ID) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
 	err := p.host.Connect(ctx, p.host.Peerstore().PeerInfo(peer))
 	if err != nil {
 		log.Debugw("failed to connect to peer", "id", peer.String(), "err", err)
