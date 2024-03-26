@@ -80,10 +80,11 @@ func NewExchange[H header.Header[H]](
 		}
 	}
 
+	id := protocolID(params.networkID)
 	ex := &Exchange[H]{
 		host:        host,
-		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore, metrics),
+		protocolID:  id,
+		peerTracker: newPeerTracker(host, gater, id, params.pidstore, metrics),
 		Params:      params,
 		metrics:     metrics,
 	}
@@ -172,7 +173,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				trace.WithAttributes(attribute.String("peerID", from.String())),
 			)
 			defer newSpan.End()
-			
+
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
 				newSpan.SetStatus(codes.Error, err.Error())
