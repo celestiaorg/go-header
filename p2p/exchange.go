@@ -172,7 +172,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				trace.WithAttributes(attribute.String("peerID", from.String())),
 			)
 			defer newSpan.End()
-			
+
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
 				newSpan.SetStatus(codes.Error, err.Error())
