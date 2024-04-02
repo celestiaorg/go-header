@@ -103,7 +103,7 @@ func sendMessage(
 	}
 
 	if err == nil {
-		if closeErr := stream.Close(); closeErr != nil {
+		if closeErr := stream.CloseRead(); closeErr != nil {
 			log.Errorw("closing stream", "err", closeErr)
 		}
 	} else {
