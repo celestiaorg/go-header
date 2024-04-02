@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -9,33 +11,20 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libpeer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/net/conngater"
 )
 
-// defaultScore specifies the score for newly connected peers.
-const defaultScore float32 = 1
-
-var (
-	// maxAwaitingTime specifies the duration that gives to the disconnected peer to be back online,
-	// otherwise it will be removed on the next GC cycle.
-	maxAwaitingTime = time.Hour
-	// gcCycle defines the duration after which the peerTracker starts removing peers.
-	gcCycle = time.Minute * 5
-)
-
 type peerTracker struct {
-	host      host.Host
-	connGater *conngater.BasicConnectionGater
-	metrics   *exchangeMetrics
-
-	peerLk sync.RWMutex
+	host       host.Host
+	connGater  *conngater.BasicConnectionGater
+	metrics    *exchangeMetrics
+	protocolID protocol.ID
+	peerLk     sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
 	// we cache the peer once they disconnect,
 	// so we can guarantee that peerQueue will only contain active peers
-	trackedPeers map[libpeer.ID]*peerStat
-	// disconnectedPeers contains disconnected peers. In case if peer does not return
-	// online until pruneDeadline, it will be removed and its score will be lost
-	disconnectedPeers map[libpeer.ID]*peerStat
+	trackedPeers map[libpeer.ID]struct{}
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
@@ -44,27 +33,28 @@ type peerTracker struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	// done is used to gracefully stop the peerTracker.
-	// It allows to wait until track() and gc() will be stopped.
+	// It allows to wait until track() will be stopped.
 	done chan struct{}
 }
 
 func newPeerTracker(
 	h host.Host,
 	connGater *conngater.BasicConnectionGater,
+	networkID string,
 	pidstore PeerIDStore,
 	metrics *exchangeMetrics,
 ) *peerTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &peerTracker{
-		host:              h,
-		connGater:         connGater,
-		metrics:           metrics,
-		trackedPeers:      make(map[libpeer.ID]*peerStat),
-		disconnectedPeers: make(map[libpeer.ID]*peerStat),
-		pidstore:          pidstore,
-		ctx:               ctx,
-		cancel:            cancel,
-		done:              make(chan struct{}, 2),
+		host:         h,
+		connGater:    connGater,
+		protocolID:   protocolID(networkID),
+		metrics:      metrics,
+		trackedPeers: make(map[libpeer.ID]struct{}),
+		pidstore:     pidstore,
+		ctx:          ctx,
+		cancel:       cancel,
+		done:         make(chan struct{}),
 	}
 }
 
@@ -75,6 +65,10 @@ func newPeerTracker(
 // NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
 func (p *peerTracker) bootstrap(trusted []libpeer.ID) error {
+	// store peers that have been already connected
+	for _, c := range p.host.Network().Conns() {
+		go p.connected(c.RemotePeer())
+	}
 	for _, trust := range trusted {
 		go p.connectToPeer(p.ctx, trust)
 	}
@@ -102,7 +96,6 @@ func (p *peerTracker) connectToPeer(ctx context.Context, peer libpeer.ID) {
 		log.Debugw("failed to connect to peer", "id", peer.String(), "err", err)
 		return
 	}
-	log.Debugw("connected to peer", "id", peer.String())
 }
 
 func (p *peerTracker) track() {
@@ -110,33 +103,48 @@ func (p *peerTracker) track() {
 		p.done <- struct{}{}
 	}()
 
-	// store peers that have been already connected
-	for _, c := range p.host.Network().Conns() {
-		p.connected(c.RemotePeer())
-	}
-
-	subs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	connSubs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerConnectednessChanged", "err", err)
+		return
+	}
+
+	identifySub, err := p.host.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
+	if err != nil {
+		log.Errorw("subscribing to EvtPeerIdentificationCompleted", "err", err)
+		return
+	}
+
+	protocolSub, err := p.host.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
+	if err != nil {
+		log.Errorw("subscribing to EvtPeerProtocolsUpdated", "err", err)
 		return
 	}
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			err = subs.Close()
+			err = connSubs.Close()
+			errors.Join(err, identifySub.Close(), protocolSub.Close())
 			if err != nil {
-				log.Errorw("closing subscription", "err", err)
+				log.Errorw("closing subscriptions", "err", err)
 			}
 			return
-		case subscription := <-subs.Out():
-			ev := subscription.(event.EvtPeerConnectednessChanged)
-			switch ev.Connectedness {
-			case network.Connected:
-				p.connected(ev.Peer)
-			case network.NotConnected:
+		case connSubscription := <-connSubs.Out():
+			ev := connSubscription.(event.EvtPeerConnectednessChanged)
+			if network.NotConnected == ev.Connectedness {
 				p.disconnected(ev.Peer)
 			}
+		case subscription := <-identifySub.Out():
+			ev := subscription.(event.EvtPeerIdentificationCompleted)
+			p.connected(ev.Peer)
+		case subscription := <-protocolSub.Out():
+			ev := subscription.(event.EvtPeerProtocolsUpdated)
+			if slices.Contains(ev.Removed, p.protocolID) {
+				p.disconnected(ev.Peer)
+				break
+			}
+			p.connected(ev.Peer)
 		}
 	}
 }
@@ -157,7 +165,20 @@ func (p *peerTracker) getPeers(max int) []libpeer.ID {
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
+	if err := pID.Validate(); err != nil {
+		return
+	}
+
 	if p.host.ID() == pID {
+		return
+	}
+
+	// check that peer supports our protocol id.
+	protocol, err := p.host.Peerstore().SupportsProtocols(pID, p.protocolID)
+	if err != nil {
+		return
+	}
+	if !slices.Contains(protocol, p.protocolID) {
 		return
 	}
 
@@ -170,30 +191,29 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
-
-	// additional check in p.trackedPeers should be done,
-	// because libp2p does not emit multiple Connected events per 1 peer
-	stats, ok := p.disconnectedPeers[pID]
-	if !ok {
-		stats = &peerStat{peerID: pID, peerScore: defaultScore}
-	} else {
-		delete(p.disconnectedPeers, pID)
+	if _, ok := p.trackedPeers[pID]; ok {
+		return
 	}
-	p.trackedPeers[pID] = stats
+
+	log.Debugw("connected to peer", "id", pID.String())
+	p.trackedPeers[pID] = struct{}{}
 
 	p.metrics.peersTracked(1)
 }
 
 func (p *peerTracker) disconnected(pID libpeer.ID) {
-	p.peerLk.Lock()
-	defer p.peerLk.Unlock()
-	stats, ok := p.trackedPeers[pID]
-	if !ok {
+	if err := pID.Validate(); err != nil {
 		return
 	}
-	stats.pruneDeadline = time.Now().Add(maxAwaitingTime)
-	p.disconnectedPeers[pID] = stats
+
+	p.peerLk.Lock()
+	defer p.peerLk.Unlock()
+	if _, ok := p.trackedPeers[pID]; !ok {
+		return
+	}
 	delete(p.trackedPeers, pID)
+
+	p.host.ConnManager().UntagPeer(pID, string(p.protocolID))
 
 	p.metrics.peersTracked(-1)
 	p.metrics.peersDisconnected(1)
@@ -202,44 +222,16 @@ func (p *peerTracker) disconnected(pID libpeer.ID) {
 func (p *peerTracker) peers() []*peerStat {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
-	peers := make([]*peerStat, 0, len(p.trackedPeers))
-	for _, stat := range p.trackedPeers {
-		peers = append(peers, stat)
+
+	peers := make([]*peerStat, 0)
+	for peerID := range p.trackedPeers {
+		score := 0
+		if info := p.host.ConnManager().GetTagInfo(peerID); info != nil {
+			score = info.Tags[string(p.protocolID)]
+		}
+		peers = append(peers, &peerStat{peerID: peerID, peerScore: score})
 	}
 	return peers
-}
-
-// gc goes through connected and disconnected peers once every gcPeriod
-// and removes:
-// * disconnected peers which have been disconnected for more than maxAwaitingTime;
-// * connected peers whose scores are less than or equal than defaultScore;
-func (p *peerTracker) gc() {
-	ticker := time.NewTicker(gcCycle)
-	for {
-		select {
-		case <-p.ctx.Done():
-			p.done <- struct{}{}
-			return
-		case <-ticker.C:
-			p.cleanUpDisconnectedPeers()
-			p.dumpPeers(p.ctx)
-		}
-	}
-}
-
-func (p *peerTracker) cleanUpDisconnectedPeers() {
-	p.peerLk.Lock()
-	defer p.peerLk.Unlock()
-
-	now := time.Now()
-	var deletedDisconnectedNum int
-	for id, peer := range p.disconnectedPeers {
-		if peer.pruneDeadline.Before(now) {
-			delete(p.disconnectedPeers, id)
-			deletedDisconnectedNum++
-		}
-	}
-	p.metrics.peersDisconnected(-deletedDisconnectedNum)
 }
 
 // dumpPeers stores peers to the peerTracker's PeerIDStore if
@@ -272,12 +264,10 @@ func (p *peerTracker) dumpPeers(ctx context.Context) {
 func (p *peerTracker) stop(ctx context.Context) error {
 	p.cancel()
 
-	for i := 0; i < cap(p.done); i++ {
-		select {
-		case <-p.done:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	select {
+	case <-p.done:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 
 	// dump remaining tracked peers
@@ -287,6 +277,10 @@ func (p *peerTracker) stop(ctx context.Context) error {
 
 // blockPeer blocks a peer on the networking level and removes it from the local cache.
 func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
+	if err := pID.Validate(); err != nil {
+		return
+	}
+
 	// add peer to the blacklist, so we can't connect to it in the future.
 	err := p.connGater.BlockPeer(pID)
 	if err != nil {
@@ -300,4 +294,9 @@ func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 
 	log.Warnw("header/p2p: blocked peer", "pID", pID, "reason", reason)
 	p.metrics.peerBlocked()
+}
+
+func (p *peerTracker) updateScore(stats *peerStat, size uint64, duration time.Duration) {
+	score := stats.updateStats(size, duration)
+	p.host.ConnManager().TagPeer(stats.peerID, string(p.protocolID), score)
 }

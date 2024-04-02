@@ -80,10 +80,11 @@ func NewExchange[H header.Header[H]](
 		}
 	}
 
+	id := protocolID(params.networkID)
 	ex := &Exchange[H]{
 		host:        host,
-		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore, metrics),
+		protocolID:  id,
+		peerTracker: newPeerTracker(host, gater, params.networkID, params.pidstore, metrics),
 		Params:      params,
 		metrics:     metrics,
 	}
@@ -98,7 +99,6 @@ func (ex *Exchange[H]) Start(ctx context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
-	go ex.peerTracker.gc()
 	go ex.peerTracker.track()
 
 	// bootstrap the peerTracker with trusted peers as well as previously seen
