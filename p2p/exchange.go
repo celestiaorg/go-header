@@ -103,7 +103,7 @@ func (ex *Exchange[H]) Start(ctx context.Context) error {
 
 	// bootstrap the peerTracker with trusted peers as well as previously seen
 	// peers if provided.
-	return ex.peerTracker.bootstrap(ctx, ex.trustedPeers())
+	return ex.peerTracker.bootstrap(ex.trustedPeers())
 }
 
 func (ex *Exchange[H]) Stop(ctx context.Context) error {
@@ -172,7 +172,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				trace.WithAttributes(attribute.String("peerID", from.String())),
 			)
 			defer newSpan.End()
-			
+
 			headers, err := ex.request(reqCtx, from, headerReq)
 			if err != nil {
 				newSpan.SetStatus(codes.Error, err.Error())

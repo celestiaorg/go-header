@@ -78,12 +78,9 @@ func newPeerTracker(
 //
 // NOTE: bootstrap is intended to be used with an on-disk peerstore.Peerstore as
 // the peerTracker needs access to the previously-seen peers' AddrInfo on start.
-func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error {
-	connectCtx, cancel := context.WithTimeout(context.Background(), time.Second*60)
-	defer cancel()
-
+func (p *peerTracker) bootstrap(trusted []libpeer.ID) error {
 	for _, trust := range trusted {
-		go p.connectToPeer(connectCtx, trust)
+		go p.connectToPeer(p.ctx, trust)
 	}
 
 	// short-circuit if pidstore was not provided
@@ -91,13 +88,13 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 		return nil
 	}
 
-	prevSeen, err := p.pidstore.Load(ctx)
+	prevSeen, err := p.pidstore.Load(p.ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, peer := range prevSeen {
-		go p.connectToPeer(connectCtx, peer)
+		go p.connectToPeer(p.ctx, peer)
 	}
 	return nil
 }

@@ -105,7 +105,7 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 
 	go tracker.track()
 
-	err = tracker.bootstrap(ctx, prevSeen[:2])
+	err = tracker.bootstrap(prevSeen[:2])
 	require.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
