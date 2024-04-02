@@ -107,6 +107,6 @@ func Test_StatDecreaseScore(t *testing.T) {
 		peerScore: 100,
 	}
 	// will decrease score by 20%
-	pStats.decreaseScore()
-	require.Equal(t, pStats.score(), float32(80.0))
+	pStats.updateStats(0, 0)
+	require.Equal(t, pStats.score(), 80)
 }

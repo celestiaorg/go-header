@@ -198,7 +198,7 @@ func (s *session[H]) doRequest(
 		switch err {
 		case header.ErrNotFound, errEmptyResponse:
 			logFn = log.Debugw
-			stat.decreaseScore()
+			s.peerTracker.updateScore(stat, 0, 0)
 		default:
 			s.peerTracker.blockPeer(stat.peerID, err)
 		}
@@ -234,7 +234,7 @@ func (s *session[H]) doRequest(
 	span.SetStatus(codes.Ok, "")
 
 	// update peer stats
-	stat.updateStats(size, took)
+	s.peerTracker.updateScore(stat, size, took)
 
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
