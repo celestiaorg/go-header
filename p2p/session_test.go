@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	blankhost "github.com/libp2p/go-libp2p/p2p/host/blank"
+	swarm "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,16 +27,21 @@ func Test_PrepareRequests(t *testing.T) {
 func Test_Validate(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
-	ses := newSession(
+	peerId := peer.ID("test")
+	pT := &peerTracker{trackedPeers: make(map[peer.ID]struct{})}
+	pT.trackedPeers[peerId] = struct{}{}
+	pT.host = blankhost.NewBlankHost(swarm.GenSwarm(t))
+	ses, err := newSession(
 		context.Background(),
 		nil,
-		&peerTracker{trackedPeers: make(map[peer.ID]struct{})},
+		pT,
 		"", time.Second, nil,
 		withValidation(head),
 	)
 
+	require.NoError(t, err)
 	headers := suite.GenDummyHeaders(5)
-	err := ses.verify(headers)
+	err = ses.verify(headers)
 	assert.NoError(t, err)
 }
 
@@ -42,17 +49,22 @@ func Test_Validate(t *testing.T) {
 func Test_ValidateFails(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
-	ses := newSession(
+
+	peerId := peer.ID("test")
+	pT := &peerTracker{trackedPeers: make(map[peer.ID]struct{})}
+	pT.trackedPeers[peerId] = struct{}{}
+	pT.host = blankhost.NewBlankHost(swarm.GenSwarm(t))
+	ses, err := newSession(
 		context.Background(),
-		nil,
-		&peerTracker{trackedPeers: make(map[peer.ID]struct{})},
+		blankhost.NewBlankHost(swarm.GenSwarm(t)),
+		pT,
 		"", time.Second, nil,
 		withValidation(head),
 	)
-
+	require.NoError(t, err)
 	headers := suite.GenDummyHeaders(5)
 	// break adjacency
 	headers[2] = headers[4]
-	err := ses.verify(headers)
+	err = ses.verify(headers)
 	assert.Error(t, err)
 }

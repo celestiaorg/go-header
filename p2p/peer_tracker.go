@@ -16,19 +16,21 @@ import (
 )
 
 type peerTracker struct {
-	host       host.Host
-	connGater  *conngater.BasicConnectionGater
-	metrics    *exchangeMetrics
 	protocolID protocol.ID
-	peerLk     sync.RWMutex
+
+	host      host.Host
+	connGater *conngater.BasicConnectionGater
+
+	peerLk sync.RWMutex
 	// trackedPeers contains active peers that we can request to.
-	// we cache the peer once they disconnect,
 	// so we can guarantee that peerQueue will only contain active peers
 	trackedPeers map[libpeer.ID]struct{}
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
 	pidstore PeerIDStore
+
+	metrics *exchangeMetrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -103,19 +105,20 @@ func (p *peerTracker) track() {
 		p.done <- struct{}{}
 	}()
 
-	connSubs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
+	evtBus := p.host.EventBus()
+	connSubs, err := evtBus.Subscribe(&event.EvtPeerConnectednessChanged{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerConnectednessChanged", "err", err)
 		return
 	}
 
-	identifySub, err := p.host.EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
+	identifySub, err := evtBus.Subscribe(&event.EvtPeerIdentificationCompleted{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerIdentificationCompleted", "err", err)
 		return
 	}
 
-	protocolSub, err := p.host.EventBus().Subscribe(&event.EvtPeerProtocolsUpdated{})
+	protocolSub, err := evtBus.Subscribe(&event.EvtPeerProtocolsUpdated{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerProtocolsUpdated", "err", err)
 		return
@@ -124,9 +127,7 @@ func (p *peerTracker) track() {
 	for {
 		select {
 		case <-p.ctx.Done():
-			err = connSubs.Close()
-			errors.Join(err, identifySub.Close(), protocolSub.Close())
-			if err != nil {
+			if err := closeSubscriptions(connSubs, identifySub, protocolSub); err != nil {
 				log.Errorw("closing subscriptions", "err", err)
 			}
 			return
@@ -135,33 +136,21 @@ func (p *peerTracker) track() {
 			if network.NotConnected == ev.Connectedness {
 				p.disconnected(ev.Peer)
 			}
-		case subscription := <-identifySub.Out():
-			ev := subscription.(event.EvtPeerIdentificationCompleted)
-			p.connected(ev.Peer)
-		case subscription := <-protocolSub.Out():
-			ev := subscription.(event.EvtPeerProtocolsUpdated)
+		case identSubscription := <-identifySub.Out():
+			ev := identSubscription.(event.EvtPeerIdentificationCompleted)
+			if slices.Contains(ev.Protocols, p.protocolID) {
+				p.connected(ev.Peer)
+			}
+		case protocolSubscription := <-protocolSub.Out():
+			ev := protocolSubscription.(event.EvtPeerProtocolsUpdated)
 			if slices.Contains(ev.Removed, p.protocolID) {
 				p.disconnected(ev.Peer)
-				break
 			}
-			p.connected(ev.Peer)
+			if slices.Contains(ev.Added, p.protocolID) {
+				p.connected(ev.Peer)
+			}
 		}
 	}
-}
-
-// getPeers returns the tracker's currently tracked peers up to the `max`.
-func (p *peerTracker) getPeers(max int) []libpeer.ID {
-	p.peerLk.RLock()
-	defer p.peerLk.RUnlock()
-
-	peers := make([]libpeer.ID, 0, max)
-	for peer := range p.trackedPeers {
-		peers = append(peers, peer)
-		if len(peers) == max {
-			break
-		}
-	}
-	return peers
 }
 
 func (p *peerTracker) connected(pID libpeer.ID) {
@@ -170,15 +159,6 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 	}
 
 	if p.host.ID() == pID {
-		return
-	}
-
-	// check that peer supports our protocol id.
-	protocol, err := p.host.Peerstore().SupportsProtocols(pID, p.protocolID)
-	if err != nil {
-		return
-	}
-	if !slices.Contains(protocol, p.protocolID) {
 		return
 	}
 
@@ -219,17 +199,21 @@ func (p *peerTracker) disconnected(pID libpeer.ID) {
 	p.metrics.peersDisconnected(1)
 }
 
-func (p *peerTracker) peers() []*peerStat {
+// peers returns the tracker's currently tracked peers up to the `max`.
+func (p *peerTracker) peers(max int) []*peerStat {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 
-	peers := make([]*peerStat, 0)
+	peers := make([]*peerStat, 0, max)
 	for peerID := range p.trackedPeers {
 		score := 0
 		if info := p.host.ConnManager().GetTagInfo(peerID); info != nil {
 			score = info.Tags[string(p.protocolID)]
 		}
 		peers = append(peers, &peerStat{peerID: peerID, peerScore: score})
+		if len(peers) == max {
+			break
+		}
 	}
 	return peers
 }
@@ -299,4 +283,12 @@ func (p *peerTracker) blockPeer(pID libpeer.ID, reason error) {
 func (p *peerTracker) updateScore(stats *peerStat, size uint64, duration time.Duration) {
 	score := stats.updateStats(size, duration)
 	p.host.ConnManager().TagPeer(stats.peerID, string(p.protocolID), score)
+}
+
+func closeSubscriptions(subs ...event.Subscription) error {
+	var err error
+	for _, sub := range subs {
+		err = errors.Join(err, sub.Close())
+	}
+	return err
 }

@@ -62,7 +62,7 @@ func TestPeerTracker_Bootstrap(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Eventually(t, func() bool {
-		return len(tracker.getPeers(7)) > 0
+		return len(tracker.peers(7)) > 0
 	}, time.Millisecond*500, time.Millisecond*100)
 }
 
