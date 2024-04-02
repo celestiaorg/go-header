@@ -82,8 +82,14 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 	connectCtx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 
+	wg := sync.WaitGroup{}
+	wg.Add(len(trusted))
 	for _, trust := range trusted {
-		go p.connectToPeer(connectCtx, trust)
+		trust := trust
+		go func() {
+			defer wg.Done()
+			p.connectToPeer(connectCtx, trust)
+		}()
 	}
 
 	// short-circuit if pidstore was not provided
@@ -96,9 +102,15 @@ func (p *peerTracker) bootstrap(ctx context.Context, trusted []libpeer.ID) error
 		return err
 	}
 
+	wg.Add(len(prevSeen))
 	for _, peer := range prevSeen {
-		go p.connectToPeer(connectCtx, peer)
+		peer := peer
+		go func() {
+			defer wg.Done()
+			p.connectToPeer(connectCtx, peer)
+		}()
 	}
+	wg.Wait()
 	return nil
 }
 
