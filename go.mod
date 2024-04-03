@@ -1,8 +1,6 @@
 module github.com/celestiaorg/go-header
 
-go 1.21
-
-toolchain go1.22.1
+go 1.22
 
 // History unavailable and was rewritten DO NOT USE
 retract v0.1.0
