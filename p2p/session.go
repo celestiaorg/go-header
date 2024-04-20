@@ -259,7 +259,14 @@ func (s *session[H]) doRequest(
 }
 
 // processResponses converts HeaderResponse to Header.
-func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) ([]H, error) {
+func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) (h []H, err error) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			err = fmt.Errorf("PANIC processing responses: %s", r)
+		}
+	}()
+
 	hdrs, err := processResponses[H](responses)
 	if err != nil {
 		return nil, err
