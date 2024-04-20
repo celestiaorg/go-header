@@ -99,7 +99,15 @@ func (s *Subscriber[H]) Stop(context.Context) error {
 // SetVerifier set given verification func as Header PubSub topic validator
 // Does not punish peers if *header.VerifyError is given with Uncertain set to true.
 func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
-	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) pubsub.ValidationResult {
+	pval := func(ctx context.Context, p peer.ID, msg *pubsub.Message) (res pubsub.ValidationResult) {
+		defer func() {
+			err := recover()
+			if err != nil {
+				log.Errorf("PANIC while unmarshalling or verifying header: %s", err)
+				res = pubsub.ValidationReject
+			}
+		}()
+
 		hdr := header.New[H]()
 		err := hdr.UnmarshalBinary(msg.Data)
 		if err != nil {
