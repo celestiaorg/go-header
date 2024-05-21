@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/hashicorp/golang-lru/arc/v2"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
@@ -31,7 +31,7 @@ type Store[H header.Header[H]] struct {
 	// underlying KV store
 	ds datastore.Batching
 	// adaptive replacement cache of headers
-	cache *lru.ARCCache
+	cache *arc.ARCCache[string, H]
 	// metrics collection instance
 	metrics *metrics
 
@@ -89,7 +89,7 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 		return nil, fmt.Errorf("header/store: store creation failed: %w", err)
 	}
 
-	cache, err := lru.NewARC(params.StoreCacheSize)
+	cache, err := arc.NewARC[string, H](params.StoreCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index cache: %w", err)
 	}
@@ -198,7 +198,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	var zero H
 	if v, ok := s.cache.Get(hash.String()); ok {
-		return v.(H), nil
+		return v, nil
 	}
 	// check if the requested header is not yet written on disk
 	if h := s.pending.Get(hash); !h.IsZero() {
