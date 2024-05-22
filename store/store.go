@@ -128,7 +128,7 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 
 func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	if s.heightSub.Height() != 0 {
-		return fmt.Errorf("store already initialized")
+		return errors.New("store already initialized")
 	}
 	// trust the given header as the initial head
 	err := s.flush(ctx, initial)
@@ -223,7 +223,7 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	var zero H
 	if height == 0 {
-		return zero, fmt.Errorf("header/store: height must be bigger than zero")
+		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 	// if the requested 'height' was not yet published
 	// we subscribe to it

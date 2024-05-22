@@ -2,7 +2,7 @@ package sync
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,7 +41,7 @@ func TestSyncGetterHead(t *testing.T) {
 	assert.EqualValues(t, 1, fex.hits.Load())
 }
 
-var errFakeHead = fmt.Errorf("head")
+var errFakeHead = errors.New("head")
 
 type fakeGetter[H header.Header[H]] struct {
 	hits atomic.Uint32
