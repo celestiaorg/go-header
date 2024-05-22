@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/go-datastore"
 
 	"github.com/celestiaorg/go-header"
@@ -14,12 +14,12 @@ import (
 // Hash.
 type heightIndexer[H header.Header[H]] struct {
 	ds    datastore.Batching
-	cache *lru.ARCCache
+	cache *lru.TwoQueueCache[uint64, header.Hash]
 }
 
 // newHeightIndexer creates new heightIndexer.
 func newHeightIndexer[H header.Header[H]](ds datastore.Batching, indexCacheSize int) (*heightIndexer[H], error) {
-	cache, err := lru.NewARC(indexCacheSize)
+	cache, err := lru.New2Q[uint64, header.Hash](indexCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func newHeightIndexer[H header.Header[H]](ds datastore.Batching, indexCacheSize 
 // HashByHeight loads a header hash corresponding to the given height.
 func (hi *heightIndexer[H]) HashByHeight(ctx context.Context, h uint64) (header.Hash, error) {
 	if v, ok := hi.cache.Get(h); ok {
-		return v.(header.Hash), nil
+		return v, nil
 	}
 
 	val, err := hi.ds.Get(ctx, heightKey(h))
