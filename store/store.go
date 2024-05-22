@@ -260,14 +260,6 @@ func (s *Store[H]) GetRangeByHeight(
 	if err != nil {
 		return nil, err
 	}
-
-	for _, h := range headers {
-		err := from.Verify(h)
-		if err != nil {
-			return nil, err
-		}
-		from = h
-	}
 	return headers, nil
 }
 
