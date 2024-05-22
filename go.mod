@@ -8,7 +8,7 @@ retract v0.1.0
 require (
 	github.com/celestiaorg/go-libp2p-messenger v0.2.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/hashicorp/golang-lru/arc/v2 v2.0.7
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.33.2
@@ -35,7 +35,6 @@ require (
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20240207164012-fb44976bdcd5 // indirect
 	github.com/google/uuid v1.5.0 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect

@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/hashicorp/golang-lru/arc/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/go-datastore"
 
 	"github.com/celestiaorg/go-header"
@@ -14,12 +14,12 @@ import (
 // Hash.
 type heightIndexer[H header.Header[H]] struct {
 	ds    datastore.Batching
-	cache *arc.ARCCache[uint64, header.Hash]
+	cache *lru.TwoQueueCache[uint64, header.Hash]
 }
 
 // newHeightIndexer creates new heightIndexer.
 func newHeightIndexer[H header.Header[H]](ds datastore.Batching, indexCacheSize int) (*heightIndexer[H], error) {
-	cache, err := arc.NewARC[uint64, header.Hash](indexCacheSize)
+	cache, err := lru.New2Q[uint64, header.Hash](indexCacheSize)
 	if err != nil {
 		return nil, err
 	}
