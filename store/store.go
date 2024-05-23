@@ -476,8 +476,7 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	}
 
 	// write height indexes for headers as well
-	err = s.heightIndex.IndexTo(ctx, batch, headers...)
-	if err != nil {
+	if err := indexTo(ctx, batch, headers...); err != nil {
 		return err
 	}
 
@@ -515,4 +514,15 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 
 	s.metrics.readSingle(ctx, time.Since(startTime), false)
 	return data, nil
+}
+
+// indexTo saves mapping between header Height and Hash to the given batch.
+func indexTo[H header.Header[H]](ctx context.Context, batch datastore.Batch, headers ...H) error {
+	for _, h := range headers {
+		err := batch.Put(ctx, heightKey(h.Height()), h.Hash())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
