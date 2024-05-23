@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -153,7 +152,7 @@ func (s *Subscriber[H]) SetVerifier(val func(context.Context, H) error) error {
 // topic.
 func (s *Subscriber[H]) Subscribe() (header.Subscription[H], error) {
 	if s.topic == nil {
-		return nil, fmt.Errorf("header topic is not instantiated, service must be started before subscribing")
+		return nil, errors.New("header topic is not instantiated, service must be started before subscribing")
 	}
 
 	return newSubscription[H](s.topic, s.metrics)

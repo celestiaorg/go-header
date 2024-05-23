@@ -261,7 +261,7 @@ func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error
 	var zero H
 	// sanity check height
 	if height == 0 {
-		err := fmt.Errorf("specified request height must be greater than 0")
+		err := errors.New("specified request height must be greater than 0")
 		span.SetStatus(codes.Error, err.Error())
 		return zero, err
 	}
@@ -349,7 +349,7 @@ func (ex *Exchange[H]) performRequest(
 
 	trustedPeers := ex.trustedPeers()
 	if len(trustedPeers) == 0 {
-		return nil, fmt.Errorf("no trusted peers")
+		return nil, errors.New("no trusted peers")
 	}
 
 	var reqErr error
