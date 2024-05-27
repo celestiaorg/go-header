@@ -1,4 +1,4 @@
-package header_test
+package header
 
 import (
 	"crypto/rand"
@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +15,7 @@ func TestHash(t *testing.T) {
 	buf, err := h.MarshalJSON()
 	require.NoError(t, err)
 
-	var h2 header.Hash
+	var h2 Hash
 	err = h2.UnmarshalJSON(buf)
 	require.NoError(t, err)
 
@@ -49,7 +48,7 @@ func BenchmarkHashMarshaling(b *testing.B) {
 	})
 
 	b.Run("Unmarshal", func(b *testing.B) {
-		var h2 header.Hash
+		var h2 Hash
 
 		for i := 0; i < b.N; i++ {
 			err := h2.UnmarshalJSON(golden)
@@ -58,10 +57,18 @@ func BenchmarkHashMarshaling(b *testing.B) {
 	})
 }
 
-func randHash() header.Hash {
+func Fuzz_hexToUpper(f *testing.F) {
+	f.Add([]byte("48656c6c6f20476f7068657221"))
+
+	f.Fuzz(func(t *testing.T, buf []byte) {
+		hexToUpper(buf)
+	})
+}
+
+func randHash() Hash {
 	var buf [sha256.Size]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		panic(err)
 	}
-	return header.Hash(buf[:])
+	return Hash(buf[:])
 }
