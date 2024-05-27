@@ -10,20 +10,20 @@ type Hash []byte
 
 // String implements fmt.Stringer interface.
 func (h Hash) String() string {
-	jbz := make([]byte, hex.EncodedLen(len(h)))
-	hex.Encode(jbz, h)
-	hexToUpper(jbz)
-	return string(jbz)
+	buf := make([]byte, hex.EncodedLen(len(h)))
+	hex.Encode(buf, h)
+	hexToUpper(buf)
+	return string(buf)
 }
 
 // MarshalJSON serializes Hash into valid JSON.
 func (h Hash) MarshalJSON() ([]byte, error) {
-	jbz := make([]byte, 2+hex.EncodedLen(len(h)))
-	jbz[0] = '"'
-	hex.Encode(jbz[1:], h)
-	hexToUpper(jbz)
-	jbz[len(jbz)-1] = '"'
-	return jbz, nil
+	buf := make([]byte, 2+hex.EncodedLen(len(h)))
+	buf[0] = '"'
+	hex.Encode(buf[1:], h)
+	hexToUpper(buf)
+	buf[len(buf)-1] = '"'
+	return buf, nil
 }
 
 // UnmarshalJSON deserializes JSON representation of a Hash into object.
@@ -32,12 +32,12 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("invalid hex string: %s", data)
 	}
 
-	bz2 := make([]byte, hex.DecodedLen(len(data)-2))
-	_, err := hex.Decode(bz2, data[1:len(data)-1])
+	buf := make([]byte, hex.DecodedLen(len(data)-2))
+	_, err := hex.Decode(buf, data[1:len(data)-1])
 	if err != nil {
 		return err
 	}
-	*h = bz2
+	*h = buf
 	return nil
 }
 
