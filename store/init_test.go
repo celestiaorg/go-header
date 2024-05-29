@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
 )
@@ -26,7 +28,7 @@ func TestInitStore_NoReinit(t *testing.T) {
 	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
-	err = Init[*headertest.DummyHeader](ctx, store, exchange, head.Hash())
+	err = initStore(ctx, store, exchange, head.Hash())
 	assert.NoError(t, err)
 
 	err = store.Start(ctx)
@@ -53,4 +55,22 @@ func TestInitStore_NoReinit(t *testing.T) {
 
 	err = reopenedStore.Stop(ctx)
 	require.NoError(t, err)
+}
+
+// initStore ensures a Store is initialized.
+// If it is not already initialized, it initializes the Store by requesting the header with the given hash.
+func initStore[H header.Header[H]](ctx context.Context, store header.Store[H], ex header.Exchange[H], hash header.Hash) error {
+	_, err := store.Head(ctx)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, header.ErrNoHead) {
+		initial, err := ex.Get(ctx, hash)
+		if err != nil {
+			return err
+		}
+		return store.Init(ctx, initial)
+	}
+	return err
 }
