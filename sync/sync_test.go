@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -21,15 +23,15 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
+	remoteStore := newTestStore(t, ctx, head)
 	err := remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	_, err = remoteStore.GetByHeight(ctx, 100)
 	require.NoError(t, err)
 
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -67,9 +69,9 @@ func TestDoSyncFullRangeFromExternalPeer(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -106,9 +108,9 @@ func TestSyncCatchUp(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -157,9 +159,9 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -224,9 +226,9 @@ func TestSyncer_FindHeadersReturnsCorrectRange(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -260,9 +262,9 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := store.NewTestStore(ctx, t, head)
-	localStore := store.NewTestStore(ctx, t, head)
-	syncer, err := NewSyncer[*headertest.DummyHeader](
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
 		&delayedGetter[*headertest.DummyHeader]{Getter: local.NewExchange(remoteStore)},
 		localStore,
 		headertest.NewDummySubscriber(),
@@ -301,12 +303,12 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	head := suite.Head()
 
 	// create a local store which is initialised at genesis height
-	localStore := store.NewTestStore(ctx, t, head)
+	localStore := newTestStore(t, ctx, head)
 	// create a peer which is already on height 100
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
+	remoteStore := headertest.NewStore(t, suite, 100)
 
-	syncer, err := NewSyncer[*headertest.DummyHeader](
-		local.NewExchange[*headertest.DummyHeader](remoteStore),
+	syncer, err := NewSyncer(
+		local.NewExchange(remoteStore),
 		localStore,
 		headertest.NewDummySubscriber(),
 		WithBlockTime(time.Nanosecond),
@@ -395,4 +397,10 @@ func (d *delayedGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// newTestStore creates initialized and started in memory header Store which is useful for testing.
+func newTestStore(tb testing.TB, ctx context.Context, head *headertest.DummyHeader) header.Store[*headertest.DummyHeader] {
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	return store.NewTestStore(tb, ctx, ds, head)
 }
