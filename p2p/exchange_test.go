@@ -482,7 +482,7 @@ func TestExchange_RequestHeadersFromAnotherPeerWhenTimeout(t *testing.T) {
 
 	// create client + server(it does not have needed headers)
 	exchg, store := createP2PExAndServer(t, host0, host1)
-	exchg.Params.RangeRequestTimeout = time.Millisecond * 100
+	exchg.Params.RequestTimeout = time.Millisecond * 100
 	// create one more server(with more headers in the store)
 	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](
 		host2, headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 10),
@@ -490,7 +490,7 @@ func TestExchange_RequestHeadersFromAnotherPeerWhenTimeout(t *testing.T) {
 	)
 	require.NoError(t, err)
 	// change store implementation
-	serverSideEx.store = &timedOutStore{timeout: exchg.Params.RangeRequestTimeout}
+	serverSideEx.store = &timedOutStore{timeout: exchg.Params.RequestTimeout}
 	require.NoError(t, serverSideEx.Start(context.Background()))
 	t.Cleanup(func() {
 		serverSideEx.Stop(context.Background()) //nolint:errcheck

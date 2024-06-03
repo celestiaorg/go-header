@@ -293,7 +293,7 @@ func (ex *Exchange[H]) GetRangeByHeight(
 		))
 	defer span.End()
 	session := newSession[H](
-		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RangeRequestTimeout, ex.metrics, withValidation(from),
+		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RequestTimeout, ex.metrics, withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1

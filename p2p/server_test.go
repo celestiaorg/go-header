@@ -29,7 +29,7 @@ func TestExchangeServer_handleRequestTimeout(t *testing.T) {
 		server.Stop(context.Background()) //nolint:errcheck
 	})
 
-	_, err = server.handleRangeRequest(1, 200)
+	_, err = server.handleRangeRequest(context.Background(), 1, 200)
 	require.Error(t, err)
 }
 
@@ -49,7 +49,7 @@ func TestExchangeServer_errorsOnLargeRequest(t *testing.T) {
 		server.Stop(context.Background()) //nolint:errcheck
 	})
 
-	_, err = server.handleRangeRequest(1, header.MaxRangeRequestSize*2)
+	_, err = server.handleRangeRequest(context.Background(), 1, header.MaxRangeRequestSize*2)
 	require.Error(t, err)
 }
 
@@ -62,7 +62,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 		peer[0],
 		timeoutStore[*headertest.DummyHeader]{},
 		WithNetworkID[ServerParameters](networkID),
-		WithRangeRequestTimeout[ServerParameters](time.Second),
+		WithRequestTimeout[ServerParameters](time.Second),
 	)
 	require.NoError(t, err)
 
@@ -80,14 +80,14 @@ func TestExchangeServer_Timeout(t *testing.T) {
 		{
 			name: "handleHeadRequest",
 			fn: func() error {
-				_, err := server.handleHeadRequest()
+				_, err := server.handleHeadRequest(context.Background())
 				return err
 			},
 		},
 		{
 			name: "handleRequest",
 			fn: func() error {
-				_, err := server.handleRangeRequest(1, 100)
+				_, err := server.handleRangeRequest(context.Background(), 1, 100)
 				return err
 			},
 		},
@@ -95,7 +95,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 			name: "handleHeadRequest",
 			fn: func() error {
 				hash := headertest.RandDummyHeader(t).Hash()
-				_, err := server.handleRequestByHash(hash)
+				_, err := server.handleRequestByHash(context.Background(), hash)
 				return err
 			},
 		},

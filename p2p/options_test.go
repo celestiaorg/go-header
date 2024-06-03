@@ -12,11 +12,11 @@ func TestOptionsClientWithParams(t *testing.T) {
 
 	timeout := time.Second
 	opt := WithParams(ClientParameters{
-		RangeRequestTimeout: timeout,
+		RequestTimeout: timeout,
 	})
 
 	opt(&params)
-	assert.Equal(t, timeout, params.RangeRequestTimeout)
+	assert.Equal(t, timeout, params.RequestTimeout)
 }
 
 func TestOptionsServerWithParams(t *testing.T) {
@@ -24,9 +24,9 @@ func TestOptionsServerWithParams(t *testing.T) {
 
 	timeout := time.Second
 	opt := WithParams(ServerParameters{
-		RangeRequestTimeout: timeout,
+		RequestTimeout: timeout,
 	})
 
 	opt(&params)
-	assert.Equal(t, timeout, params.RangeRequestTimeout)
+	assert.Equal(t, timeout, params.RequestTimeout)
 }
