@@ -290,7 +290,7 @@ func (s *Syncer[H]) processHeaders(
 		}
 
 		// apply cached headers
-		if err = s.storeHeaders(ctx, headers...); err != nil {
+		if err := s.store.Append(ctx, headers...); err != nil {
 			return err
 		}
 
@@ -325,23 +325,12 @@ func (s *Syncer[H]) requestHeaders(
 			return err
 		}
 
-		if err := s.storeHeaders(ctx, headers...); err != nil {
+		if err := s.store.Append(ctx, headers...); err != nil {
 			return err
 		}
 
 		amount -= size // size == len(headers)
 		fromHead = headers[len(headers)-1]
-	}
-	return nil
-}
-
-// storeHeaders updates store with new headers and updates current syncStore's Head.
-func (s *Syncer[H]) storeHeaders(ctx context.Context, headers ...H) error {
-	// we don't expect any issues in storing right now, as all headers are now verified.
-	// So, we should return immediately in case an error appears.
-	err := s.store.Append(ctx, headers...)
-	if err != nil {
-		return err
 	}
 	return nil
 }
