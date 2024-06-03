@@ -118,7 +118,7 @@ func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
 	//  * Allow storing any valid header here in Store
 	//  * Remove ErrNonAdjacent
 	//  * Remove writeHead from the canonical store implementation
-	err := s.storeHeaders(ctx, netHead)
+	err := s.store.Append(ctx, netHead)
 	var nonAdj *header.ErrNonAdjacent
 	if err != nil && !errors.As(err, &nonAdj) {
 		// might be a storage error or something else, but we can still try to continue processing netHead
