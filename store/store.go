@@ -324,12 +324,12 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	for i, h := range headers {
 		// currently store requires all headers to be appended sequentially and adjacently
 		// TODO(@Wondertan): Further pruning friendly Store design should reevaluate this requirement
-		if h.Height() != head.Height()+1 {
-			return &header.ErrNonAdjacent{
-				Head:      head.Height(),
-				Attempted: h.Height(),
-			}
-		}
+		// if h.Height() != head.Height()+1 {
+		// 	return &header.ErrNonAdjacent{
+		// 		Head:      head.Height(),
+		// 		Attempted: h.Height(),
+		// 	}
+		// }
 
 		err = head.Verify(h)
 		if err != nil {
