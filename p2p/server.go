@@ -113,7 +113,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	case *p2p_pb.HeaderRequest_Hash:
 		headers, err = serv.handleRequestByHash(pbreq.GetHash())
 	case *p2p_pb.HeaderRequest_Origin:
-		headers, err = serv.handleRequest(pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
+		headers, err = serv.handleRangeRequest(pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
 	default:
 		log.Warn("server: invalid data type received")
 		stream.Reset() //nolint:errcheck
@@ -196,15 +196,18 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 	return []H{h}, nil
 }
 
-// handleRequest fetches the Header at the given origin and
+// handleRangeRequest fetches the Header at the given origin and
 // writes it to the stream.
-func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
+func (serv *ExchangeServer[H]) handleRangeRequest(from, to uint64) ([]H, error) {
 	if from == uint64(0) {
 		return serv.handleHeadRequest()
 	}
 
 	startTime := time.Now()
-	ctx, span := tracerServ.Start(serv.ctx, "request-range", trace.WithAttributes(
+	log.Debugw("server: handling range request", "from", from, "to", to)
+	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
+	defer cancel()
+	ctx, span := tracerServ.Start(ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
 	defer span.End()
