@@ -54,7 +54,7 @@ func TestExchangeServer_errorsOnLargeRequest(t *testing.T) {
 }
 
 func TestExchangeServer_Timeout(t *testing.T) {
-	const testRangeRequestTimeout = 150 * time.Millisecond
+	const testRequestTimeout = 150 * time.Millisecond
 
 	peer := createMocknet(t, 1)
 
@@ -62,7 +62,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 		peer[0],
 		timeoutStore[*headertest.DummyHeader]{},
 		WithNetworkID[ServerParameters](networkID),
-		WithRequestTimeout[ServerParameters](time.Second),
+		WithRequestTimeout[ServerParameters](testRequestTimeout),
 	)
 	require.NoError(t, err)
 
@@ -80,22 +80,31 @@ func TestExchangeServer_Timeout(t *testing.T) {
 		{
 			name: "handleHeadRequest",
 			fn: func() error {
-				_, err := server.handleHeadRequest(context.Background())
+				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
+				defer cancel()
+
+				_, err := server.handleHeadRequest(ctx)
 				return err
 			},
 		},
 		{
 			name: "handleRequest",
 			fn: func() error {
-				_, err := server.handleRangeRequest(context.Background(), 1, 100)
+				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
+				defer cancel()
+
+				_, err := server.handleRangeRequest(ctx, 1, 100)
 				return err
 			},
 		},
 		{
 			name: "handleHeadRequest",
 			fn: func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
+				defer cancel()
+
 				hash := headertest.RandDummyHeader(t).Hash()
-				_, err := server.handleRequestByHash(context.Background(), hash)
+				_, err := server.handleRequestByHash(ctx, hash)
 				return err
 			},
 		},
@@ -110,7 +119,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 			took := time.Since(start)
 
 			require.Error(t, err)
-			require.Greater(t, took, testRangeRequestTimeout)
+			require.GreaterOrEqual(t, took, testRequestTimeout)
 		})
 	}
 }
