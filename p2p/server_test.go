@@ -60,7 +60,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 
 	server, err := NewExchangeServer(
 		peer[0],
-		dummyStore[*headertest.DummyHeader]{},
+		timeoutStore[*headertest.DummyHeader]{},
 		WithNetworkID[ServerParameters](networkID),
 		WithRangeRequestTimeout[ServerParameters](time.Second),
 	)
@@ -115,56 +115,59 @@ func TestExchangeServer_Timeout(t *testing.T) {
 	}
 }
 
-type dummyStore[H header.Header[H]] struct{}
+var _ header.Store[*headertest.DummyHeader] = timeoutStore[*headertest.DummyHeader]{}
 
-func (dummyStore[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+// timeoutStore does nothing but waits till context cancellation for every method.
+type timeoutStore[H header.Header[H]] struct{}
+
+func (timeoutStore[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	<-ctx.Done()
 	var zero H
 	return zero, ctx.Err()
 }
 
-func (dummyStore[H]) Get(ctx context.Context, _ header.Hash) (H, error) {
+func (timeoutStore[H]) Get(ctx context.Context, _ header.Hash) (H, error) {
 	<-ctx.Done()
 	var zero H
 	return zero, ctx.Err()
 }
 
-func (dummyStore[H]) GetByHeight(ctx context.Context, _ uint64) (H, error) {
+func (timeoutStore[H]) GetByHeight(ctx context.Context, _ uint64) (H, error) {
 	<-ctx.Done()
 	var zero H
 	return zero, ctx.Err()
 }
 
-func (dummyStore[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
+func (timeoutStore[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (dummyStore[H]) Init(ctx context.Context, _ H) error {
+func (timeoutStore[H]) Init(ctx context.Context, _ H) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
 
-func (dummyStore[H]) Height() uint64 {
+func (timeoutStore[H]) Height() uint64 {
 	return 0
 }
 
-func (dummyStore[H]) Has(ctx context.Context, _ header.Hash) (bool, error) {
+func (timeoutStore[H]) Has(ctx context.Context, _ header.Hash) (bool, error) {
 	<-ctx.Done()
 	return false, ctx.Err()
 }
 
-func (dummyStore[H]) HasAt(ctx context.Context, _ uint64) bool {
+func (timeoutStore[H]) HasAt(ctx context.Context, _ uint64) bool {
 	<-ctx.Done()
 	return false
 }
 
-func (dummyStore[H]) Append(ctx context.Context, _ ...H) error {
+func (timeoutStore[H]) Append(ctx context.Context, _ ...H) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
 
-func (dummyStore[H]) GetRange(ctx context.Context, _ uint64, _ uint64) ([]H, error) {
+func (timeoutStore[H]) GetRange(ctx context.Context, _ uint64, _ uint64) ([]H, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
