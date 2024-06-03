@@ -3,7 +3,6 @@ package header
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
@@ -59,16 +58,6 @@ var (
 	ErrHeadersLimitExceeded = errors.New("header/p2p: header limit per 1 request exceeded")
 )
 
-// ErrNonAdjacent is returned when Store is appended with a header not adjacent to the stored head.
-type ErrNonAdjacent struct {
-	Head      uint64
-	Attempted uint64
-}
-
-func (ena *ErrNonAdjacent) Error() string {
-	return fmt.Sprintf("header/store: non-adjacent: head %d, attempted %d", ena.Head, ena.Attempted)
-}
-
 // Store encompasses the behavior necessary to store and retrieve Headers
 // from a node's local storage.
 type Store[H Header[H]] interface {
@@ -88,10 +77,6 @@ type Store[H Header[H]] interface {
 	HasAt(context.Context, uint64) bool
 
 	// Append stores and verifies the given Header(s).
-	// It requires them to be adjacent and in ascending order,
-	// as it applies them contiguously on top of the current head height.
-	// It returns the amount of successfully applied headers,
-	// so caller can understand what given header was invalid, if any.
 	Append(context.Context, ...H) error
 
 	// GetRange returns the range [from:to).
