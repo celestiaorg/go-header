@@ -20,11 +20,7 @@ func TestStore(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStoreWithHead(ctx, ds, suite.Head())
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
+	store := NewTestStore(t, ctx, ds, suite.Head())
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -81,9 +77,6 @@ func TestStore(t *testing.T) {
 
 	// check that the store can be successfully started after previous stop
 	// with all data being flushed.
-	store, err = NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-
 	err = store.Start(ctx)
 	require.NoError(t, err)
 
@@ -94,9 +87,6 @@ func TestStore(t *testing.T) {
 	out, err = store.getRangeByHeight(ctx, 1, 13)
 	require.NoError(t, err)
 	assert.Len(t, out, 12)
-
-	err = store.Stop(ctx)
-	require.NoError(t, err)
 }
 
 // TestStore_GetRangeByHeight_ExpectedRange
@@ -107,11 +97,7 @@ func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStoreWithHead(ctx, ds, suite.Head())
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
+	store := NewTestStore(t, ctx, ds, suite.Head())
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -143,11 +129,7 @@ func TestStore_Append_BadHeader(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStoreWithHead(ctx, ds, suite.Head())
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
+	store := NewTestStore(t, ctx, ds, suite.Head())
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -168,11 +150,7 @@ func TestStore_GetRange(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStoreWithHead(ctx, ds, suite.Head())
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
+	store := NewTestStore(t, ctx, ds, suite.Head())
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -216,6 +194,9 @@ func TestStore_GetRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
 			firstHeaderInRangeHeight := tt.from
 			lastHeaderInRangeHeight := tt.to - 1
 			to := lastHeaderInRangeHeight + 1
@@ -245,15 +226,12 @@ func TestStorePendingCacheMiss(t *testing.T) {
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 
-	store, err := NewStoreWithHead(ctx, ds, suite.Head(),
+	store := NewTestStore(t, ctx, ds, suite.Head(),
 		WithWriteBatchSize(100),
 		WithStoreCacheSize(100),
 	)
-	require.NoError(t, err)
 
-	err = store.Start(ctx)
-	require.NoError(t, err)
-	err = store.Append(ctx, suite.GenDummyHeaders(100)...)
+	err := store.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	err = store.Append(ctx, suite.GenDummyHeaders(50)...)

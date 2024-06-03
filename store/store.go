@@ -64,21 +64,6 @@ func NewStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 	return newStore[H](ds, opts...)
 }
 
-// NewStoreWithHead initiates a new Store and forcefully sets a given trusted header as head.
-func NewStoreWithHead[H header.Header[H]](
-	ctx context.Context,
-	ds datastore.Batching,
-	head H,
-	opts ...Option,
-) (*Store[H], error) {
-	store, err := newStore[H](ds, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return store, store.Init(ctx, head)
-}
-
 func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store[H], error) {
 	params := DefaultParameters()
 	for _, opt := range opts {
@@ -142,6 +127,13 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 }
 
 func (s *Store[H]) Start(context.Context) error {
+	// closed s.writesDn means that store was stopped before, recreate chan.
+	select {
+	case <-s.writesDn:
+		s.writesDn = make(chan struct{})
+	default:
+	}
+
 	go s.flushLoop()
 	return nil
 }

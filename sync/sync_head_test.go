@@ -7,15 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	sync2 "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
-	"github.com/celestiaorg/go-header/store"
 )
 
 func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
@@ -61,11 +58,10 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	localStore := store.NewTestStore(ctx, t, head)
+	localStore := newTestStore(t, ctx, head)
+	remoteStore := newTestStore(t, ctx, head)
 
-	remoteStore, err := store.NewStoreWithHead(ctx, sync2.MutexWrap(datastore.NewMapDatastore()), head)
-	require.NoError(t, err)
-	err = remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
+	err := remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	// create a wrappedGetter to track exchange interactions

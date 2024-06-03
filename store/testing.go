@@ -5,24 +5,27 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 )
 
 // NewTestStore creates initialized and started in memory header Store which is useful for testing.
-func NewTestStore(ctx context.Context, t *testing.T, head *headertest.DummyHeader) header.Store[*headertest.DummyHeader] {
-	store, err := NewStoreWithHead(ctx, sync.MutexWrap(datastore.NewMapDatastore()), head)
-	require.NoError(t, err)
+func NewTestStore(tb testing.TB, ctx context.Context,
+	ds datastore.Batching, head *headertest.DummyHeader, opts ...Option,
+) *Store[*headertest.DummyHeader] {
+	store, err := NewStore[*headertest.DummyHeader](ds, opts...)
+	require.NoError(tb, err)
+
+	err = store.Init(ctx, head)
+	require.NoError(tb, err)
 
 	err = store.Start(ctx)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		err := store.Stop(ctx)
-		require.NoError(t, err)
+		require.NoError(tb, err)
 	})
 	return store
 }
