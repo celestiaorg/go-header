@@ -384,8 +384,11 @@ func (ex *Exchange[H]) request(
 	req *p2p_pb.HeaderRequest,
 ) ([]H, error) {
 	log.Debugw("requesting peer", "peer", to)
-	responses, size, duration, err := sendMessage(ctx, ex.host, to, ex.protocolID, req)
-	ex.metrics.response(ctx, size, duration, err)
+	start := time.Now()
+	responses, size, err := sendMessage(ctx, ex.host, to, ex.protocolID, req)
+	took := time.Since(start)
+
+	ex.metrics.response(ctx, size, took, err)
 	if err != nil {
 		log.Debugw("err sending request", "peer", to, "err", err)
 		return nil, err
