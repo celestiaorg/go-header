@@ -180,8 +180,11 @@ func (s *session[H]) doRequest(
 	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
 	defer cancel()
 
-	r, size, duration, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
-	s.metrics.response(ctx, size, duration, err)
+	start := time.Now()
+	r, size, err := sendMessage(ctx, s.host, stat.peerID, s.protocolID, req)
+	took := time.Since(start)
+
+	s.metrics.response(ctx, size, took, err)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		// we should not punish peer at this point and should try to parse responses, despite that error
@@ -233,7 +236,7 @@ func (s *session[H]) doRequest(
 	span.SetStatus(codes.Ok, "")
 
 	// update peer stats
-	stat.updateStats(size, duration)
+	stat.updateStats(size, took)
 
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
@@ -338,7 +341,7 @@ func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse) ([]H, 
 		return nil, errEmptyResponse
 	}
 
-	hdrs := make([]H, 0)
+	hdrs := make([]H, 0, len(resps))
 	for _, resp := range resps {
 		err := convertStatusCodeToError(resp.StatusCode)
 		if err != nil {
@@ -357,10 +360,6 @@ func processResponses[H header.Header[H]](resps []*p2p_pb.HeaderResponse) ([]H, 
 		}
 
 		hdrs = append(hdrs, hdr)
-	}
-
-	if len(hdrs) == 0 {
-		return nil, header.ErrNotFound
 	}
 	return hdrs, nil
 }

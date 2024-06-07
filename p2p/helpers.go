@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -51,11 +50,10 @@ func sendMessage(
 	to peer.ID,
 	protocol protocol.ID,
 	req *p2p_pb.HeaderRequest,
-) ([]*p2p_pb.HeaderResponse, uint64, time.Duration, error) {
-	startTime := time.Now()
+) ([]*p2p_pb.HeaderResponse, uint64, error) {
 	stream, err := host.NewStream(ctx, to, protocol)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("header/p2p: failed to open a new stream: %w", err)
+		return nil, 0, fmt.Errorf("header/p2p: failed to open a new stream: %w", err)
 	}
 
 	// set stream deadline from the context deadline.
@@ -71,12 +69,12 @@ func sendMessage(
 	_, err = serde.Write(stream, req)
 	if err != nil {
 		stream.Reset() //nolint:errcheck
-		return nil, 0, 0, fmt.Errorf("header/p2p: failed to write a request: %w", err)
+		return nil, 0, fmt.Errorf("header/p2p: failed to write a request: %w", err)
 	}
 
 	err = stream.CloseWrite()
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, 0, err
 	}
 
 	headers := make([]*p2p_pb.HeaderResponse, 0)
@@ -112,7 +110,7 @@ func sendMessage(
 		// reset stream in case of an error
 		stream.Reset() //nolint:errcheck
 	}
-	return headers, totalRespLn, time.Since(startTime), err
+	return headers, totalRespLn, err
 }
 
 // convertStatusCodeToError converts passed status code into an error.
