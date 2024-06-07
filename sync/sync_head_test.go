@@ -45,7 +45,6 @@ func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
 
 	wg.Wait()
 	assert.EqualValues(t, 1, hits.Load())
-
 }
 
 // TestSyncer_HeadWithTrustedHead tests whether the syncer
@@ -122,12 +121,12 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*
 }
 
 func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -136,6 +135,6 @@ func (t *wrappedGetter) GetRangeByHeight(
 	from *headertest.DummyHeader,
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }

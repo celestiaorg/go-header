@@ -12,7 +12,7 @@ type Header[H any] interface {
 	// New creates new instance of a header.
 	// It exists to overcome limitation of Go's type system.
 	// See:
-	//https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
+	// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 	New() H
 	// IsZero reports whether Header is a zero value of it's concrete type.
 	IsZero() bool
