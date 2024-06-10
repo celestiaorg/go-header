@@ -28,6 +28,7 @@ lint: lint-imports
 	@echo "--> Running linter"
 	@golangci-lint run
 	@markdownlint --config .markdownlint.yaml '**/*.md'
+	@cfmt -m=100 ./...
 .PHONY: lint
 
 ## test-all: Running both unit and swamp tests
