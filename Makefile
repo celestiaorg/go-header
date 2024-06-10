@@ -19,6 +19,7 @@ fmt: sort-imports
 	@find . -name '*.go' -type f -not -path "*.git*" -not -name '*.pb.go' -not -name '*pb_test.go' | xargs goimports -w -local github.com/celestiaorg
 	@go mod tidy
 	@gofumpt -w -extra .
+	@cfmt -m=100 ./...
 	@markdownlint --fix --quiet --config .markdownlint.yaml .
 .PHONY: sort-imports
 
