@@ -77,7 +77,7 @@ linters-settings:
   misspell:
     locale: US
   goimports:
-    local-prefixes: github.com/celestiaorg/celestia-node
+    local-prefixes: github.com/celestiaorg
   dupl:
     threshold: 200
   gofumpt:
