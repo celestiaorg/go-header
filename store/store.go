@@ -1,9 +1,11 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -318,6 +320,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	} else {
 		head = *headPtr
 	}
+
+	slices.SortFunc(headers, func(a, b H) int {
+		return cmp.Compare(a.Height(), b.Height())
+	})
 
 	// collect valid headers
 	verified := make([]H, 0, lh)
