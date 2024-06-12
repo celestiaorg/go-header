@@ -19,9 +19,7 @@ import (
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
-var (
-	tracerServ = otel.Tracer("header/server")
-)
+var tracerServ = otel.Tracer("header/server")
 
 // ExchangeServer represents the server-side component for
 // responding to inbound header-related requests.

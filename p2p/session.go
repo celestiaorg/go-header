@@ -18,9 +18,7 @@ import (
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
-var (
-	tracerSession = otel.Tracer("header/p2p-session")
-)
+var tracerSession = otel.Tracer("header/p2p-session")
 
 // errEmptyResponse means that server side closes the connection without sending at least 1
 // response.
