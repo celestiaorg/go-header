@@ -22,9 +22,9 @@ type ServerParameters struct {
 	WriteDeadline time.Duration
 	// ReadDeadline sets the timeout for reading messages from the stream
 	ReadDeadline time.Duration
-	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
+	// RequestTimeout defines a timeout after which the session will try to re-request headers
 	// from another peer.
-	RangeRequestTimeout time.Duration
+	RequestTimeout time.Duration
 	// networkID is a network that will be used to create a protocol.ID
 	// Is empty by default
 	networkID string
@@ -35,9 +35,9 @@ type ServerParameters struct {
 // DefaultServerParameters returns the default params to configure the store.
 func DefaultServerParameters() ServerParameters {
 	return ServerParameters{
-		WriteDeadline:       time.Second * 8,
-		ReadDeadline:        time.Minute,
-		RangeRequestTimeout: time.Second * 10,
+		WriteDeadline:  time.Second * 8,
+		ReadDeadline:   time.Minute,
+		RequestTimeout: time.Second * 10,
 	}
 }
 
@@ -48,9 +48,9 @@ func (p *ServerParameters) Validate() error {
 	if p.ReadDeadline == 0 {
 		return fmt.Errorf("invalid read time duration: %v", p.ReadDeadline)
 	}
-	if p.RangeRequestTimeout == 0 {
+	if p.RequestTimeout == 0 {
 		return fmt.Errorf("invalid request timeout for session: "+
-			"%s. %s: %v", greaterThenZero, providedSuffix, p.RangeRequestTimeout)
+			"%s. %s: %v", greaterThenZero, providedSuffix, p.RequestTimeout)
 	}
 	return nil
 }
@@ -88,15 +88,15 @@ func WithReadDeadline[T ServerParameters](deadline time.Duration) Option[T] {
 	}
 }
 
-// WithRangeRequestTimeout is a functional option that configures the
-// `RangeRequestTimeout` parameter.
-func WithRangeRequestTimeout[T parameters](duration time.Duration) Option[T] {
+// WithRequestTimeout is a functional option that configures the
+// `RequestTimeout` parameter.
+func WithRequestTimeout[T parameters](duration time.Duration) Option[T] {
 	return func(p *T) {
 		switch t := any(p).(type) {
 		case *ClientParameters:
-			t.RangeRequestTimeout = duration
+			t.RequestTimeout = duration
 		case *ServerParameters:
-			t.RangeRequestTimeout = duration
+			t.RequestTimeout = duration
 		}
 	}
 }
@@ -125,9 +125,9 @@ func WithParams[T parameters](params T) Option[T] {
 type ClientParameters struct {
 	// MaxHeadersPerRangeRequest defines the max amount of headers that can be requested per 1 request.
 	MaxHeadersPerRangeRequest uint64
-	// RangeRequestTimeout defines a timeout after which the session will try to re-request headers
+	// RequestTimeout defines a timeout after which the session will try to re-request headers
 	// from another peer.
-	RangeRequestTimeout time.Duration
+	RequestTimeout time.Duration
 	// networkID is a network that will be used to create a protocol.ID
 	networkID string
 	// chainID is an identifier of the chain.
@@ -142,7 +142,7 @@ type ClientParameters struct {
 func DefaultClientParameters() ClientParameters {
 	return ClientParameters{
 		MaxHeadersPerRangeRequest: 64,
-		RangeRequestTimeout:       time.Second * 8,
+		RequestTimeout:            time.Second * 8,
 	}
 }
 
@@ -156,9 +156,9 @@ func (p *ClientParameters) Validate() error {
 		return fmt.Errorf("invalid MaxHeadersPerRangeRequest:%s. %s: %v",
 			greaterThenZero, providedSuffix, p.MaxHeadersPerRangeRequest)
 	}
-	if p.RangeRequestTimeout == 0 {
+	if p.RequestTimeout == 0 {
 		return fmt.Errorf("invalid request timeout for session: "+
-			"%s. %s: %v", greaterThenZero, providedSuffix, p.RangeRequestTimeout)
+			"%s. %s: %v", greaterThenZero, providedSuffix, p.RequestTimeout)
 	}
 	return nil
 }

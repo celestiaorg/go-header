@@ -105,13 +105,16 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		log.Error(err)
 	}
 
+	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RequestTimeout)
+	defer cancel()
+
 	var headers []H
 	// retrieve and write Headers
 	switch pbreq.Data.(type) {
 	case *p2p_pb.HeaderRequest_Hash:
-		headers, err = serv.handleRequestByHash(pbreq.GetHash())
+		headers, err = serv.handleRequestByHash(ctx, pbreq.GetHash())
 	case *p2p_pb.HeaderRequest_Origin:
-		headers, err = serv.handleRequest(pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
+		headers, err = serv.handleRangeRequest(ctx, pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
 	default:
 		log.Warn("server: invalid data type received")
 		stream.Reset() //nolint:errcheck
@@ -166,11 +169,9 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 
 // handleRequestByHash returns the Header at the given hash
 // if it exists.
-func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
+func (serv *ExchangeServer[H]) handleRequestByHash(ctx context.Context, hash []byte) ([]H, error) {
 	startTime := time.Now()
 	log.Debugw("server: handling header request", "hash", header.Hash(hash).String())
-	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
-	defer cancel()
 	ctx, span := tracerServ.Start(ctx, "request-by-hash", trace.WithAttributes(
 		attribute.String("hash", header.Hash(hash).String()),
 	))
@@ -194,15 +195,16 @@ func (serv *ExchangeServer[H]) handleRequestByHash(hash []byte) ([]H, error) {
 	return []H{h}, nil
 }
 
-// handleRequest fetches the Header at the given origin and
+// handleRangeRequest fetches the Header at the given origin and
 // writes it to the stream.
-func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
+func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to uint64) ([]H, error) {
 	if from == uint64(0) {
-		return serv.handleHeadRequest()
+		return serv.handleHeadRequest(ctx)
 	}
 
 	startTime := time.Now()
-	ctx, span := tracerServ.Start(serv.ctx, "request-range", trace.WithAttributes(
+	log.Debugw("server: handling range request", "from", from, "to", to)
+	ctx, span := tracerServ.Start(ctx, "request-range", trace.WithAttributes(
 		attribute.Int64("from", int64(from)),
 		attribute.Int64("to", int64(to))))
 	defer span.End()
@@ -266,11 +268,9 @@ func (serv *ExchangeServer[H]) handleRequest(from, to uint64) ([]H, error) {
 }
 
 // handleHeadRequest returns the latest stored head.
-func (serv *ExchangeServer[H]) handleHeadRequest() ([]H, error) {
+func (serv *ExchangeServer[H]) handleHeadRequest(ctx context.Context) ([]H, error) {
 	startTime := time.Now()
 	log.Debug("server: handling head request")
-	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RangeRequestTimeout)
-	defer cancel()
 	ctx, span := tracerServ.Start(ctx, "request-head")
 	defer span.End()
 
