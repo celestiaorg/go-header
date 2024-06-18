@@ -20,8 +20,12 @@ var log = logging.Logger("header/store")
 var (
 	// defaultStorePrefix defines default datastore prefix
 	defaultStorePrefix = datastore.NewKey("headers")
+
 	// errStoppedStore is returned for attempted operations on a stopped store
 	errStoppedStore = errors.New("stopped store")
+
+	// errNewHeaderNonAdj indicates that the 1st header is not adjacent to the written header.
+	errNewHeaderNonAdj = errors.New("first header is not adjacent to the head")
 )
 
 // Store implements the Store interface for Headers over Datastore.
@@ -317,6 +321,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		}
 	} else {
 		head = *headPtr
+	}
+
+	if head.Height()+1 != headers[0].Height() {
+		return errNewHeaderNonAdj
 	}
 
 	// collect valid headers
