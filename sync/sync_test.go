@@ -37,7 +37,7 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 		headertest.NewDummySubscriber(),
 		WithBlockTime(time.Second*30),
 		WithRecencyThreshold(time.Second*35), // add 5 second buffer
-		WithTrustingPeriod(5*time.Second),
+		WithTrustingPeriod(time.Microsecond),
 	)
 	require.NoError(t, err)
 	err = syncer.Start(ctx)
