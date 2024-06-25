@@ -19,12 +19,14 @@ type heightSub[H header.Header[H]] struct {
 	height       atomic.Uint64
 	heightReqsLk sync.Mutex
 	heightReqs   map[uint64]map[chan H]struct{}
+	knownHeights map[uint64]struct{}
 }
 
 // newHeightSub instantiates new heightSub.
 func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	return &heightSub[H]{
-		heightReqs: make(map[uint64]map[chan H]struct{}),
+		heightReqs:   make(map[uint64]map[chan H]struct{}),
+		knownHeights: map[uint64]struct{}{},
 	}
 }
 
@@ -89,16 +91,12 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 		return
 	}
 
-	height := hs.Height()
 	from, to := headers[0].Height(), headers[ln-1].Height()
-	if height+1 != from && height != 0 { // height != 0 is needed to enable init from any height and not only 1
-		log.Fatalf("PLEASE FILE A BUG REPORT: headers given to the heightSub are in the wrong order: expected %d, got %d", height+1, from)
-		return
-	}
-	hs.SetHeight(to)
 
 	hs.heightReqsLk.Lock()
 	defer hs.heightReqsLk.Unlock()
+
+	hs.tryAdvanceHeight(headers...)
 
 	// there is a common case where we Pub only header
 	// in this case, we shouldn't loop over each heightReqs
@@ -127,4 +125,27 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 			delete(hs.heightReqs, height)
 		}
 	}
+}
+
+func (hs *heightSub[H]) tryAdvanceHeight(headers ...H) {
+	curr := hs.Height()
+
+	// collect all new heights.
+	for i := range headers {
+		h := headers[i].Height()
+		if h > curr {
+			hs.knownHeights[h] = struct{}{}
+		}
+	}
+
+	// try advance heightSub.Height if we saw a relevant height before.
+	for len(hs.knownHeights) > 0 {
+		_, ok := hs.knownHeights[curr+1]
+		if !ok {
+			break
+		}
+		delete(hs.knownHeights, curr+1)
+		curr++
+	}
+	hs.SetHeight(curr)
 }

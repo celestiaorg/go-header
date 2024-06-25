@@ -141,6 +141,58 @@ func TestStore_Append_BadHeader(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(4))
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), suite.Head().Hash())
+
+	in := suite.GenDummyHeaders(5)
+
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+	// wait for batch to be written.
+	time.Sleep(100 * time.Millisecond)
+
+	wantHead := in[4] // last header from incomming headers.
+
+	head, err = store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), wantHead.Hash())
+
+	in = suite.GenDummyHeaders(10)
+	// make a gap
+	missedHeaders, in := in[:5], in[5:]
+	latestHead := in[len(in)-1]
+
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+	// wait for batch to be written.
+	time.Sleep(100 * time.Millisecond)
+
+	// head is not advanced due to a gap.
+	head, err = store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), wantHead.Hash())
+
+	err = store.Append(ctx, missedHeaders...)
+	require.NoError(t, err)
+	// wait for batch to be written.
+	time.Sleep(100 * time.Millisecond)
+
+	// after appending missing headers we're on a latest header.
+	head, err = store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), latestHead.Hash())
+}
+
 // TestStore_GetRange tests possible combinations of requests and ensures that
 // the store can handle them adequately (even malformed requests)
 func TestStore_GetRange(t *testing.T) {
