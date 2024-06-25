@@ -198,7 +198,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 // isExpired checks if header is expired against trusting period.
 func isExpired[H header.Header[H]](header H, period time.Duration) bool {
 	expirationTime := header.Time().Add(period)
-	return !expirationTime.After(time.Now())
+	return expirationTime.Before(time.Now())
 }
 
 // isRecent checks if header is recent against the given recency threshold.
