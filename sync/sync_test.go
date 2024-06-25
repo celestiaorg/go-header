@@ -43,7 +43,7 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
 
-	time.Sleep(time.Millisecond * 10) // needs some to realize it is syncing
+	time.Sleep(time.Millisecond * 100) // needs some to realize it is syncing
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
 
