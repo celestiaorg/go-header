@@ -24,7 +24,7 @@ jobs:
     - name: Test & Coverage
       run: |
         go install github.com/ory/go-acc@v0.2.6
-        go-acc -o coverage.txt ./... -- -count=100 -run=^TestSyncSimpleRequestingHead$ -v --race
+        go-acc -o coverage.txt ./... -- -v --race
 
     - uses: codecov/codecov-action@v3
       with:
