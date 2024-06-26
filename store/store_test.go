@@ -154,43 +154,49 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, head.Hash(), suite.Head().Hash())
 
-	in := suite.GenDummyHeaders(5)
+	firstChunk := suite.GenDummyHeaders(5)
+	missedChunk := suite.GenDummyHeaders(5)
+	lastChunk := suite.GenDummyHeaders(5)
 
-	err = store.Append(ctx, in...)
-	require.NoError(t, err)
-	// wait for batch to be written.
-	time.Sleep(100 * time.Millisecond)
+	wantHead := firstChunk[len(firstChunk)-1]
+	latestHead := lastChunk[len(lastChunk)-1]
 
-	wantHead := in[4] // last header from incomming headers.
+	{
+		err := store.Append(ctx, firstChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
 
-	head, err = store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, head.Hash(), wantHead.Hash())
+		// head is advanced to the last known header.
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, head.Hash(), wantHead.Hash())
+	}
 
-	in = suite.GenDummyHeaders(10)
-	// make a gap
-	missedHeaders, in := in[:5], in[5:]
-	latestHead := in[len(in)-1]
+	{
+		err := store.Append(ctx, lastChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
 
-	err = store.Append(ctx, in...)
-	require.NoError(t, err)
-	// wait for batch to be written.
-	time.Sleep(100 * time.Millisecond)
+		// head is not advanced due to a gap.
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, head.Hash(), wantHead.Hash())
+	}
 
-	// head is not advanced due to a gap.
-	head, err = store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, head.Hash(), wantHead.Hash())
+	{
 
-	err = store.Append(ctx, missedHeaders...)
-	require.NoError(t, err)
-	// wait for batch to be written.
-	time.Sleep(100 * time.Millisecond)
+		err := store.Append(ctx, missedChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
 
-	// after appending missing headers we're on a latest header.
-	head, err = store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, head.Hash(), latestHead.Hash())
+		// after appending missing headers we're on the latest header.
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, head.Hash(), latestHead.Hash())
+	}
 }
 
 // TestStore_GetRange tests possible combinations of requests and ensures that
