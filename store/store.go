@@ -1,9 +1,11 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -51,6 +53,8 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
+
+	knownHeights map[uint64]struct{}
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
 
@@ -108,6 +112,8 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 		writesDn:    make(chan struct{}),
 		pending:     newBatch[H](params.WriteBatchSize),
 		Params:      params,
+
+		knownHeights: make(map[uint64]struct{}),
 	}, nil
 }
 
@@ -319,10 +325,15 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		head = *headPtr
 	}
 
+	hightestHead := head
+
+	slices.SortFunc(headers, func(a, b H) int {
+		return cmp.Compare(a.Height(), b.Height())
+	})
+
 	// collect valid headers
 	verified := make([]H, 0, lh)
 	for i, h := range headers {
-
 		err = head.Verify(h)
 		if err != nil {
 			var verErr *header.VerifyError
@@ -344,11 +355,17 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		}
 		verified = append(verified, h)
 		head = h
+
+		if hightestHead.Height()+1 == head.Height() {
+			hightestHead = head
+		} else {
+			s.knownHeights[head.Height()] = struct{}{}
+		}
 	}
 
 	onWrite := func() {
 		newHead := verified[len(verified)-1]
-		s.writeHead.Store(&newHead)
+		s.writeHead.Store(&hightestHead)
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
 	}
