@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"math/rand"
+	stdsync "sync"
 	"testing"
 	"time"
 
@@ -141,6 +143,52 @@ func TestStore_Append_BadHeader(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStore_Append(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(4))
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), suite.Head().Hash())
+
+	const workers = 10
+	const chunk = 5
+	headers := suite.GenDummyHeaders(workers * chunk)
+
+	errCh := make(chan error, workers)
+	var wg stdsync.WaitGroup
+	wg.Add(workers)
+
+	for i := range workers {
+		go func() {
+			defer wg.Done()
+			// make every append happened in random order.
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+
+			err := store.Append(ctx, headers[i*chunk:(i+1)*chunk]...)
+			errCh <- err
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		assert.NoError(t, err)
+	}
+
+	// wait for batch to be written.
+	time.Sleep(100 * time.Millisecond)
+
+	head, err = store.Head(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, head.Hash(), headers[len(headers)-1].Hash())
+}
+
 func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
@@ -155,22 +203,11 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 	assert.Equal(t, head.Hash(), suite.Head().Hash())
 
 	firstChunk := suite.GenDummyHeaders(5)
-	for i := range firstChunk {
-		t.Log("firstChunk:", firstChunk[i].Height(), firstChunk[i].Hash())
-	}
 	missedChunk := suite.GenDummyHeaders(5)
-	for i := range missedChunk {
-		t.Log("missedChunk:", missedChunk[i].Height(), missedChunk[i].Hash())
-	}
 	lastChunk := suite.GenDummyHeaders(5)
-	for i := range lastChunk {
-		t.Log("lastChunk:", lastChunk[i].Height(), lastChunk[i].Hash())
-	}
 
 	wantHead := firstChunk[len(firstChunk)-1]
-	t.Log("wantHead", wantHead.Height(), wantHead.Hash())
 	latestHead := lastChunk[len(lastChunk)-1]
-	t.Log("latestHead", latestHead.Height(), latestHead.Hash())
 
 	{
 		err := store.Append(ctx, firstChunk...)
@@ -197,7 +234,6 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		head, err := store.Head(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, head.Height(), wantHead.Height())
-		t.Log("head", head.Height(), head.Hash())
 		assert.Equal(t, head.Hash(), wantHead.Hash())
 
 		// check that store height is aligned with the head.

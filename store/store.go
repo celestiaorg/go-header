@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -53,9 +54,12 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
+
+	knownHeadersLk sync.Mutex
 	// knownHeaders tracks all processed headers
 	// to advance writeHead only over continuous headers.
 	knownHeaders map[uint64]H
+
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
 
@@ -322,17 +326,17 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	var err error
 	// take current write head to verify headers against
 	var head H
-	headPtr := s.writeHead.Load()
-	if headPtr == nil {
+	if headPtr := s.writeHead.Load(); headPtr == nil {
 		head, err = s.Head(ctx)
 		if err != nil {
 			return err
 		}
+		// store header from the disk.
+		gotHead := head
+		s.writeHead.CompareAndSwap(nil, &gotHead)
 	} else {
 		head = *headPtr
 	}
-
-	continuousHead := head
 
 	slices.SortFunc(headers, func(a, b H) int {
 		return cmp.Compare(a.Height(), b.Height())
@@ -363,17 +367,15 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		verified = append(verified, h)
 		head = h
 
-		if continuousHead.Height()+1 == head.Height() {
-			continuousHead = head
-		} else {
+		{
+			s.knownHeadersLk.Lock()
 			s.knownHeaders[head.Height()] = head
+			s.knownHeadersLk.Unlock()
 		}
 	}
 
 	onWrite := func() {
-		newHead := s.tryAdvanceHead(continuousHead)
-		s.writeHead.Store(&newHead)
-
+		newHead := s.tryAdvanceHead()
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
 	}
@@ -519,19 +521,32 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 }
 
 // try advance heighest header if we saw a higher continuous before.
-func (s *Store[H]) tryAdvanceHead(highestHead H) H {
-	curr := highestHead.Height()
+func (s *Store[H]) tryAdvanceHead() H {
+	s.knownHeadersLk.Lock()
+	defer s.knownHeadersLk.Unlock()
 
+	head := *s.writeHead.Load()
+	height := head.Height()
+	currHead := head
+
+	// try to move to the next height.
 	for len(s.knownHeaders) > 0 {
-		h, ok := s.knownHeaders[curr+1]
+		h, ok := s.knownHeaders[height+1]
 		if !ok {
 			break
 		}
-		highestHead = h
-		delete(s.knownHeaders, curr+1)
-		curr++
+		head = h
+		delete(s.knownHeaders, height+1)
+		height++
 	}
-	return highestHead
+
+	// if writeHead not set OR it's height is less then we found then update.
+	if currHead.Height() < head.Height() {
+		// we don't need CAS here because that's the only place
+		// where writeHead is updated, knownHeadersLk ensures 1 goroutine.
+		s.writeHead.Store(&head)
+	}
+	return head
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
