@@ -196,16 +196,17 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		t.Log("head", head.Height(), head.Hash())
 		assert.Equal(t, head.Hash(), wantHead.Hash())
 	}
-	// {
-	// 	err := store.Append(ctx, missedChunk...)
-	// 	require.NoError(t, err)
-	// 	// wait for batch to be written.
-	// 	time.Sleep(100 * time.Millisecond)
-	// 	// after appending missing headers we're on the latest header.
-	// 	head, err := store.Head(ctx)
-	// 	require.NoError(t, err)
-	// 	assert.Equal(t, head.Hash(), latestHead.Hash())
-	// }
+	{
+		err := store.Append(ctx, missedChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
+
+		// after appending missing headers we're on the latest header.
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, head.Hash(), latestHead.Hash())
+	}
 }
 
 // TestStore_GetRange tests possible combinations of requests and ensures that
