@@ -170,7 +170,15 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 }
 
 func (s *Store[H]) Height() uint64 {
-	return s.heightSub.Height()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	head, err := s.Head(ctx)
+	if err != nil {
+		// TODO(cristaloleg): log? panic? retry?
+		return 0
+	}
+	return head.Height()
 }
 
 // Head returns the highest contiguous header written to the store.

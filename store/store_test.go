@@ -182,6 +182,10 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		head, err := store.Head(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, head.Hash(), wantHead.Hash())
+
+		// check that store height is aligned with the head.
+		height := store.Height()
+		assert.Equal(t, height, head.Height())
 	}
 	{
 		err := store.Append(ctx, lastChunk...)
@@ -195,6 +199,10 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		assert.Equal(t, head.Height(), wantHead.Height())
 		t.Log("head", head.Height(), head.Hash())
 		assert.Equal(t, head.Hash(), wantHead.Hash())
+
+		// check that store height is aligned with the head.
+		height := store.Height()
+		assert.Equal(t, height, head.Height())
 	}
 	{
 		err := store.Append(ctx, missedChunk...)
@@ -206,6 +214,10 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		head, err := store.Head(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, head.Hash(), latestHead.Hash())
+
+		// check that store height is aligned with the head.
+		height := store.Height()
+		assert.Equal(t, height, head.Height())
 	}
 }
 

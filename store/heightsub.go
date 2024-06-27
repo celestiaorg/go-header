@@ -34,8 +34,17 @@ func (hs *heightSub[H]) Height() uint64 {
 }
 
 // SetHeight sets the new head height for heightSub.
+// Only higher then current height will be set.
 func (hs *heightSub[H]) SetHeight(height uint64) {
-	hs.height.Store(height)
+	for {
+		curr := hs.height.Load()
+		if curr >= height {
+			return
+		}
+		if hs.height.CompareAndSwap(curr, height) {
+			return
+		}
+	}
 }
 
 // Sub subscribes for a header of a given height.
