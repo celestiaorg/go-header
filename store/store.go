@@ -53,7 +53,8 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
-
+	// knownHeaders tracks all processed headers
+	// to advance writeHead only over continuous headers.
 	knownHeaders map[uint64]H
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
@@ -118,7 +119,7 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 }
 
 func (s *Store[H]) Init(ctx context.Context, initial H) error {
-	if s.heightSub.Height() != 0 {
+	if s.heightSub.isInited() {
 		return errors.New("store already initialized")
 	}
 	// trust the given header as the initial head

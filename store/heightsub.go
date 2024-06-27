@@ -28,14 +28,13 @@ func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	}
 }
 
-// Height reports current height.
-func (hs *heightSub[H]) Height() uint64 {
-	return hs.height.Load()
+func (hs *heightSub[H]) isInited() bool {
+	return hs.height.Load() != 0
 }
 
-// SetHeight sets the new head height for heightSub.
+// setHeight sets the new head height for heightSub.
 // Only higher then current height will be set.
-func (hs *heightSub[H]) SetHeight(height uint64) {
+func (hs *heightSub[H]) setHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
 		if curr >= height {
@@ -52,12 +51,12 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 // and caller should get it elsewhere.
 func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 	var zero H
-	if hs.Height() >= height {
+	if hs.height.Load() >= height {
 		return zero, errElapsedHeight
 	}
 
 	hs.heightReqsLk.Lock()
-	if hs.Height() >= height {
+	if hs.height.Load() >= height {
 		// This is a rare case we have to account for.
 		// The lock above can park a goroutine long enough for hs.height to change for a requested height,
 		// leaving the request never fulfilled and the goroutine deadlocked.
@@ -90,7 +89,7 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 
 // Pub processes all the outstanding subscriptions matching the given headers.
 // Pub is only safe when called from one goroutine.
-// For Pub to work correctly, heightSub has to be initialized with SetHeight
+// For Pub to work correctly, heightSub has to be initialized with setHeight
 // so that given headers are contiguous to the height on heightSub.
 func (hs *heightSub[H]) Pub(headers ...H) {
 	ln := len(headers)
@@ -99,7 +98,7 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 	}
 
 	from, to := headers[0].Height(), headers[ln-1].Height()
-	hs.SetHeight(to)
+	hs.setHeight(to)
 
 	hs.heightReqsLk.Lock()
 	defer hs.heightReqsLk.Unlock()
