@@ -366,12 +366,7 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		}
 		verified = append(verified, h)
 		head = h
-
-		{
-			s.knownHeadersLk.Lock()
-			s.knownHeaders[head.Height()] = head
-			s.knownHeadersLk.Unlock()
-		}
+		s.addKnownHeader(head)
 	}
 
 	onWrite := func() {
@@ -520,6 +515,12 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
+func (s *Store[H]) addKnownHeader(h H) {
+	s.knownHeadersLk.Lock()
+	s.knownHeaders[h.Height()] = h
+	s.knownHeadersLk.Unlock()
+}
+
 // try advance heighest header if we saw a higher continuous before.
 func (s *Store[H]) tryAdvanceHead() H {
 	s.knownHeadersLk.Lock()
@@ -540,7 +541,7 @@ func (s *Store[H]) tryAdvanceHead() H {
 		height++
 	}
 
-	// if writeHead not set OR it's height is less then we found then update.
+	// we found higher continuous header, so update.
 	if currHead.Height() < head.Height() {
 		// we don't need CAS here because that's the only place
 		// where writeHead is updated, knownHeadersLk ensures 1 goroutine.
