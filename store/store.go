@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -397,14 +398,26 @@ func (s *Store[H]) flushLoop() {
 
 		startTime := time.Now()
 		toFlush := s.pending.GetAll()
-		err := s.flush(ctx, toFlush...)
-		if err != nil {
+
+		const flushRetries = 3
+		for i := 0; i <= flushRetries; i++ {
+			err := s.flush(ctx, toFlush...)
+			if err == nil {
+				break
+			}
+
 			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
-			// TODO(@Wondertan): Should this be a fatal error case with os.Exit?
-			log.Errorw("writing header batch", "from", from, "to", to, "err", err)
+			if i == flushRetries {
+				log.Fatalw("writing header batch", "from", from, "to", to, "err", err)
+				os.Exit(1)
+				return
+			}
+			log.Errorw("writing header batch", "try", i+1, "from", from, "to", to, "err", err)
 			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
-			continue
+			sleep := 10 * time.Duration(i+1) * time.Millisecond
+			time.Sleep(sleep)
 		}
+
 		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
 		// reset pending
 		s.pending.Reset()
