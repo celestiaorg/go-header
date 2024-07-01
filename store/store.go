@@ -204,6 +204,7 @@ func (s *Store[H]) Tail(ctx context.Context) (H, error) {
 		var zero H
 		return zero, nil
 	}
+	s.tailHeader.Store(&tail)
 	return tail, nil
 }
 
