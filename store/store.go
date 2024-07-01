@@ -408,7 +408,7 @@ func (s *Store[H]) flushLoop() {
 
 			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
 			if i == flushRetries {
-				log.Fatalw("writing header batch", "from", from, "to", to, "err", err)
+				log.Errorw("writing header batch", "from", from, "to", to, "err", err)
 				os.Exit(1)
 				return
 			}
