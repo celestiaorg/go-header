@@ -67,6 +67,9 @@ type Store[H Header[H]] interface {
 	// Init initializes Store with the given head, meaning it is initialized with the genesis header.
 	Init(context.Context, H) error
 
+	// Tail returns the oldest known header.
+	Tail(context.Context) (H, error)
+
 	// Height reports current height of the chain head.
 	Height() uint64
 

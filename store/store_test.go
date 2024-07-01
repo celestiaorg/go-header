@@ -19,8 +19,9 @@ func TestStore(t *testing.T) {
 
 	suite := headertest.NewTestSuite(t)
 
+	genesis := suite.Head()
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head())
+	store := NewTestStore(t, ctx, ds, genesis)
 
 	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
 
@@ -85,6 +86,10 @@ func TestStore(t *testing.T) {
 	head, err = store.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, suite.Head().Hash(), head.Hash())
+
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tail.Hash(), genesis.Hash())
 
 	out, err = store.getRangeByHeight(ctx, 1, 13)
 	require.NoError(t, err)
@@ -278,6 +283,11 @@ func TestStoreInit(t *testing.T) {
 	require.NoError(t, err)
 
 	headers := suite.GenDummyHeaders(10)
-	err = store.Init(ctx, headers[len(headers)-1]) // init should work with any height, not only 1
+	h := headers[len(headers)-1]
+	err = store.Init(ctx, h) // init should work with any height, not only 1
+	require.NoError(t, err)
+
+	tail, err := store.Tail(ctx)
+	assert.Equal(t, tail.Hash(), h.Hash())
 	require.NoError(t, err)
 }
