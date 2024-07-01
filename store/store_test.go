@@ -22,6 +22,8 @@ func TestStore(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store := NewTestStore(t, ctx, ds, suite.Head())
 
+	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
+
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
