@@ -51,6 +51,8 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
+	// tailHeader maintains the current tail header.
+	tailHeader atomic.Pointer[H]
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
 
@@ -120,6 +122,8 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	if err != nil {
 		return err
 	}
+
+	s.tailHeader.Store(&initial)
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
 	s.heightSub.Pub(initial)
