@@ -10,6 +10,48 @@ import (
 // NOTE: Compared against subjective head which is guaranteed to be non-expired
 const DefaultHeightThreshold uint64 = 80000 // ~ 14 days of 15 second headers
 
+// VerifyForwards verifies untrusted header against trusted following general header checks and
+// custom user-specific checks defined in Header.Verify.
+func VerifyForwards[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
+	// general mandatory verification
+	err := verify(trstd, untrstd, heightThreshold)
+	if err != nil {
+		return &VerifyError{Reason: err}
+	}
+
+	// TODO: trstd.Height < untrstd.Height
+
+	// user defined verification
+	err = trstd.Verify(untrstd)
+	if err == nil {
+		return nil
+	}
+
+	// TODO: process error.
+	return nil
+}
+
+// VerifyBackwards verifies untrusted header against trusted following general header checks and
+// custom user-specific checks defined in Header.Verify.
+func VerifyBackwards[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
+	// general mandatory verification
+	err := verify(trstd, untrstd, heightThreshold)
+	if err != nil {
+		return &VerifyError{Reason: err}
+	}
+
+	// TODO: trstd.Height > untrstd.Height
+
+	// user defined verification
+	err = trstd.Verify(untrstd)
+	if err == nil {
+		return nil
+	}
+
+	// TODO: process error.
+	return nil
+}
+
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify.
 //
@@ -18,7 +60,7 @@ const DefaultHeightThreshold uint64 = 80000 // ~ 14 days of 15 second headers
 // Always returns VerifyError.
 func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	// general mandatory verification
-	err := verify[H](trstd, untrstd, heightThreshold)
+	err := verify(trstd, untrstd, heightThreshold)
 	if err != nil {
 		return &VerifyError{Reason: err}
 	}
@@ -75,6 +117,7 @@ func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	if known {
 		return fmt.Errorf("%w: '%d' <= current '%d'", ErrKnownHeader, untrstd.Height(), trstd.Height())
 	}
+
 	// reject headers with height too far from the future
 	// this is essential for headers failed non-adjacent verification
 	// yet taken as sync target
@@ -82,7 +125,6 @@ func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	if !adequateHeight {
 		return fmt.Errorf("%w: '%d' - current '%d' >= threshold '%d'", ErrHeightFromFuture, untrstd.Height(), trstd.Height(), heightThreshold)
 	}
-
 	return nil
 }
 
