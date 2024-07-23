@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -399,22 +398,18 @@ func (s *Store[H]) flushLoop() {
 		startTime := time.Now()
 		toFlush := s.pending.GetAll()
 
-		const flushRetries = 3
-		for i := 0; i <= flushRetries; i++ {
+		for i := 0; ; i++ {
 			err := s.flush(ctx, toFlush...)
 			if err == nil {
 				break
 			}
 
 			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
-			if i == flushRetries {
-				log.Errorw("writing header batch", "from", from, "to", to, "err", err)
-				os.Exit(1)
-				return
-			}
 			log.Errorw("writing header batch", "try", i+1, "from", from, "to", to, "err", err)
 			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
-			sleep := 10 * time.Duration(i+1) * time.Millisecond
+
+			const maxRetrySleep = time.Second
+			sleep := min(10*time.Duration(i+1)*time.Millisecond, maxRetrySleep)
 			time.Sleep(sleep)
 		}
 
