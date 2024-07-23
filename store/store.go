@@ -180,6 +180,10 @@ func (s *Store[H]) Height() uint64 {
 
 	head, err := s.Head(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, datastore.ErrNotFound) {
+			return 0
+		}
 		panic(err)
 	}
 	return head.Height()
