@@ -180,8 +180,7 @@ func (s *Store[H]) Height() uint64 {
 
 	head, err := s.Head(ctx)
 	if err != nil {
-		// TODO(cristaloleg): log? panic? retry?
-		return 0
+		panic(err)
 	}
 	return head.Height()
 }
@@ -333,7 +332,7 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		}
 		// store header from the disk.
 		gotHead := head
-		s.writeHead.CompareAndSwap(nil, &gotHead)
+		s.writeHead.Store(&gotHead)
 	} else {
 		head = *headPtr
 	}
