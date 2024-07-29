@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,6 +88,45 @@ func TestStore(t *testing.T) {
 	out, err = store.getRangeByHeight(ctx, 1, 13)
 	require.NoError(t, err)
 	assert.Len(t, out, 12)
+}
+
+func TestStore_BadFlush(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	var callCount atomic.Int32
+
+	rootDS := sync.MutexWrap(datastore.NewMapDatastore())
+	ds := &badBatchDatastore{
+		Datastore: rootDS,
+		BatchFn: func(ctx context.Context) (datastore.Batch, error) {
+			count := callCount.Add(1)
+			// do not fail on 1st call due to store.Init and stop failing after 5 call.
+			if count > 1 && count < 5 {
+				return nil, context.Canceled
+			}
+			return rootDS.Batch(ctx)
+		},
+	}
+	store := NewTestStore(t, ctx, ds, suite.Head())
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
+
+	in := suite.GenDummyHeaders(10)
+	err = store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		// accessing store.ds directly because inside store we use wrappedStore,
+		// accessing ds or rootDS directly will result in constant error due to key prefix.
+		ok, err := store.ds.Has(ctx, headKey)
+		require.NoError(t, err)
+		return ok
+	}, 3*time.Second, 50*time.Millisecond)
 }
 
 // TestStore_GetRangeByHeight_ExpectedRange
@@ -278,4 +318,19 @@ func TestStoreInit(t *testing.T) {
 	headers := suite.GenDummyHeaders(10)
 	err = store.Init(ctx, headers[len(headers)-1]) // init should work with any height, not only 1
 	require.NoError(t, err)
+}
+
+var _ datastore.Batching = &badBatchDatastore{}
+
+type badBatchDatastore struct {
+	datastore.Datastore
+
+	BatchFn func(ctx context.Context) (datastore.Batch, error)
+}
+
+func (s *badBatchDatastore) Batch(ctx context.Context) (datastore.Batch, error) {
+	if s.BatchFn != nil {
+		return s.BatchFn(ctx)
+	}
+	return nil, nil
 }
