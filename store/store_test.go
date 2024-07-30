@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
 	stdsync "sync"
@@ -22,7 +23,7 @@ func TestStore(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(5))
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -38,9 +39,12 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, h.Hash(), out[i].Hash())
 	}
 
-	head, err = store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, out[len(out)-1].Hash(), head.Hash())
+	// we need to wait for a flush
+	assert.Eventually(t, func() bool {
+		head, err = store.Head(ctx)
+		require.NoError(t, err)
+		return bytes.Equal(out[len(out)-1].Hash(), head.Hash())
+	}, time.Second, 100*time.Millisecond)
 
 	ok, err := store.Has(ctx, in[5].Hash())
 	require.NoError(t, err)
