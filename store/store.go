@@ -322,7 +322,6 @@ func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
 
 // Append the given headers to the store. Real write to the disk happens
 // asynchronously and might fail without reporting error (just logging).
-// TODO(cristaloleg): add retries to the flush worker.
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	lh := len(headers)
 	if lh == 0 {
@@ -521,9 +520,9 @@ func (s *Store[H]) tryAdvanceHead(headers ...H) {
 		s.knownHeaders[h.Height()] = h
 	}
 
-	head := *headPtr
-	height := head.Height()
-	currHead := head
+	currHead := *headPtr
+	height := currHead.Height()
+	newHead := currHead
 
 	// try to move to the next height.
 	for len(s.knownHeaders) > 0 {
@@ -531,18 +530,19 @@ func (s *Store[H]) tryAdvanceHead(headers ...H) {
 		if !ok {
 			break
 		}
-		head = h
+		newHead = h
 		delete(s.knownHeaders, height+1)
 		height++
 	}
 
-	// we found higher continuous header, so update.
-	if currHead.Height() < head.Height() {
+	// we found higher continuous header - update.
+	if currHead.Height() < newHead.Height() {
 		// we don't need CAS here because that's the only place
 		// where writeHead is updated, knownHeadersLk ensures 1 goroutine.
-		s.writeHead.Store(&head)
-		log.Infow("new head", "height", head.Height(), "hash", head.Hash())
-		s.metrics.newHead(head.Height())
+		// NOTE: Store[H].Head also updates writeHead but only once when it's nil.
+		s.writeHead.Store(&newHead)
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
 	}
 }
 
