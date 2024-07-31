@@ -27,6 +27,7 @@ type Header[H any] interface {
 	// Time returns time when header was created.
 	Time() time.Time
 	// Verify validates given untrusted Header against trusted Header.
+	// Verify should be able to validate both adjacent and non-adjacent headers.
 	Verify(H) error
 	// Validate performs stateless validation to check for missed/incorrect fields.
 	Validate() error

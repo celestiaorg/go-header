@@ -407,13 +407,20 @@ func (s *Store[H]) flushLoop() {
 
 		startTime := time.Now()
 		toFlush := s.pending.GetAll()
-		err := s.flush(ctx, toFlush...)
-		if err != nil {
+
+		for i := 0; ; i++ {
+			err := s.flush(ctx, toFlush...)
+			if err == nil {
+				break
+			}
+
 			from, to := toFlush[0].Height(), toFlush[len(toFlush)-1].Height()
-			// TODO(@Wondertan): Should this be a fatal error case with os.Exit?
-			log.Errorw("writing header batch", "from", from, "to", to, "err", err)
+			log.Errorw("writing header batch", "try", i+1, "from", from, "to", to, "err", err)
 			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
-			continue
+
+			const maxRetrySleep = time.Second
+			sleep := min(10*time.Duration(i+1)*time.Millisecond, maxRetrySleep)
+			time.Sleep(sleep)
 		}
 
 		s.tryAdvanceHead(toFlush...)
