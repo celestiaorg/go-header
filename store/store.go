@@ -482,6 +482,22 @@ func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 	return s.Get(ctx, head)
 }
 
+// readTail loads the tail from the datastore.
+func (s *Store[H]) readTail(ctx context.Context) (H, error) {
+	var zero H
+	b, err := s.ds.Get(ctx, tailKey)
+	if err != nil {
+		return zero, err
+	}
+
+	var tail header.Hash
+	if err := tail.UnmarshalJSON(b); err != nil {
+		return zero, err
+	}
+
+	return s.Get(ctx, tail)
+}
+
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	startTime := time.Now()
 	data, err := s.ds.Get(ctx, datastore.NewKey(hash.String()))

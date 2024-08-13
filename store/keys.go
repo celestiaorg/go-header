@@ -8,7 +8,10 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-var headKey = datastore.NewKey("head")
+var (
+	headKey = datastore.NewKey("head")
+	tailKey = datastore.NewKey("tail")
+)
 
 func heightKey(h uint64) datastore.Key {
 	return datastore.NewKey(strconv.Itoa(int(h)))
