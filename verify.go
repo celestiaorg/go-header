@@ -14,11 +14,10 @@ const DefaultHeightThreshold uint64 = 80000 // ~ 14 days of 15 second headers
 // custom user-specific checks defined in Header.Verify.
 //
 // Given headers must be non-zero
-// If heightThreshold is zero, uses DefaultHeightThreshold.
 // Always returns VerifyError.
-func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
+func Verify[H Header[H]](trstd, untrstd H) error {
 	// general mandatory verification
-	err := verify[H](trstd, untrstd, heightThreshold)
+	err := verify[H](trstd, untrstd)
 	if err != nil {
 		return &VerifyError{Reason: err}
 	}
@@ -46,11 +45,7 @@ func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 
 // verify is a little bro of Verify yet performs mandatory Header checks
 // for any Header implementation.
-func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
-	if heightThreshold == 0 {
-		heightThreshold = DefaultHeightThreshold
-	}
-
+func verify[H Header[H]](trstd, untrstd H) error {
 	if trstd.IsZero() {
 		return ErrZeroHeader
 	}
