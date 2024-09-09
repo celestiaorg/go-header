@@ -75,13 +75,6 @@ func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	if known {
 		return fmt.Errorf("%w: '%d' <= current '%d'", ErrKnownHeader, untrstd.Height(), trstd.Height())
 	}
-	// reject headers with height too far from the future
-	// this is essential for headers failed non-adjacent verification
-	// yet taken as sync target
-	adequateHeight := untrstd.Height()-trstd.Height() < heightThreshold
-	if !adequateHeight {
-		return fmt.Errorf("%w: '%d' - current '%d' >= threshold '%d'", ErrHeightFromFuture, untrstd.Height(), trstd.Height(), heightThreshold)
-	}
 
 	return nil
 }

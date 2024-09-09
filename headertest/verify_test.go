@@ -98,15 +98,6 @@ func TestVerify(t *testing.T) {
 		{
 			trusted: trusted,
 			prepare: func() *DummyHeader {
-				untrusted := next()
-				untrusted.HeightI += 100000
-				return untrusted
-			},
-			err: header.ErrHeightFromFuture,
-		},
-		{
-			trusted: trusted,
-			prepare: func() *DummyHeader {
 				return zero
 			},
 			err: header.ErrZeroHeader,
