@@ -182,7 +182,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 			}
 			// if tracked (untrusted) peers were requested, verify head
 			if useTrackedPeers {
-				err = header.Verify[H](reqParams.TrustedHead, headers[0], header.DefaultHeightThreshold)
+				err = header.Verify[H](reqParams.TrustedHead, headers[0])
 				if err != nil {
 					var verErr *header.VerifyError
 					if errors.As(err, &verErr) && verErr.SoftFailure {
