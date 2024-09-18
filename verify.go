@@ -75,12 +75,11 @@ func verify[H Header[H]](trstd, untrstd H) error {
 }
 
 var (
-	ErrZeroHeader       = errors.New("zero header")
-	ErrWrongChainID     = errors.New("wrong chain id")
-	ErrUnorderedTime    = errors.New("unordered headers")
-	ErrFromFuture       = errors.New("header is from the future")
-	ErrKnownHeader      = errors.New("known header")
-	ErrHeightFromFuture = errors.New("header height is far from future")
+	ErrZeroHeader    = errors.New("zero header")
+	ErrWrongChainID  = errors.New("wrong chain id")
+	ErrUnorderedTime = errors.New("unordered headers")
+	ErrFromFuture    = errors.New("header is from the future")
+	ErrKnownHeader   = errors.New("known header")
 )
 
 // VerifyError is thrown if a Header failed verification.
