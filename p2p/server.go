@@ -89,6 +89,14 @@ func (serv *ExchangeServer[H]) Stop(context.Context) error {
 
 // requestHandler handles inbound HeaderRequests.
 func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
+	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RequestTimeout)
+	defer cancel()
+
+	ctx, span := tracerServ.Start(ctx, "request", trace.WithAttributes(
+		attribute.String("peerID", stream.Conn().RemotePeer().String()),
+	))
+	defer span.End()
+
 	err := stream.SetReadDeadline(time.Now().Add(serv.Params.ReadDeadline))
 	if err != nil {
 		log.Debugf("error setting deadline: %s", err)
@@ -99,14 +107,13 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	if err != nil {
 		log.Warnw("server: reading header request from stream", "err", err)
 		stream.Reset() //nolint:errcheck
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 	if err = stream.CloseRead(); err != nil {
 		log.Error(err)
+		span.SetStatus(codes.Error, err.Error())
 	}
-
-	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RequestTimeout)
-	defer cancel()
 
 	var headers []H
 	// retrieve and write Headers
@@ -126,7 +133,9 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		code = p2p_pb.StatusCode_OK
 	case header.ErrNotFound:
 		code = p2p_pb.StatusCode_NOT_FOUND
+		span.SetStatus(codes.Ok, err.Error())
 	default:
+		span.SetStatus(codes.Error, err.Error())
 		stream.Reset() //nolint:errcheck
 		return
 	}
@@ -150,6 +159,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 			if err != nil {
 				log.Warnw("server: marshaling header to proto", "height", h.Height, "err", err)
 				stream.Reset() //nolint:errcheck
+				span.SetStatus(codes.Error, err.Error())
 				return
 			}
 		}
@@ -157,6 +167,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		if err != nil {
 			log.Warnw("server: writing header to stream", "err", err)
 			stream.Reset() //nolint:errcheck
+			span.SetStatus(codes.Error, err.Error())
 			return
 		}
 	}
