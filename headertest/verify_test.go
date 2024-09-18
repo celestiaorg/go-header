@@ -98,15 +98,6 @@ func TestVerify(t *testing.T) {
 		{
 			trusted: trusted,
 			prepare: func() *DummyHeader {
-				untrusted := next()
-				untrusted.HeightI += 100000
-				return untrusted
-			},
-			err: header.ErrHeightFromFuture,
-		},
-		{
-			trusted: trusted,
-			prepare: func() *DummyHeader {
 				return zero
 			},
 			err: header.ErrZeroHeader,
@@ -122,7 +113,7 @@ func TestVerify(t *testing.T) {
 
 	for i, test := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			err := header.Verify(test.trusted, test.prepare(), 0)
+			err := header.Verify(test.trusted, test.prepare())
 			if test.err != nil {
 				var verErr *header.VerifyError
 				assert.ErrorAs(t, err, &verErr)

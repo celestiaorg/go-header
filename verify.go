@@ -14,11 +14,10 @@ const DefaultHeightThreshold uint64 = 80000 // ~ 14 days of 15 second headers
 // custom user-specific checks defined in Header.Verify.
 //
 // Given headers must be non-zero
-// If heightThreshold is zero, uses DefaultHeightThreshold.
 // Always returns VerifyError.
-func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
+func Verify[H Header[H]](trstd, untrstd H) error {
 	// general mandatory verification
-	err := verify[H](trstd, untrstd, heightThreshold)
+	err := verify[H](trstd, untrstd)
 	if err != nil {
 		return &VerifyError{Reason: err}
 	}
@@ -46,11 +45,7 @@ func Verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 
 // verify is a little bro of Verify yet performs mandatory Header checks
 // for any Header implementation.
-func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
-	if heightThreshold == 0 {
-		heightThreshold = DefaultHeightThreshold
-	}
-
+func verify[H Header[H]](trstd, untrstd H) error {
 	if trstd.IsZero() {
 		return ErrZeroHeader
 	}
@@ -75,24 +70,16 @@ func verify[H Header[H]](trstd, untrstd H, heightThreshold uint64) error {
 	if known {
 		return fmt.Errorf("%w: '%d' <= current '%d'", ErrKnownHeader, untrstd.Height(), trstd.Height())
 	}
-	// reject headers with height too far from the future
-	// this is essential for headers failed non-adjacent verification
-	// yet taken as sync target
-	adequateHeight := untrstd.Height()-trstd.Height() < heightThreshold
-	if !adequateHeight {
-		return fmt.Errorf("%w: '%d' - current '%d' >= threshold '%d'", ErrHeightFromFuture, untrstd.Height(), trstd.Height(), heightThreshold)
-	}
 
 	return nil
 }
 
 var (
-	ErrZeroHeader       = errors.New("zero header")
-	ErrWrongChainID     = errors.New("wrong chain id")
-	ErrUnorderedTime    = errors.New("unordered headers")
-	ErrFromFuture       = errors.New("header is from the future")
-	ErrKnownHeader      = errors.New("known header")
-	ErrHeightFromFuture = errors.New("header height is far from future")
+	ErrZeroHeader    = errors.New("zero header")
+	ErrWrongChainID  = errors.New("wrong chain id")
+	ErrUnorderedTime = errors.New("unordered headers")
+	ErrFromFuture    = errors.New("header is from the future")
+	ErrKnownHeader   = errors.New("known header")
 )
 
 // VerifyError is thrown if a Header failed verification.
