@@ -408,9 +408,12 @@ func (s *Store[H]) flushLoop() {
 			log.Errorw("writing header batch", "try", i+1, "from", from, "to", to, "err", err)
 			s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), true)
 
-			const maxRetrySleep = time.Second
-			sleep := min(10*time.Duration(i+1)*time.Millisecond, maxRetrySleep)
-			time.Sleep(sleep)
+			const maxRetrySleep = 100 * time.Millisecond
+			sleepDur := min(10*time.Duration(i+1)*time.Millisecond, maxRetrySleep)
+
+			if err := sleep(ctx, sleepDur); err != nil {
+				break
+			}
 		}
 
 		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
@@ -510,4 +513,17 @@ func indexTo[H header.Header[H]](ctx context.Context, batch datastore.Batch, hea
 		}
 	}
 	return nil
+}
+
+// sleep with cancellation, returns nil when timer has fired, error otherwise.
+func sleep(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
