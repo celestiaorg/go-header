@@ -191,6 +191,23 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	}
 }
 
+// Tail implements [header.Store] interface.
+func (s *Store[H]) Tail(ctx context.Context) (H, error) {
+	tailPtr := s.tailHeader.Load()
+	if tailPtr != nil {
+		return *tailPtr, nil
+	}
+
+	// TODO(cristaloleg): for now we return genesis header, return real tail.
+	tail, err := s.GetByHeight(ctx, 1)
+	if err != nil {
+		var zero H
+		return zero, nil
+	}
+	s.tailHeader.Store(&tail)
+	return tail, nil
+}
+
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	var zero H
 	if v, ok := s.cache.Get(hash.String()); ok {

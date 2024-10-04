@@ -51,6 +51,16 @@ func (m *Store[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 	return m.Headers[m.HeadHeight], nil
 }
 
+func (m *Store[H]) Tail(context.Context) (H, error) {
+	var err error
+	// TODO(cristaloleg): for now trying to return genesis. Fix for real oldest header.
+	h, ok := m.Headers[1]
+	if !ok {
+		err = header.ErrNotFound
+	}
+	return h, err
+}
+
 func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	for _, header := range m.Headers {
 		if bytes.Equal(header.Hash(), hash) {
