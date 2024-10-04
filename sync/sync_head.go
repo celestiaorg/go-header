@@ -228,6 +228,12 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHeight uint64, netwo
 			return err
 		}
 
+		_, _ = s.subjectiveHead(ctx)
+
+		if err := header.Verify(subjHeader, networkHeader); err == nil {
+			return nil
+		}
+
 		if err := header.Verify(subjHeader, networkHeader); err == nil {
 			return nil
 		}
