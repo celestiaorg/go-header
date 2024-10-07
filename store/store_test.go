@@ -248,7 +248,7 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		err := store.Append(ctx, missedChunk...)
 		require.NoError(t, err)
 		// wait for batch to be written.
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Second)
 
 		// after appending missing headers we're on the latest header.
 		head, err := store.Head(ctx)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -54,11 +53,6 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
-
-	knownHeadersLk sync.Mutex
-	// knownHeaders tracks all processed headers
-	// to advance writeHead only over continuous headers.
-	knownHeaders map[uint64]H
 
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
@@ -117,8 +111,6 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 		writesDn:    make(chan struct{}),
 		pending:     newBatch[H](params.WriteBatchSize),
 		Params:      params,
-
-		knownHeaders: make(map[uint64]H),
 	}, nil
 }
 
@@ -423,7 +415,7 @@ func (s *Store[H]) flushLoop() {
 			time.Sleep(sleep)
 		}
 
-		s.tryAdvanceHead(toFlush...)
+		s.tryAdvanceHead(ctx, toFlush...)
 
 		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
 		// reset pending
@@ -513,43 +505,35 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// try advance heighest header if we saw a higher continuous before.
-func (s *Store[H]) tryAdvanceHead(headers ...H) {
-	headPtr := s.writeHead.Load()
-	if headPtr == nil || len(headers) == 0 {
+// try advance heighest writeHead based on passed or already written headers.
+func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
+	writeHead := s.writeHead.Load()
+	if writeHead == nil || len(headers) == 0 {
 		return
 	}
 
-	s.knownHeadersLk.Lock()
-	defer s.knownHeadersLk.Unlock()
+	currHeight := (*writeHead).Height()
 
-	for _, h := range headers {
-		s.knownHeaders[h.Height()] = h
-	}
-
-	currHead := *headPtr
-	height := currHead.Height()
-	newHead := currHead
-
-	// try to move to the next height.
-	for len(s.knownHeaders) > 0 {
-		h, ok := s.knownHeaders[height+1]
-		if !ok {
+	// advance based on passed headers.
+	for i := 0; i < len(headers); i++ {
+		if headers[i].Height() != currHeight+1 {
 			break
 		}
-		newHead = h
-		delete(s.knownHeaders, height+1)
-		height++
+		s.writeHead.Store(&headers[i])
+		currHeight++
 	}
 
-	// we found higher continuous header - update.
-	if currHead.Height() < newHead.Height() {
-		// we don't need CAS here because that's the only place
-		// where writeHead is updated, knownHeadersLk ensures 1 goroutine.
-		// NOTE: Store[H].Head also updates writeHead but only once when it's nil.
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	// advance based on already written headers.
+	for {
+		newHead, err := s.GetByHeight(ctx, currHeight+1)
+		if err != nil {
+			break
+		}
 		s.writeHead.Store(&newHead)
-		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-		s.metrics.newHead(newHead.Height())
+		currHeight++
 	}
 }
 
