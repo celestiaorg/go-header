@@ -184,7 +184,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	}
 
 	if verErr.SoftFailure {
-		err := s.verifySkipping(ctx, sbjHead.Height(), newHead)
+		err := s.verifySkipping(ctx, sbjHead, newHead)
 		return false, err
 	}
 
@@ -213,31 +213,42 @@ Client tries to apply height 1000 against 750 and if there is sufficient overlap
 it applies 1000 as the subjective head.
 If not, it downloads the halfway point and retries the process.
 */
-func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHeight uint64, networkHeader H) error {
+func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
+	subjHeight := subjHead.Height()
+
 	diff := networkHeader.Height() - subjHeight
 	if diff <= 0 {
 		panic(fmt.Sprintf("implementation bug: diff is %d", diff))
 	}
 
-	for diff > 0 {
-		diff = diff / 2
-		subjHeight += diff
+	for diff > 1 {
+		candidateHeight := subjHeight + diff/2
 
-		subjHeader, err := s.getter.GetByHeight(ctx, subjHeight)
+		candidateHeader, err := s.getter.GetByHeight(ctx, candidateHeight)
 		if err != nil {
 			return err
 		}
 
-		_, _ = s.subjectiveHead(ctx)
+		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			// candidate failed, go deeper in 1st half.
+			diff = diff / 2
+			continue
+		}
 
-		if err := header.Verify(subjHeader, networkHeader); err == nil {
+		// candidate was validated properly, update subjHead.
+		subjHead = candidateHeader
+		// TODO: s.setSubjectiveHead(ctx, subjHead)
+
+		if err := header.Verify(subjHead, networkHeader); err == nil {
+			// network head validate properly, return success.
 			return nil
 		}
 
-		if err := header.Verify(subjHeader, networkHeader); err == nil {
-			return nil
-		}
+		// new subjHead failed, go deeper in 2nd half.
+		subjHeight = subjHead.Height()
+		diff = networkHeader.Height() - subjHeight
 	}
+
 	return &NewValidatorSetCantBeTrustedError{
 		NetHeadHeight: networkHeader.Height(),
 		NetHeadHash:   networkHeader.Hash(),
