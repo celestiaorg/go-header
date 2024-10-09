@@ -190,6 +190,7 @@ func TestStore_Append(t *testing.T) {
 
 	head, err = store.Head(ctx)
 	assert.NoError(t, err)
+	assert.Equal(t, head.Height(), headers[len(headers)-1].Height())
 	assert.Equal(t, head.Hash(), headers[len(headers)-1].Hash())
 }
 
@@ -222,6 +223,7 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		// head is advanced to the last known header.
 		head, err := store.Head(ctx)
 		require.NoError(t, err)
+		assert.Equal(t, head.Height(), wantHead.Height())
 		assert.Equal(t, head.Hash(), wantHead.Hash())
 
 		// check that store height is aligned with the head.
@@ -253,6 +255,7 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		// after appending missing headers we're on the latest header.
 		head, err := store.Head(ctx)
 		require.NoError(t, err)
+		assert.Equal(t, head.Height(), latestHead.Height())
 		assert.Equal(t, head.Hash(), latestHead.Hash())
 
 		// check that store height is aligned with the head.

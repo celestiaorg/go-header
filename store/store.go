@@ -243,12 +243,16 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
+	return s.getByHeight(ctx, height)
+}
+
+func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
+	var zero H
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
 		}
-
 		return zero, err
 	}
 
@@ -519,7 +523,8 @@ func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
 		if headers[i].Height() != currHeight+1 {
 			break
 		}
-		s.writeHead.Store(&headers[i])
+		newHead := headers[i]
+		s.writeHead.Store(&newHead)
 		currHeight++
 	}
 
@@ -528,10 +533,11 @@ func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
 
 	// advance based on already written headers.
 	for {
-		newHead, err := s.GetByHeight(ctx, currHeight+1)
+		h, err := s.getByHeight(ctx, currHeight+1)
 		if err != nil {
 			break
 		}
+		newHead := h
 		s.writeHead.Store(&newHead)
 		currHeight++
 	}
