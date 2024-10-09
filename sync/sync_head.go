@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -173,20 +174,89 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	}
 
 	var verErr *header.VerifyError
-	if errors.As(err, &verErr) && !verErr.SoftFailure {
-		logF := log.Warnw
-		if errors.Is(err, header.ErrKnownHeader) {
-			logF = log.Debugw
-		}
-		logF("invalid network header",
-			"height_of_invalid", newHead.Height(),
-			"hash_of_invalid", newHead.Hash(),
-			"height_of_subjective", sbjHead.Height(),
-			"hash_of_subjective", sbjHead.Hash(),
-			"reason", verErr.Reason)
+	if !errors.As(err, &verErr) {
+		return false, nil
 	}
 
+	if verErr.SoftFailure {
+		err := s.verifySkipping(ctx, sbjHead, newHead)
+		return false, err
+	}
+
+	logF := log.Warnw
+	if errors.Is(err, header.ErrKnownHeader) {
+		logF = log.Debugw
+	}
+	logF("invalid network header",
+		"height_of_invalid", newHead.Height(),
+		"hash_of_invalid", newHead.Hash(),
+		"height_of_subjective", sbjHead.Height(),
+		"hash_of_subjective", sbjHead.Hash(),
+		"reason", verErr.Reason,
+	)
+
 	return verErr.SoftFailure, err
+}
+
+/*
+Subjective head is 500, network head is 1000.
+Header at height 1000 does not have sufficient validator set overlap,
+so the client downloads height 750 (which does have enough sufficient overlap),
+verifies it against 500 and advances the subjective head to 750.
+
+Client tries to apply height 1000 against 750 and if there is sufficient overlap,
+it applies 1000 as the subjective head.
+If not, it downloads the halfway point and retries the process.
+*/
+func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
+	subjHeight := subjHead.Height()
+
+	diff := networkHeader.Height() - subjHeight
+	if diff <= 0 {
+		panic(fmt.Sprintf("implementation bug: diff is %d", diff))
+	}
+
+	for diff > 1 {
+		candidateHeight := subjHeight + diff/2
+
+		candidateHeader, err := s.getter.GetByHeight(ctx, candidateHeight)
+		if err != nil {
+			return err
+		}
+
+		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			// candidate failed, go deeper in 1st half.
+			diff = diff / 2
+			continue
+		}
+
+		// candidate was validated properly, update subjHead.
+		subjHead = candidateHeader
+		// TODO: s.setSubjectiveHead(ctx, subjHead)
+
+		if err := header.Verify(subjHead, networkHeader); err == nil {
+			// network head validate properly, return success.
+			return nil
+		}
+
+		// new subjHead failed, go deeper in 2nd half.
+		subjHeight = subjHead.Height()
+		diff = networkHeader.Height() - subjHeight
+	}
+
+	return &NewValidatorSetCantBeTrustedError{
+		NetHeadHeight: networkHeader.Height(),
+		NetHeadHash:   networkHeader.Hash(),
+	}
+}
+
+type NewValidatorSetCantBeTrustedError struct {
+	NetHeadHeight uint64
+	NetHeadHash   []byte
+}
+
+func (e *NewValidatorSetCantBeTrustedError) Error() string {
+	return fmt.Sprintf("sync: new validator set cant be trusted: head %d, attempted %s", e.NetHeadHeight, e.NetHeadHash)
 }
 
 // isExpired checks if header is expired against trusting period.
