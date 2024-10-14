@@ -261,7 +261,7 @@ type NewValidatorSetCantBeTrustedError struct {
 }
 
 func (e *NewValidatorSetCantBeTrustedError) Error() string {
-	return fmt.Sprintf("sync: new validator set cant be trusted: head %d, attempted %s", e.NetHeadHeight, e.NetHeadHash)
+	return fmt.Sprintf("sync: new validator set cant be trusted: head %d, attempted %x", e.NetHeadHeight, e.NetHeadHash)
 }
 
 // isExpired checks if header is expired against trusting period.

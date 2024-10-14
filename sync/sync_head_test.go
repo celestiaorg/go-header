@@ -168,6 +168,146 @@ func TestSyncer_HeadWithNotEnoughValidators(t *testing.T) {
 	require.True(t, wrappedGetter.withTrustedHead)
 }
 
+func TestSyncer_verifySkipping(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	const total = 1000
+	const badHeaderHeight = total + 1
+
+	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
+	localStore := newTestStore(t, ctx, head)
+	remoteStore := newTestStore(t, ctx, head)
+
+	// create a wrappedGetter to track exchange interactions
+	wrappedGetter := newWrappedGetter(local.NewExchange(remoteStore))
+
+	syncer, err := NewSyncer(
+		wrappedGetter,
+		localStore,
+		headertest.NewDummySubscriber(),
+		WithBlockTime(time.Nanosecond),
+		WithRecencyThreshold(time.Nanosecond), // forces a request for a new sync target
+		// ensures that syncer's store contains a subjective head that is within
+		// the unbonding period so that the syncer can use a header from the network
+		// as a sync target
+		WithTrustingPeriod(time.Hour),
+	)
+	require.NoError(t, err)
+
+	// start the syncer which triggers a Head request that will
+	// load the syncer's subjective head from the store, and request
+	// a new sync target from the network rather than from trusted peers
+	err = syncer.Start(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = syncer.Stop(ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("success (with bad candidates)", func(t *testing.T) {
+		const iters = 4
+
+		headers := suite.GenDummyHeaders(total)
+		err = remoteStore.Append(ctx, headers...)
+		require.NoError(t, err)
+
+		var verifyCounter atomic.Int32
+		for i := range total {
+			headers[i].VerifyFn = func(hdr *headertest.DummyHeader) error {
+				if i >= 501 {
+					return nil
+				}
+
+				verifyCounter.Add(1)
+				if verifyCounter.Load() <= iters {
+					return &header.VerifyError{
+						Reason:      headertest.ErrDummyVerify,
+						SoftFailure: hdr.SoftFailure,
+					}
+				}
+				return nil
+			}
+		}
+
+		headers[total-1].VerifyFailure = true
+		headers[total-1].SoftFailure = true
+
+		subjHead, err := syncer.subjectiveHead(ctx)
+		require.NoError(t, err)
+
+		err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+		require.NoError(t, err)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		const iters = 4
+
+		headers := suite.GenDummyHeaders(total)
+		err = remoteStore.Append(ctx, headers...)
+		require.NoError(t, err)
+
+		var verifyCounter atomic.Int32
+		for i := range total {
+			headers[i].VerifyFn = func(hdr *headertest.DummyHeader) error {
+				if hdr.Height() != badHeaderHeight {
+					return nil
+				}
+
+				verifyCounter.Add(1)
+				if verifyCounter.Load() >= iters {
+					return nil
+				}
+
+				return &header.VerifyError{
+					Reason:      headertest.ErrDummyVerify,
+					SoftFailure: hdr.SoftFailure,
+				}
+			}
+		}
+
+		headers[total-1].VerifyFailure = true
+		headers[total-1].SoftFailure = true
+
+		subjHead, err := syncer.subjectiveHead(ctx)
+		require.NoError(t, err)
+
+		err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+		require.NoError(t, err)
+	})
+
+	t.Run("cannot verify", func(t *testing.T) {
+		headers := suite.GenDummyHeaders(total)
+		err = remoteStore.Append(ctx, headers...)
+		require.NoError(t, err)
+
+		for i := range total {
+			headers[i].VerifyFn = func(hdr *headertest.DummyHeader) error {
+				if hdr.Height() != badHeaderHeight {
+					return nil
+				}
+
+				return &header.VerifyError{
+					Reason:      headertest.ErrDummyVerify,
+					SoftFailure: hdr.SoftFailure,
+				}
+			}
+		}
+
+		headers[total-1].VerifyFailure = true
+		headers[total-1].SoftFailure = true
+
+		subjHead, err := syncer.subjectiveHead(ctx)
+		require.NoError(t, err)
+
+		err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+		var verErr *NewValidatorSetCantBeTrustedError
+		assert.ErrorAs(t, err, &verErr)
+	})
+}
+
 type wrappedGetter struct {
 	ex header.Exchange[*headertest.DummyHeader]
 
@@ -208,7 +348,7 @@ func (t *wrappedGetter) GetByHeight(
 	ctx context.Context,
 	u uint64,
 ) (*headertest.DummyHeader, error) {
-	panic("implement me")
+	return t.ex.GetByHeight(ctx, u)
 }
 
 func (t *wrappedGetter) GetRangeByHeight(
