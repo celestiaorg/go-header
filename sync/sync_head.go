@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -173,7 +174,13 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	}
 
 	var verErr *header.VerifyError
-	if errors.As(err, &verErr) && !verErr.SoftFailure {
+	if errors.As(err, &verErr) {
+		if verErr.SoftFailure {
+			err := s.verifySkipping(ctx, sbjHead, newHead)
+			var errValSet *NewValidatorSetCantBeTrustedError
+			return errors.As(err, &errValSet), err
+		}
+
 		logF := log.Warnw
 		if errors.Is(err, header.ErrKnownHeader) {
 			logF = log.Debugw
@@ -186,7 +193,68 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 			"reason", verErr.Reason)
 	}
 
-	return verErr.SoftFailure, err
+	return false, err
+}
+
+// verifySkipping will try to find such headers in range (subjHead, networkHeader)
+// that can be verified by subjHead, literally:
+//
+//	header.Verify(subjHead, candidate)
+//
+// and also such headers can verify `networkHeader`, literally
+//
+//	header.Verify(candidate, networkHeader)
+//
+// When such candidates cannot be found [NewValidatorSetCantBeTrustedError] will be returned.
+func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
+	subjHeight := subjHead.Height()
+
+	diff := networkHeader.Height() - subjHeight
+	if diff <= 0 {
+		panic(fmt.Sprintf("implementation bug: diff is %d", diff))
+	}
+
+	for diff > 1 {
+		candidateHeight := subjHeight + diff/2
+
+		candidateHeader, err := s.getter.GetByHeight(ctx, candidateHeight)
+		if err != nil {
+			return err
+		}
+
+		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			// candidate failed, go deeper in 1st half.
+			diff = diff / 2
+			continue
+		}
+
+		// candidate was validated properly, update subjHead.
+		subjHead = candidateHeader
+		// TODO: s.setSubjectiveHead(ctx, subjHead)
+
+		if err := header.Verify(subjHead, networkHeader); err == nil {
+			// network head validate properly, return success.
+			return nil
+		}
+
+		// new subjHead failed, go deeper in 2nd half.
+		subjHeight = subjHead.Height()
+		diff = networkHeader.Height() - subjHeight
+	}
+
+	return &NewValidatorSetCantBeTrustedError{
+		NetHeadHeight: networkHeader.Height(),
+		NetHeadHash:   networkHeader.Hash(),
+	}
+}
+
+type NewValidatorSetCantBeTrustedError struct {
+	NetHeadHeight uint64
+	NetHeadHash   []byte
+}
+
+func (e *NewValidatorSetCantBeTrustedError) Error() string {
+	return fmt.Sprintf("sync: new validator set cant be trusted: head %d, attempted %x", e.NetHeadHeight, e.NetHeadHash)
 }
 
 // isExpired checks if header is expired against trusting period.
