@@ -176,7 +176,7 @@ func (timeoutStore[H]) Append(ctx context.Context, _ ...H) error {
 	return ctx.Err()
 }
 
-func (timeoutStore[H]) GetRange(ctx context.Context, _ uint64, _ uint64) ([]H, error) {
+func (timeoutStore[H]) GetRange(ctx context.Context, _, _ uint64) ([]H, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
