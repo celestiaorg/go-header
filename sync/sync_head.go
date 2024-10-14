@@ -201,16 +201,16 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	return false, err
 }
 
-/*
-Subjective head is 500, network head is 1000.
-Header at height 1000 does not have sufficient validator set overlap,
-so the client downloads height 750 (which does have enough sufficient overlap),
-verifies it against 500 and advances the subjective head to 750.
-
-Client tries to apply height 1000 against 750 and if there is sufficient overlap,
-it applies 1000 as the subjective head.
-If not, it downloads the halfway point and retries the process.
-*/
+// verifySkipping will try to find such headers in range (subjHead, networkHeader)
+// that can be verified by subjHead, literally:
+//
+//	header.Verify(subjHead, candidate)
+//
+// and also such headers can verify `networkHeader`, literally
+//
+//	header.Verify(candidate, networkHeader)
+//
+// When such candidates cannot be found [NewValidatorSetCantBeTrustedError] will be returned.
 func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
 	subjHeight := subjHead.Height()
 
