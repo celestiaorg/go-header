@@ -179,28 +179,26 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	}
 
 	var verErr *header.VerifyError
-	if !errors.As(err, &verErr) {
-		return false, nil
+	if errors.As(err, &verErr) {
+		if verErr.SoftFailure {
+			err := s.verifySkipping(ctx, sbjHead, newHead)
+			var errValSet *NewValidatorSetCantBeTrustedError
+			return errors.As(err, &errValSet), err
+		}
+
+		logF := log.Warnw
+		if errors.Is(err, header.ErrKnownHeader) {
+			logF = log.Debugw
+		}
+		logF("invalid network header",
+			"height_of_invalid", newHead.Height(),
+			"hash_of_invalid", newHead.Hash(),
+			"height_of_subjective", sbjHead.Height(),
+			"hash_of_subjective", sbjHead.Hash(),
+			"reason", verErr.Reason)
 	}
 
-	if verErr.SoftFailure {
-		err := s.verifySkipping(ctx, sbjHead, newHead)
-		return false, err
-	}
-
-	logF := log.Warnw
-	if errors.Is(err, header.ErrKnownHeader) {
-		logF = log.Debugw
-	}
-	logF("invalid network header",
-		"height_of_invalid", newHead.Height(),
-		"hash_of_invalid", newHead.Hash(),
-		"height_of_subjective", sbjHead.Height(),
-		"hash_of_subjective", sbjHead.Hash(),
-		"reason", verErr.Reason,
-	)
-
-	return verErr.SoftFailure, err
+	return false, err
 }
 
 /*
