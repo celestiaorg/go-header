@@ -99,7 +99,7 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 	}
 
 	from, to := headers[0].Height(), headers[ln-1].Height()
-	if from >= to {
+	if from > to {
 		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
 	}
 
