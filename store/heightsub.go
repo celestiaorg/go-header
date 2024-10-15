@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -33,7 +34,7 @@ func (hs *heightSub[H]) isInited() bool {
 }
 
 // setHeight sets the new head height for heightSub.
-// Only higher then current height will be set.
+// Only higher than current height can be set.
 func (hs *heightSub[H]) setHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
@@ -98,6 +99,10 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 	}
 
 	from, to := headers[0].Height(), headers[ln-1].Height()
+	if from >= to {
+		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
+	}
+
 	hs.setHeight(to)
 
 	hs.heightReqsLk.Lock()

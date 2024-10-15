@@ -173,6 +173,7 @@ func (s *Store[H]) Height() uint64 {
 	head, err := s.Head(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
 			errors.Is(err, datastore.ErrNotFound) {
 			return 0
 		}
@@ -528,7 +529,8 @@ func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
 		currHeight++
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// advance based on already written headers.
