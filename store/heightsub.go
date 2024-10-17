@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -28,14 +29,22 @@ func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	}
 }
 
-// Height reports current height.
-func (hs *heightSub[H]) Height() uint64 {
-	return hs.height.Load()
+func (hs *heightSub[H]) isInited() bool {
+	return hs.height.Load() != 0
 }
 
-// SetHeight sets the new head height for heightSub.
-func (hs *heightSub[H]) SetHeight(height uint64) {
-	hs.height.Store(height)
+// setHeight sets the new head height for heightSub.
+// Only higher than current height can be set.
+func (hs *heightSub[H]) setHeight(height uint64) {
+	for {
+		curr := hs.height.Load()
+		if curr >= height {
+			return
+		}
+		if hs.height.CompareAndSwap(curr, height) {
+			return
+		}
+	}
 }
 
 // Sub subscribes for a header of a given height.
@@ -43,12 +52,12 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 // and caller should get it elsewhere.
 func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 	var zero H
-	if hs.Height() >= height {
+	if hs.height.Load() >= height {
 		return zero, errElapsedHeight
 	}
 
 	hs.heightReqsLk.Lock()
-	if hs.Height() >= height {
+	if hs.height.Load() >= height {
 		// This is a rare case we have to account for.
 		// The lock above can park a goroutine long enough for hs.height to change for a requested height,
 		// leaving the request never fulfilled and the goroutine deadlocked.
@@ -81,7 +90,7 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 
 // Pub processes all the outstanding subscriptions matching the given headers.
 // Pub is only safe when called from one goroutine.
-// For Pub to work correctly, heightSub has to be initialized with SetHeight
+// For Pub to work correctly, heightSub has to be initialized with setHeight
 // so that given headers are contiguous to the height on heightSub.
 func (hs *heightSub[H]) Pub(headers ...H) {
 	ln := len(headers)
@@ -89,13 +98,12 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 		return
 	}
 
-	height := hs.Height()
 	from, to := headers[0].Height(), headers[ln-1].Height()
-	if height+1 != from && height != 0 { // height != 0 is needed to enable init from any height and not only 1
-		log.Fatalf("PLEASE FILE A BUG REPORT: headers given to the heightSub are in the wrong order: expected %d, got %d", height+1, from)
-		return
+	if from > to {
+		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
 	}
-	hs.SetHeight(to)
+
+	hs.setHeight(to)
 
 	hs.heightReqsLk.Lock()
 	defer hs.heightReqsLk.Unlock()

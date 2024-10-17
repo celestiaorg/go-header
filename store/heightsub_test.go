@@ -20,7 +20,7 @@ func TestHeightSub(t *testing.T) {
 	{
 		h := headertest.RandDummyHeader(t)
 		h.HeightI = 100
-		hs.SetHeight(99)
+		hs.setHeight(99)
 		hs.Pub(h)
 
 		h, err := hs.Sub(ctx, 10)
@@ -45,6 +45,68 @@ func TestHeightSub(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, h)
 	}
+}
+
+// Test heightSub can accept non-adj headers without a problem.
+func TestHeightSubNonAdjacement(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	hs := newHeightSub[*headertest.DummyHeader]()
+
+	{
+		h := headertest.RandDummyHeader(t)
+		h.HeightI = 100
+		hs.setHeight(99)
+		hs.Pub(h)
+	}
+
+	{
+		go func() {
+			// fixes flakiness on CI
+			time.Sleep(time.Millisecond)
+
+			h1 := headertest.RandDummyHeader(t)
+			h1.HeightI = 200
+			h2 := headertest.RandDummyHeader(t)
+			h2.HeightI = 300
+			hs.Pub(h1, h2)
+		}()
+
+		h, err := hs.Sub(ctx, 200)
+		assert.NoError(t, err)
+		assert.NotNil(t, h)
+	}
+}
+
+func TestHeightSub_monotonicHeight(t *testing.T) {
+	hs := newHeightSub[*headertest.DummyHeader]()
+
+	{
+		h := headertest.RandDummyHeader(t)
+		h.HeightI = 100
+		hs.setHeight(99)
+		hs.Pub(h)
+	}
+
+	{
+		h1 := headertest.RandDummyHeader(t)
+		h1.HeightI = 200
+		h2 := headertest.RandDummyHeader(t)
+		h2.HeightI = 300
+		hs.Pub(h1, h2)
+	}
+
+	{
+
+		h1 := headertest.RandDummyHeader(t)
+		h1.HeightI = 120
+		h2 := headertest.RandDummyHeader(t)
+		h2.HeightI = 130
+		hs.Pub(h1, h2)
+	}
+
+	assert.Equal(t, hs.height.Load(), uint64(300))
 }
 
 func TestHeightSubCancellation(t *testing.T) {
