@@ -59,17 +59,24 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 		require.NoError(t, err)
 
 		state := syncer.State()
+		switch {
+		case exp.Height() != have.Height():
+			return false
+		case syncer.pending.Head() != nil:
+			return false
 
-		ok := true
-		ok = ok && exp.Height() == have.Height()
-		ok = ok && syncer.pending.Head() == nil
+		case uint64(exp.Height()) != state.Height:
+			return false
+		case uint64(2) != state.FromHeight:
+			return false
 
-		ok = ok && uint64(exp.Height()) == state.Height
-		ok = ok && uint64(2) == state.FromHeight
-		ok = ok && uint64(exp.Height()) == state.ToHeight
-		ok = ok && state.Finished()
-
-		return ok
+		case uint64(exp.Height()) != state.ToHeight:
+			return false
+		case !state.Finished():
+			return false
+		default:
+			return true
+		}
 	}, 2*time.Second, 100*time.Millisecond)
 }
 
@@ -154,11 +161,16 @@ func TestSyncCatchUp(t *testing.T) {
 		have, err := localStore.Head(ctx)
 		require.NoError(t, err)
 
-		ok := true
-		ok = ok && have.Height() == incomingHead.Height()
-		ok = ok && exp.Height()+1 == have.Height() // plus one as we didn't add last header to remoteStore
-		ok = ok && syncer.pending.Head() == nil
-		return ok
+		switch {
+		case have.Height() != incomingHead.Height():
+			return false
+		case exp.Height()+1 != have.Height(): // plus one as we didn't add last header to remoteStore
+			return false
+		case syncer.pending.Head() != nil:
+			return false
+		default:
+			return true
+		}
 	}, time.Second, 100*time.Millisecond)
 
 	state := syncer.State()
