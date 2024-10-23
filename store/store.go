@@ -277,10 +277,8 @@ func (s *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
 }
 
 func (s *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
-	// as the requested range is non-inclusive in the end[from;to), we need to compare
-	// `from` with `to-1`
-	if from > to-1 {
-		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to-1)
+	if from >= to {
+		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
 	h, err := s.GetByHeight(ctx, to-1)
 	if err != nil {
