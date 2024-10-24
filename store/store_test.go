@@ -93,6 +93,10 @@ func TestStore(t *testing.T) {
 	out, err = store.getRangeByHeight(ctx, 1, 13)
 	require.NoError(t, err)
 	assert.Len(t, out, 12)
+
+	out, err = store.getRangeByHeight(ctx, 10, 11)
+	require.NoError(t, err)
+	assert.Len(t, out, 1)
 }
 
 // TestStore_GetRangeByHeight_ExpectedRange
