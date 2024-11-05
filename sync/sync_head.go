@@ -201,14 +201,11 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	return false, err
 }
 
-// verifySkipping will try to find such headers in range (subjHead, networkHeader)
-// that can be verified by subjHead, literally:
-//
-//	header.Verify(subjHead, candidate)
-//
-// and also such headers can verify `networkHeader`, literally
-//
-//	header.Verify(candidate, networkHeader)
+// verifySkipping performs a bifurcated header verification process such that
+// it tries to find a header (or several headers if necessary)
+// between the networkHead and the subjectiveHead such that non-adjacent
+// (or in the worst case adjacent) verification passes and the networkHead
+// can be verified as a valid sync target against the syncer's subjectiveHead.
 //
 // When such candidates cannot be found [NewValidatorSetCantBeTrustedError] will be returned.
 func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
@@ -216,7 +213,11 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 
 	diff := networkHeader.Height() - subjHeight
 	if diff <= 0 {
-		panic(fmt.Sprintf("implementation bug: diff is %d", diff))
+		panic(fmt.Sprintf("implementation bug: diff %d, subjective height %d (%X), network height %d (%X)",
+			diff,
+			subjHeight, subjHead.Hash(),
+			networkHeader.Height(), networkHeader.Hash(),
+		))
 	}
 
 	for diff > 1 {
@@ -235,7 +236,7 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 
 		// candidate was validated properly, update subjHead.
 		subjHead = candidateHeader
-		// TODO: s.setSubjectiveHead(ctx, subjHead)
+		s.setSubjectiveHead(ctx, subjHead)
 
 		if err := header.Verify(subjHead, networkHeader); err == nil {
 			// network head validate properly, return success.

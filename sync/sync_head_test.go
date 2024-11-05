@@ -379,7 +379,7 @@ func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
 
 	err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
 	var verErr *NewValidatorSetCantBeTrustedError
-	assert.ErrorAs(t, err, &verErr, "%T", err)
+	assert.ErrorIs(t, err, verErr, "%T", err)
 }
 
 type wrappedGetter struct {
