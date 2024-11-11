@@ -182,8 +182,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	if errors.As(err, &verErr) {
 		if verErr.SoftFailure {
 			err := s.verifySkipping(ctx, sbjHead, newHead)
-			var errValSet *NewValidatorSetCantBeTrustedError
-			return errors.As(err, &errValSet), err
+			return err != nil, err
 		}
 
 		logF := log.Warnw
@@ -248,19 +247,10 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 		diff = networkHeader.Height() - subjHeight
 	}
 
-	return &NewValidatorSetCantBeTrustedError{
-		NetHeadHeight: networkHeader.Height(),
-		NetHeadHash:   networkHeader.Hash(),
-	}
-}
+	s.metrics.failedValidationAgainstSubjHead(ctx)
+	log.Warnw("sync: header validation against subjHead", "height", networkHeader.Height(), "hash", networkHeader.Hash().String())
 
-type NewValidatorSetCantBeTrustedError struct {
-	NetHeadHeight uint64
-	NetHeadHash   []byte
-}
-
-func (e *NewValidatorSetCantBeTrustedError) Error() string {
-	return fmt.Sprintf("sync: new validator set cant be trusted: head %d, attempted %x", e.NetHeadHeight, e.NetHeadHash)
+	return fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHeader.Height(), networkHeader.Hash().String())
 }
 
 // isExpired checks if header is expired against trusting period.
