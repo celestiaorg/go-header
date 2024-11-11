@@ -22,6 +22,7 @@ type metrics struct {
 	trustedPeersOutOfSync metric.Int64Counter
 	outdatedHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
+	failedAgainstSubjHead metric.Int64Counter
 
 	subjectiveHead atomic.Int64
 
@@ -71,6 +72,16 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
+	failedAgainstSubjHead, err := meter.Int64Counter(
+		"hdr_sync_subj_validation_failed",
+		metric.WithDescription(
+			"tracks how many times validation against subjective head failed",
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	subjectiveHead, err := meter.Int64ObservableGauge(
 		"hdr_sync_subjective_head_gauge",
 		metric.WithDescription("subjective head height"),
@@ -112,6 +123,7 @@ func newMetrics() (*metrics, error) {
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		outdatedHeader:        outdatedHeader,
 		subjectiveInit:        subjectiveInit,
+		failedAgainstSubjHead: failedAgainstSubjHead,
 		syncLoopDurationHist:  syncLoopDurationHist,
 		syncLoopRunningInst:   syncLoopRunningInst,
 		requestRangeTimeHist:  requestRangeTimeHist,
@@ -183,6 +195,12 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 		if !m.prevHeader.IsZero() {
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
 		}
+	})
+}
+
+func (m *metrics) failedValidationAgainstSubjHead(ctx context.Context) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.failedAgainstSubjHead.Add(ctx, 1)
 	})
 }
 

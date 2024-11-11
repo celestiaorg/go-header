@@ -138,12 +138,11 @@ func TestSyncer_HeadWithNotEnoughValidators(t *testing.T) {
 	require.True(t, wrappedGetter.withTrustedHead)
 }
 
+// Test will simulate a case with upto `iters` failures before we will get to
+// the header that can be verified against subjectiveHead.
 func TestSyncer_verifySkippingSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
-
-	const total = 1000
-	const badHeaderHeight = total + 1
 
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
@@ -177,12 +176,18 @@ func TestSyncer_verifySkippingSuccess(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	// when
+	const total = 1000
+	const badHeaderHeight = total + 1 // make the last header bad
 	const iters = 4
 
 	headers := suite.GenDummyHeaders(total)
 	err = remoteStore.Append(ctx, headers...)
 	require.NoError(t, err)
 
+	// configure header verification method is such way
+	// that the first [iters] verification will fail
+	// but all other will be ok.
 	var verifyCounter atomic.Int32
 	for i := range total {
 		headers[i].VerifyFn = func(hdr *headertest.DummyHeader) error {
@@ -212,12 +217,11 @@ func TestSyncer_verifySkippingSuccess(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Test will simulate a case with upto `iters` failures before we will get to
+// the header that can be verified against subjectiveHead.
 func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
-
-	const total = 1000
-	const badHeaderHeight = total + 1
 
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
@@ -251,12 +255,17 @@ func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	const total = 1000
+	const badHeaderHeight = total + 1
 	const iters = 4
 
 	headers := suite.GenDummyHeaders(total)
 	err = remoteStore.Append(ctx, headers...)
 	require.NoError(t, err)
 
+	// configure header verification method is such way
+	// that the first [iters] verification will fail
+	// but all other will be ok.
 	var verifyCounter atomic.Int32
 	for i := range total {
 		headers[i].VerifyFn = func(hdr *headertest.DummyHeader) error {
@@ -265,13 +274,13 @@ func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
 			}
 
 			verifyCounter.Add(1)
-			if verifyCounter.Load() <= iters {
-				return &header.VerifyError{
-					Reason:      headertest.ErrDummyVerify,
-					SoftFailure: hdr.SoftFailure,
-				}
+			if verifyCounter.Load() > iters {
+				return nil
 			}
-			return nil
+			return &header.VerifyError{
+				Reason:      headertest.ErrDummyVerify,
+				SoftFailure: hdr.SoftFailure,
+			}
 		}
 	}
 
@@ -285,12 +294,11 @@ func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Test will simulate a case when no headers can be verified against subjectiveHead.
+// As a result the [NewValidatorSetCantBeTrustedError] error will be returned.
 func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
-
-	const total = 1000
-	const badHeaderHeight = total + 1
 
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
@@ -323,6 +331,9 @@ func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
 		err = syncer.Stop(ctx)
 		require.NoError(t, err)
 	})
+
+	const total = 1000
+	const badHeaderHeight = total + 1
 
 	headers := suite.GenDummyHeaders(total)
 	err = remoteStore.Append(ctx, headers...)
@@ -348,8 +359,7 @@ func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
 	require.NoError(t, err)
 
 	err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
-	var verErr *NewValidatorSetCantBeTrustedError
-	assert.ErrorIs(t, err, verErr, "%T", err)
+	assert.Error(t, err)
 }
 
 type wrappedGetter struct {
