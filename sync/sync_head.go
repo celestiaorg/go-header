@@ -212,8 +212,7 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 
 	diff := networkHeader.Height() - subjHeight
 	if diff <= 0 {
-		panic(fmt.Sprintf("implementation bug: diff %d, subjective height %d (%X), network height %d (%X)",
-			diff,
+		panic(fmt.Sprintf("implementation bug:\n subjective head height %d, hash %X,\n network head height %d, hash %X",
 			subjHeight, subjHead.Hash(),
 			networkHeader.Height(), networkHeader.Hash(),
 		))
