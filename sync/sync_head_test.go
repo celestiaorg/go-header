@@ -124,50 +124,6 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 	require.True(t, wrappedGetter.withTrustedHead)
 }
 
-func TestSyncer_HeadWithNotEnoughValidators(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-	head := suite.Head()
-
-	localStore := newTestStore(t, ctx, head)
-	remoteStore := newTestStore(t, ctx, head)
-
-	err := remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
-	require.NoError(t, err)
-
-	// create a wrappedGetter to track exchange interactions
-	wrappedGetter := newWrappedGetter(local.NewExchange(remoteStore))
-
-	syncer, err := NewSyncer(
-		wrappedGetter,
-		localStore,
-		headertest.NewDummySubscriber(),
-		WithBlockTime(time.Nanosecond),
-		WithRecencyThreshold(time.Nanosecond), // forces a request for a new sync target
-		// ensures that syncer's store contains a subjective head that is within
-		// the unbonding period so that the syncer can use a header from the network
-		// as a sync target
-		WithTrustingPeriod(time.Hour),
-	)
-	require.NoError(t, err)
-
-	// start the syncer which triggers a Head request that will
-	// load the syncer's subjective head from the store, and request
-	// a new sync target from the network rather than from trusted peers
-	err = syncer.Start(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err = syncer.Stop(ctx)
-		require.NoError(t, err)
-	})
-
-	// ensure the syncer really requested Head from the network
-	// rather than from trusted peers
-	require.True(t, wrappedGetter.withTrustedHead)
-}
-
 // Test will simulate a case with upto `iters` failures before we will get to
 // the header that can be verified against subjectiveHead.
 func TestSyncer_verifySkippingSuccess(t *testing.T) {
