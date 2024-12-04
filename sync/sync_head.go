@@ -246,7 +246,7 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 		diff = networkHeader.Height() - subjHeight
 	}
 
-	s.metrics.failedValidationAgainstSubjHead(ctx)
+	s.metrics.failedValidationAgainstSubjHead(ctx, int64(networkHeader.Height()), networkHeader.Hash().String())
 	log.Warnw("sync: header validation against subjHead", "height", networkHeader.Height(), "hash", networkHeader.Hash().String())
 
 	return fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHeader.Height(), networkHeader.Hash().String())

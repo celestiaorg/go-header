@@ -210,9 +210,14 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 	})
 }
 
-func (m *metrics) failedValidationAgainstSubjHead(ctx context.Context) {
+func (m *metrics) failedValidationAgainstSubjHead(ctx context.Context, height int64, hash string) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.failedAgainstSubjHead.Add(ctx, 1)
+		m.failedAgainstSubjHead.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.Int64("height", height),
+				attribute.String("hash", hash),
+			),
+		)
 	})
 }
 
