@@ -97,7 +97,7 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 
 // Test will simulate a case with upto `iters` failures before we will get to
 // the header that can be verified against subjectiveHead.
-func TestSyncer_verifySkippingSuccess(t *testing.T) {
+func TestSyncer_verifyBifurcatingSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -170,13 +170,13 @@ func TestSyncer_verifySkippingSuccess(t *testing.T) {
 	subjHead, err := syncer.subjectiveHead(ctx)
 	require.NoError(t, err)
 
-	err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
 	require.NoError(t, err)
 }
 
 // Test will simulate a case with upto `iters` failures before we will get to
 // the header that can be verified against subjectiveHead.
-func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
+func TestSyncer_verifyBifurcatingSuccessWithBadCandidates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -247,13 +247,13 @@ func TestSyncer_verifySkippingSuccessWithBadCandidates(t *testing.T) {
 	subjHead, err := syncer.subjectiveHead(ctx)
 	require.NoError(t, err)
 
-	err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
 	require.NoError(t, err)
 }
 
 // Test will simulate a case when no headers can be verified against subjectiveHead.
 // As a result the [NewValidatorSetCantBeTrustedError] error will be returned.
-func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
+func TestSyncer_verifyBifurcatingCannotVerify(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -315,7 +315,7 @@ func TestSyncer_verifySkippingCannotVerify(t *testing.T) {
 	subjHead, err := syncer.subjectiveHead(ctx)
 	require.NoError(t, err)
 
-	err = syncer.verifySkipping(ctx, subjHead, headers[total-1])
+	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
 	assert.Error(t, err)
 }
 
