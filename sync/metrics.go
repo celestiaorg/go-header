@@ -26,7 +26,7 @@ type metrics struct {
 	trustedPeersOutOfSync metric.Int64Counter
 	outdatedHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
-	failedAgainstSubjHead metric.Int64Counter
+	failedBifurcations    metric.Int64Counter
 
 	subjectiveHead atomic.Uint64
 
@@ -76,10 +76,10 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
-	failedAgainstSubjHead, err := meter.Int64Counter(
-		"hdr_sync_subj_validation_failed",
+	failedBifurcations, err := meter.Int64Counter(
+		"hdr_failed_bifurcations_total",
 		metric.WithDescription(
-			"tracks how many times validation against subjective head failed",
+			"tracks how many times bifurcation failed against subjective head",
 		),
 	)
 	if err != nil {
@@ -127,7 +127,7 @@ func newMetrics() (*metrics, error) {
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		outdatedHeader:        outdatedHeader,
 		subjectiveInit:        subjectiveInit,
-		failedAgainstSubjHead: failedAgainstSubjHead,
+		failedBifurcations:    failedBifurcations,
 		syncLoopDurationHist:  syncLoopDurationHist,
 		syncLoopRunningInst:   syncLoopRunningInst,
 		requestRangeTimeHist:  requestRangeTimeHist,
@@ -210,9 +210,9 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 	})
 }
 
-func (m *metrics) failedValidationAgainstSubjHead(ctx context.Context, height int64, hash string) {
+func (m *metrics) failedBifurcation(ctx context.Context, height int64, hash string) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.failedAgainstSubjHead.Add(ctx, 1,
+		m.failedBifurcations.Add(ctx, 1,
 			metric.WithAttributes(
 				attribute.Int64("height", height),
 				attribute.String("hash", hash),

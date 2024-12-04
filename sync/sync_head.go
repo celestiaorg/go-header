@@ -181,7 +181,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	var verErr *header.VerifyError
 	if errors.As(err, &verErr) {
 		if verErr.SoftFailure {
-			err := s.verifySkipping(ctx, sbjHead, newHead)
+			err := s.verifyBifurcating(ctx, sbjHead, newHead)
 			return err != nil, err
 		}
 
@@ -200,23 +200,17 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	return false, err
 }
 
-// verifySkipping performs a bifurcated header verification process such that
-// it tries to find a header (or several headers if necessary)
-// between the networkHead and the subjectiveHead such that non-adjacent
-// (or in the worst case adjacent) verification passes and the networkHead
-// can be verified as a valid sync target against the syncer's subjectiveHead.
-//
-// When such candidates cannot be found [NewValidatorSetCantBeTrustedError] will be returned.
-func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader H) error {
+// verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
+// verification is impossible.
+// It tries to find a header (or several headers if necessary) between the networkHead and
+// the subjectiveHead such that non-adjacent (or in the worst case adjacent) verification
+// passes and the networkHead can be verified as a valid sync target against the syncer's
+// subjectiveHead.
+// A non-nil error is returned when networkHead can't be verified.
+func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead H) error {
 	subjHeight := subjHead.Height()
 
-	diff := networkHeader.Height() - subjHeight
-	if diff <= 0 {
-		panic(fmt.Sprintf("implementation bug:\n subjective head height %d, hash %X,\n network head height %d, hash %X",
-			subjHeight, subjHead.Hash(),
-			networkHeader.Height(), networkHeader.Hash(),
-		))
-	}
+	diff := networkHead.Height() - subjHeight
 
 	for diff > 1 {
 		candidateHeight := subjHeight + diff/2
@@ -236,20 +230,20 @@ func (s *Syncer[H]) verifySkipping(ctx context.Context, subjHead, networkHeader 
 		subjHead = candidateHeader
 		s.setSubjectiveHead(ctx, subjHead)
 
-		if err := header.Verify(subjHead, networkHeader); err == nil {
+		if err := header.Verify(subjHead, networkHead); err == nil {
 			// network head validate properly, return success.
 			return nil
 		}
 
 		// new subjHead failed, go deeper in 2nd half.
 		subjHeight = subjHead.Height()
-		diff = networkHeader.Height() - subjHeight
+		diff = networkHead.Height() - subjHeight
 	}
 
-	s.metrics.failedValidationAgainstSubjHead(ctx, int64(networkHeader.Height()), networkHeader.Hash().String())
-	log.Warnw("sync: header validation against subjHead", "height", networkHeader.Height(), "hash", networkHeader.Hash().String())
+	s.metrics.failedBifurcation(ctx, int64(networkHead.Height()), networkHead.Hash().String())
+	log.Warnw("sync: header validation against subjHead", "height", networkHead.Height(), "hash", networkHead.Hash().String())
 
-	return fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHeader.Height(), networkHeader.Hash().String())
+	return fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHead.Height(), networkHead.Hash().String())
 }
 
 // isExpired checks if header is expired against trusting period.
