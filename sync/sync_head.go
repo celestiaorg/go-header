@@ -203,7 +203,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (isSoft bool, _ error
 // subjectiveHead.
 // A non-nil error is returned when networkHead can't be verified.
 func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead H) error {
-	log.Warnw("sync: header bifurcation started", "height", networkHead.Height(), "hash", networkHead.Hash().String())
+	log.Warnw("header bifurcation started", "height", networkHead.Height(), "hash", networkHead.Hash().String())
 
 	subjHeight := subjHead.Height()
 
@@ -218,6 +218,11 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 		}
 
 		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			var verErr *header.VerifyError
+			if errors.As(err, &verErr) && !verErr.SoftFailure {
+				return err
+			}
+
 			// candidate failed, go deeper in 1st half.
 			diff = diff / 2
 			continue
@@ -238,7 +243,7 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 	}
 
 	s.metrics.failedBifurcation(ctx, int64(networkHead.Height()), networkHead.Hash().String())
-	log.Warnw("sync: header validation against subjHead", "height", networkHead.Height(), "hash", networkHead.Hash().String())
+	log.Warnw("header validation against subjHead", "height", networkHead.Height(), "hash", networkHead.Hash().String())
 
 	return &header.VerifyError{
 		Reason:      fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHead.Height(), networkHead.Hash().String()),
