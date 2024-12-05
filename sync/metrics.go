@@ -22,6 +22,7 @@ type metrics struct {
 	trustedPeersOutOfSync metric.Int64Counter
 	outdatedHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
+	failedBifurcations    metric.Int64Counter
 
 	subjectiveHead atomic.Int64
 
@@ -71,6 +72,16 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
+	failedBifurcations, err := meter.Int64Counter(
+		"hdr_failed_bifurcations_total",
+		metric.WithDescription(
+			"tracks how many times bifurcation failed against subjective head",
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	subjectiveHead, err := meter.Int64ObservableGauge(
 		"hdr_sync_subjective_head_gauge",
 		metric.WithDescription("subjective head height"),
@@ -112,6 +123,7 @@ func newMetrics() (*metrics, error) {
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		outdatedHeader:        outdatedHeader,
 		subjectiveInit:        subjectiveInit,
+		failedBifurcations:    failedBifurcations,
 		syncLoopDurationHist:  syncLoopDurationHist,
 		syncLoopRunningInst:   syncLoopRunningInst,
 		requestRangeTimeHist:  requestRangeTimeHist,
@@ -183,6 +195,17 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 		if !m.prevHeader.IsZero() {
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
 		}
+	})
+}
+
+func (m *metrics) failedBifurcation(ctx context.Context, height int64, hash string) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.failedBifurcations.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.Int64("height", height),
+				attribute.String("hash", hash),
+			),
+		)
 	})
 }
 
