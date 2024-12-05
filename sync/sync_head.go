@@ -165,7 +165,7 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 }
 
 // verify verifies given network head candidate.
-func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
+func (s *Syncer[H]) verify(ctx context.Context, newHead H) (isSoft bool, _ error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
@@ -208,6 +208,8 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 // subjectiveHead.
 // A non-nil error is returned when networkHead can't be verified.
 func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead H) error {
+	log.Warnw("sync: header bifurcation started", "height", networkHead.Height(), "hash", networkHead.Hash().String())
+
 	subjHeight := subjHead.Height()
 
 	diff := networkHead.Height() - subjHeight
@@ -243,7 +245,10 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 	s.metrics.failedBifurcation(ctx, int64(networkHead.Height()), networkHead.Hash().String())
 	log.Warnw("sync: header validation against subjHead", "height", networkHead.Height(), "hash", networkHead.Hash().String())
 
-	return fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHead.Height(), networkHead.Hash().String())
+	return &header.VerifyError{
+		Reason:      fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHead.Height(), networkHead.Hash().String()),
+		SoftFailure: false,
+	}
 }
 
 // isExpired checks if header is expired against trusting period.
