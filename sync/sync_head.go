@@ -248,7 +248,7 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 	}
 
 	s.metrics.failedBifurcation(ctx, int64(networkHead.Height()), networkHead.Hash().String())
-	log.Warnw("header validation against subjHead", "height", networkHead.Height(), "hash", networkHead.Hash().String())
+	log.Warnw("header bifurcation failed", "height", networkHead.Height(), "hash", networkHead.Hash().String())
 
 	return &header.VerifyError{
 		Reason:      fmt.Errorf("sync: header validation against subjHead height:%d hash:%x", networkHead.Height(), networkHead.Hash().String()),
