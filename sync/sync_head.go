@@ -165,7 +165,8 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 }
 
 // verify verifies given network head candidate.
-func (s *Syncer[H]) verify(ctx context.Context, newHead H) (isSoft bool, _ error) {
+// bool reports whether the returned error is a soft error.
+func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
