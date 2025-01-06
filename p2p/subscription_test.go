@@ -34,6 +34,10 @@ func TestSubscriber(t *testing.T) {
 	require.NoError(t, err)
 	err = p2pSub1.Start(context.Background())
 	require.NoError(t, err)
+	err = p2pSub1.SetVerifier(func(context.Context, *headertest.DummyHeader) error {
+		return nil
+	})
+	require.NoError(t, err)
 
 	// get mock host and create new gossipsub on it
 	pubsub2, err := pubsub.NewGossipSub(ctx, net.Hosts()[1],
@@ -44,6 +48,10 @@ func TestSubscriber(t *testing.T) {
 	p2pSub2, err := NewSubscriber[*headertest.DummyHeader](pubsub2, pubsub.DefaultMsgIdFn, WithSubscriberNetworkID(networkID))
 	require.NoError(t, err)
 	err = p2pSub2.Start(context.Background())
+	require.NoError(t, err)
+	err = p2pSub2.SetVerifier(func(context.Context, *headertest.DummyHeader) error {
+		return nil
+	})
 	require.NoError(t, err)
 
 	sub0, err := net.Hosts()[0].EventBus().Subscribe(&event.EvtPeerIdentificationCompleted{})
@@ -66,11 +74,6 @@ func TestSubscriber(t *testing.T) {
 
 	// subscribe
 	_, err = p2pSub2.Subscribe()
-	require.NoError(t, err)
-
-	err = p2pSub1.SetVerifier(func(context.Context, *headertest.DummyHeader) error {
-		return nil
-	})
 	require.NoError(t, err)
 
 	subscription, err := p2pSub1.Subscribe()
