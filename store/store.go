@@ -516,15 +516,15 @@ func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
 	}
 
 	currHeight := (*writeHead).Height()
+	prevHeight := currHeight
 
 	// advance based on passed headers.
 	for i := 0; i < len(headers); i++ {
-		if headers[i].Height() != currHeight+1 {
-			break
+		if headers[i].Height() == currHeight+1 {
+			newHead := headers[i]
+			s.writeHead.Store(&newHead)
+			currHeight++
 		}
-		newHead := headers[i]
-		s.writeHead.Store(&newHead)
-		currHeight++
 	}
 
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
@@ -540,6 +540,12 @@ func (s *Store[H]) tryAdvanceHead(ctx context.Context, headers ...H) {
 		newHead := h
 		s.writeHead.Store(&newHead)
 		currHeight++
+	}
+
+	if currHeight > prevHeight {
+		newHead := *s.writeHead.Load()
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
 	}
 }
 
