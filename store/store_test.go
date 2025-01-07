@@ -1,10 +1,7 @@
 package store
 
 import (
-	"bytes"
 	"context"
-	"math/rand"
-	stdsync "sync"
 	"testing"
 	"time"
 
@@ -23,7 +20,7 @@ func TestStore(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(5))
+	store := NewTestStore(t, ctx, ds, suite.Head())
 
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
@@ -39,12 +36,9 @@ func TestStore(t *testing.T) {
 		assert.Equal(t, h.Hash(), out[i].Hash())
 	}
 
-	// we need to wait for a flush
-	assert.Eventually(t, func() bool {
-		head, err = store.Head(ctx)
-		require.NoError(t, err)
-		return bytes.Equal(out[len(out)-1].Hash(), head.Hash())
-	}, time.Second, 100*time.Millisecond)
+	head, err = store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, out[len(out)-1].Hash(), head.Hash())
 
 	ok, err := store.Has(ctx, in[5].Hash())
 	require.NoError(t, err)
@@ -149,123 +143,6 @@ func TestStore_Append_BadHeader(t *testing.T) {
 	in[0].VerifyFailure = true
 	err = store.Append(ctx, in...)
 	require.Error(t, err)
-}
-
-func TestStore_Append(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(4))
-
-	head, err := store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, head.Hash(), suite.Head().Hash())
-
-	const workers = 10
-	const chunk = 5
-	headers := suite.GenDummyHeaders(workers * chunk)
-
-	errCh := make(chan error, workers)
-	var wg stdsync.WaitGroup
-	wg.Add(workers)
-
-	for i := range workers {
-		go func() {
-			defer wg.Done()
-			// make every append happened in random order.
-			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
-
-			err := store.Append(ctx, headers[i*chunk:(i+1)*chunk]...)
-			errCh <- err
-		}()
-	}
-
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		assert.NoError(t, err)
-	}
-
-	// wait for batch to be written.
-	time.Sleep(100 * time.Millisecond)
-
-	head, err = store.Head(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, head.Height(), headers[len(headers)-1].Height())
-	assert.Equal(t, head.Hash(), headers[len(headers)-1].Hash())
-}
-
-func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(4))
-
-	head, err := store.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, head.Hash(), suite.Head().Hash())
-
-	firstChunk := suite.GenDummyHeaders(5)
-	missedChunk := suite.GenDummyHeaders(5)
-	lastChunk := suite.GenDummyHeaders(5)
-
-	wantHead := firstChunk[len(firstChunk)-1]
-	latestHead := lastChunk[len(lastChunk)-1]
-
-	{
-		err := store.Append(ctx, firstChunk...)
-		require.NoError(t, err)
-		// wait for batch to be written.
-		time.Sleep(100 * time.Millisecond)
-
-		// head is advanced to the last known header.
-		head, err := store.Head(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, head.Height(), wantHead.Height())
-		assert.Equal(t, head.Hash(), wantHead.Hash())
-
-		// check that store height is aligned with the head.
-		height := store.Height()
-		assert.Equal(t, height, head.Height())
-	}
-	{
-		err := store.Append(ctx, lastChunk...)
-		require.NoError(t, err)
-		// wait for batch to be written.
-		time.Sleep(100 * time.Millisecond)
-
-		// head is not advanced due to a gap.
-		head, err := store.Head(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, head.Height(), wantHead.Height())
-		assert.Equal(t, head.Hash(), wantHead.Hash())
-
-		// check that store height is aligned with the head.
-		height := store.Height()
-		assert.Equal(t, height, head.Height())
-	}
-	{
-		err := store.Append(ctx, missedChunk...)
-		require.NoError(t, err)
-		// wait for batch to be written.
-		time.Sleep(time.Second)
-
-		// after appending missing headers we're on the latest header.
-		head, err := store.Head(ctx)
-		require.NoError(t, err)
-		assert.Equal(t, head.Height(), latestHead.Height())
-		assert.Equal(t, head.Hash(), latestHead.Hash())
-
-		// check that store height is aligned with the head.
-		height := store.Height()
-		assert.Equal(t, height, head.Height())
-	}
 }
 
 // TestStore_GetRange tests possible combinations of requests and ensures that

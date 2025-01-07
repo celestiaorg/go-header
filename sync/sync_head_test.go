@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -122,11 +121,13 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*
 }
 
 func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
-	return nil, errors.New("implement me")
+	// TODO implement me
+	panic("implement me")
 }
 
 func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
-	return nil, errors.New("implement me")
+	// TODO implement me
+	panic("implement me")
 }
 
 func (t *wrappedGetter) GetRangeByHeight(
@@ -134,5 +135,6 @@ func (t *wrappedGetter) GetRangeByHeight(
 	from *headertest.DummyHeader,
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
-	return nil, errors.New("implement me")
+	// TODO implement me
+	panic("implement me")
 }
