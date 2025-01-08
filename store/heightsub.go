@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -35,7 +36,15 @@ func (hs *heightSub[H]) Height() uint64 {
 
 // SetHeight sets the new head height for heightSub.
 func (hs *heightSub[H]) SetHeight(height uint64) {
-	hs.height.Store(height)
+	for {
+		curr := hs.height.Load()
+		if curr >= height {
+			return
+		}
+		if hs.height.CompareAndSwap(curr, height) {
+			return
+		}
+	}
 }
 
 // Sub subscribes for a header of a given height.
@@ -89,11 +98,9 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 		return
 	}
 
-	height := hs.Height()
 	from, to := headers[0].Height(), headers[ln-1].Height()
-	if height+1 != from && height != 0 { // height != 0 is needed to enable init from any height and not only 1
-		log.Fatalf("PLEASE FILE A BUG REPORT: headers given to the heightSub are in the wrong order: expected %d, got %d", height+1, from)
-		return
+	if from > to {
+		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
 	}
 	hs.SetHeight(to)
 

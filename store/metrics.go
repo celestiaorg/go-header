@@ -13,9 +13,7 @@ import (
 var meter = otel.Meter("header/store")
 
 type metrics struct {
-	headHeight           atomic.Int64
-	contiguousHeadHeight atomic.Int64
-
+	headHeight     atomic.Int64
 	headHeightInst metric.Int64ObservableGauge
 	headHeightReg  metric.Registration
 
@@ -65,12 +63,6 @@ func newMetrics() (m *metrics, err error) {
 func (m *metrics) newHead(height uint64) {
 	m.observe(context.Background(), func(ctx context.Context) {
 		m.headHeight.Store(int64(height))
-	})
-}
-
-func (m *metrics) newContiguousHead(height uint64) {
-	m.observe(context.Background(), func(ctx context.Context) {
-		m.contiguousHeadHeight.Store(int64(height))
 	})
 }
 

@@ -49,8 +49,6 @@ type Store[H header.Header[H]] struct {
 	writes chan []H
 	// signals when writes are finished
 	writesDn chan struct{}
-	// writeHead maintains the current write head
-	writeHead atomic.Pointer[H]
 	// contiguousHead is the highest contiguous header observed
 	contiguousHead atomic.Pointer[H]
 	// pending keeps headers pending to be written in one batch
@@ -124,8 +122,8 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	}
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
-	s.heightSub.Pub(initial)
 	s.contiguousHead.Store(&initial)
+	s.heightSub.Pub(initial)
 	return nil
 }
 
@@ -167,27 +165,35 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 }
 
 func (s *Store[H]) Height() uint64 {
-	return s.heightSub.Height()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	head, err := s.Head(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(err, datastore.ErrNotFound) {
+			return 0
+		}
+		panic(err)
+	}
+	return head.Height()
 }
 
 func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
-	// if head := s.contiguousHead.Load(); head != nil {
-	// 	return *head, nil
-	// }
-
-	head, err := s.GetByHeight(ctx, s.heightSub.Height())
-	if err == nil {
-		return head, nil
+	if head := s.contiguousHead.Load(); head != nil {
+		return *head, nil
 	}
 
 	var zero H
-	head, err = s.readHead(ctx)
+	head, err := s.readHead(ctx)
 	switch {
 	default:
 		return zero, err
 	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
 		return zero, header.ErrNoHead
 	case err == nil:
+		s.contiguousHead.Store(&head)
 		s.heightSub.SetHeight(head.Height())
 		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
 		return head, nil
@@ -234,14 +240,15 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// which means the requested 'height' should be present
 	//
 	// check if the requested header is not yet written on disk
-	if h := s.pending.GetByHeight(height); !h.IsZero() {
-		return h, nil
-	}
 
 	return s.getByHeight(ctx, height)
 }
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
+	if h := s.pending.GetByHeight(height); !h.IsZero() {
+		return h, nil
+	}
+
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
 		var zero H
@@ -316,17 +323,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	var err error
-	// take current write head to verify headers against
-	var head H
-	headPtr := s.writeHead.Load()
-	if headPtr == nil {
-		head, err = s.Head(ctx)
-		if err != nil {
-			return err
-		}
-	} else {
-		head = *headPtr
+	// take current contiguous head to verify headers against
+	head, err := s.Head(ctx)
+	if err != nil {
+		return err
 	}
 
 	// collect valid headers
@@ -356,19 +356,11 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		head = h
 	}
 
-	onWrite := func() {
-		newHead := verified[len(verified)-1]
-		s.writeHead.Store(&newHead)
-		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-		s.metrics.newHead(newHead.Height())
-	}
-
 	// queue headers to be written on disk
 	select {
 	case s.writes <- verified:
 		// we return an error here after writing,
 		// as there might be an invalid header in between of a given range
-		onWrite()
 		return err
 	default:
 		s.metrics.writesQueueBlocked(ctx)
@@ -376,7 +368,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	// if the writes queue is full, we block until it is not
 	select {
 	case s.writes <- verified:
-		onWrite()
 		return err
 	case <-s.writesDn:
 		return errStoppedStore
@@ -399,6 +390,7 @@ func (s *Store[H]) flushLoop() {
 		// it is important to do Pub after updating pending
 		// so pending is consistent with atomic Height counter on the heightSub
 		s.heightSub.Pub(headers...)
+		// try to advance contiguousHead if we don't have gaps.
 		s.advanceContiguousHead(ctx)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
@@ -537,8 +529,23 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 
 	if currHeight > prevHeight {
 		s.contiguousHead.Store(&newHead)
-		log.Infow("new contiguous head", "height", newHead.Height(), "hash", newHead.Hash())
-		s.metrics.newContiguousHead(newHead.Height())
+		s.heightSub.SetHeight(currHeight)
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
+
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		b, err := newHead.Hash().MarshalJSON()
+		if err != nil {
+			log.Errorw("cannot marshal new head",
+				"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
+		}
+
+		if err := s.ds.Put(ctx, headKey, b); err != nil {
+			log.Errorw("cannot put new head",
+				"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
+		}
 	}
 }
 
