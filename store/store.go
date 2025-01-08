@@ -51,6 +51,8 @@ type Store[H header.Header[H]] struct {
 	writesDn chan struct{}
 	// writeHead maintains the current write head
 	writeHead atomic.Pointer[H]
+	// contiguousHead is the highest contiguous header observed
+	contiguousHead atomic.Pointer[H]
 	// pending keeps headers pending to be written in one batch
 	pending *batch[H]
 
@@ -123,6 +125,7 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
 	s.heightSub.Pub(initial)
+	s.contiguousHead.Store(&initial)
 	return nil
 }
 
@@ -168,6 +171,10 @@ func (s *Store[H]) Height() uint64 {
 }
 
 func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+	// if head := s.contiguousHead.Load(); head != nil {
+	// 	return *head, nil
+	// }
+
 	head, err := s.GetByHeight(ctx, s.heightSub.Height())
 	if err == nil {
 		return head, nil
@@ -231,8 +238,13 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
+	return s.getByHeight(ctx, height)
+}
+
+func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
+		var zero H
 		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
 		}
@@ -387,6 +399,7 @@ func (s *Store[H]) flushLoop() {
 		// it is important to do Pub after updating pending
 		// so pending is consistent with atomic Height counter on the heightSub
 		s.heightSub.Pub(headers...)
+		s.advanceContiguousHead(ctx)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -497,6 +510,36 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 
 	s.metrics.readSingle(ctx, time.Since(startTime), false)
 	return data, nil
+}
+
+// try advance contiguous head based on already written headers.
+func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
+	currHead := s.contiguousHead.Load()
+	if currHead == nil {
+		return
+	}
+	currHeight := (*currHead).Height()
+	prevHeight := currHeight
+
+	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var newHead H
+	for {
+		h, err := s.getByHeight(ctx, currHeight+1)
+		if err != nil {
+			break
+		}
+		newHead = h
+		currHeight++
+	}
+
+	if currHeight > prevHeight {
+		s.contiguousHead.Store(&newHead)
+		log.Infow("new contiguous head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newContiguousHead(newHead.Height())
+	}
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
