@@ -217,7 +217,7 @@ func (s *session[H]) doRequest(
 		// ErrNotFound is not a critical error here. It means
 		// that peer hasn't synced the requested range yet.
 		// Returning peer to the queue, so it could serve another ranges.
-		if errors.Is(err, header.ErrNotFound) {
+		if errors.Is(err, header.ErrNotFound) || errors.Is(err, errEmptyResponse) {
 			s.queue.push(stat)
 		}
 		return
