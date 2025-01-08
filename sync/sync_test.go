@@ -23,14 +23,14 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := newTestStore(t, ctx, head, store.WithWriteBatchSize(1))
+	remoteStore := newTestStore(t, ctx, head)
 	err := remoteStore.Append(ctx, suite.GenDummyHeaders(100)...)
 	require.NoError(t, err)
 
 	_, err = remoteStore.GetByHeight(ctx, 100)
 	require.NoError(t, err)
 
-	localStore := newTestStore(t, ctx, head, store.WithWriteBatchSize(1))
+	localStore := newTestStore(t, ctx, head)
 	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
@@ -47,37 +47,19 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
 
-	// force sync to update underlying stores.
-	syncer.wantSync()
+	exp, err := remoteStore.Head(ctx)
+	require.NoError(t, err)
 
-	// we need to wait for a flush
-	assert.Eventually(t, func() bool {
-		exp, err := remoteStore.Head(ctx)
-		require.NoError(t, err)
+	have, err := localStore.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, exp.Height(), have.Height())
+	assert.Empty(t, syncer.pending.Head())
 
-		have, err := localStore.Head(ctx)
-		require.NoError(t, err)
-
-		state := syncer.State()
-		switch {
-		case exp.Height() != have.Height():
-			return false
-		case syncer.pending.Head() != nil:
-			return false
-
-		case uint64(exp.Height()) != state.Height:
-			return false
-		case uint64(2) != state.FromHeight:
-			return false
-
-		case uint64(exp.Height()) != state.ToHeight:
-			return false
-		case !state.Finished():
-			return false
-		default:
-			return true
-		}
-	}, 2*time.Second, 100*time.Millisecond)
+	state := syncer.State()
+	assert.Equal(t, uint64(exp.Height()), state.Height)
+	assert.Equal(t, uint64(2), state.FromHeight)
+	assert.Equal(t, uint64(exp.Height()), state.ToHeight)
+	assert.True(t, state.Finished(), state)
 }
 
 func TestDoSyncFullRangeFromExternalPeer(t *testing.T) {
@@ -126,8 +108,8 @@ func TestSyncCatchUp(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	remoteStore := newTestStore(t, ctx, head, store.WithWriteBatchSize(1))
-	localStore := newTestStore(t, ctx, head, store.WithWriteBatchSize(1))
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
 	syncer, err := NewSyncer(
 		local.NewExchange(remoteStore),
 		localStore,
@@ -156,22 +138,12 @@ func TestSyncCatchUp(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. assert syncer caught-up
-	// we need to wait for a flush
-	assert.Eventually(t, func() bool {
-		have, err := localStore.Head(ctx)
-		require.NoError(t, err)
+	have, err := localStore.Head(ctx)
+	require.NoError(t, err)
 
-		switch {
-		case have.Height() != incomingHead.Height():
-			return false
-		case exp.Height()+1 != have.Height(): // plus one as we didn't add last header to remoteStore
-			return false
-		case syncer.pending.Head() != nil:
-			return false
-		default:
-			return true
-		}
-	}, time.Second, 100*time.Millisecond)
+	assert.Equal(t, have.Height(), incomingHead.Height())
+	assert.Equal(t, exp.Height()+1, have.Height()) // plus one as we didn't add last header to remoteStore
+	assert.Empty(t, syncer.pending.Head())
 
 	state := syncer.State()
 	assert.Equal(t, uint64(exp.Height()+1), state.Height)
@@ -238,7 +210,7 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, exp.Height(), have.Height())
-	assert.Nil(t, syncer.pending.Head()) // assert all cache from pending is used
+	assert.Empty(t, syncer.pending.Head()) // assert all cache from pending is used
 }
 
 // TestSyncer_FindHeadersReturnsCorrectRange ensures that `findHeaders` returns
@@ -331,7 +303,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	head := suite.Head()
 
 	// create a local store which is initialised at genesis height
-	localStore := newTestStore(t, ctx, head, store.WithWriteBatchSize(1))
+	localStore := newTestStore(t, ctx, head)
 	// create a peer which is already on height 100
 	remoteStore := headertest.NewStore(t, suite, 100)
 
@@ -375,14 +347,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	// ensure syncer could only sync up to one header below the bad sync target
 	h, err := localStore.Head(ctx)
 	require.NoError(t, err)
-
-	// we need to wait for a flush
-	assert.Eventually(t, func() bool {
-		h, err = localStore.Head(ctx)
-		require.NoError(t, err)
-
-		return maliciousHeader.Height()-1 == h.Height()
-	}, time.Second, 100*time.Millisecond)
+	require.Equal(t, maliciousHeader.Height()-1, h.Height())
 
 	// manually change bad sync target to a good header in remote peer
 	// store so it can re-serve it to syncer once it re-requests the height
@@ -435,7 +400,7 @@ func (d *delayedGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint
 }
 
 // newTestStore creates initialized and started in memory header Store which is useful for testing.
-func newTestStore(tb testing.TB, ctx context.Context, head *headertest.DummyHeader, opts ...store.Option) header.Store[*headertest.DummyHeader] {
+func newTestStore(tb testing.TB, ctx context.Context, head *headertest.DummyHeader) header.Store[*headertest.DummyHeader] {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	return store.NewTestStore(tb, ctx, ds, head, opts...)
+	return store.NewTestStore(tb, ctx, ds, head)
 }
