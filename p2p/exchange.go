@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
 	"math/rand"
 	"sort"
 	"time"
@@ -35,6 +36,10 @@ var (
 // chosen.
 const minHeadResponses = 2
 
+// syncKeyHeadOrigin represents the origin value used specifically for Head requests,
+// serving as a sync key to prevent redundant queries.
+const syncKeyHeadOrigin = "0"
+
 // maxUntrustedHeadRequests is the number of head requests to be made to
 // the network in order to determine the network head.
 var maxUntrustedHeadRequests = 4
@@ -51,6 +56,8 @@ type Exchange[H header.Header[H]] struct {
 	trustedPeers func() peer.IDSlice
 	peerTracker  *peerTracker
 	metrics      *exchangeMetrics
+
+	singleFlight *singleflight.Group
 
 	Params ClientParameters
 }
@@ -81,11 +88,12 @@ func NewExchange[H header.Header[H]](
 	}
 
 	ex := &Exchange[H]{
-		host:        host,
-		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore, metrics),
-		Params:      params,
-		metrics:     metrics,
+		host:         host,
+		protocolID:   protocolID(params.networkID),
+		peerTracker:  newPeerTracker(host, gater, params.pidstore, metrics),
+		Params:       params,
+		metrics:      metrics,
+		singleFlight: &singleflight.Group{},
 	}
 
 	ex.trustedPeers = func() peer.IDSlice {
@@ -124,6 +132,19 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	ctx, span := tracerClient.Start(ctx, "head")
 	defer span.End()
 
+	head, err, _ := ex.singleFlight.Do(syncKeyHeadOrigin, func() (interface{}, error) {
+		return ex.head(ctx, span, opts...)
+	})
+	ex.singleFlight.Forget(syncKeyHeadOrigin)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return head.(H), err
+	}
+	span.SetStatus(codes.Ok, "")
+	return head.(H), nil
+}
+
+func (ex *Exchange[H]) head(ctx context.Context, span trace.Span, opts ...header.HeadOption[H]) (H, error) {
 	reqCtx := ctx
 	startTime := time.Now()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -244,7 +265,6 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	}
 
 	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
-	span.SetStatus(codes.Ok, "")
 	return head, nil
 }
 

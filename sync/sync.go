@@ -33,7 +33,7 @@ var log = logging.Logger("header/sync")
 type Syncer[H header.Header[H]] struct {
 	sub     header.Subscriber[H] // to subscribe for new Network Heads
 	store   syncStore[H]         // to store all the headers to
-	getter  syncGetter[H]        // to fetch headers from
+	getter  header.Getter[H]     // to fetch headers from
 	metrics *metrics
 
 	// stateLk protects state which represents the current or latest sync
@@ -80,7 +80,7 @@ func NewSyncer[H header.Header[H]](
 	return &Syncer[H]{
 		sub:         sub,
 		store:       syncStore[H]{Store: store},
-		getter:      syncGetter[H]{Getter: getter},
+		getter:      getter,
 		metrics:     metrics,
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,

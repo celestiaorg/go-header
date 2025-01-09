@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"strconv"
+	sync2 "sync"
 	"testing"
 	"time"
 
@@ -154,6 +155,64 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	head, err := client.Head(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, head)
+}
+
+func TestExchange_RequestHeadFlightProtection(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	hosts := createMocknet(t, 3)
+	exchg, trustedStore := createP2PExAndServer(t, hosts[0], hosts[1])
+
+	// create the same requests
+	tests := []struct {
+		requestFromTrusted bool
+		lastHeader         *headertest.DummyHeader
+		expectedHeight     uint64
+		expectedHash       header.Hash
+	}{
+		{
+			requestFromTrusted: true,
+			lastHeader:         trustedStore.Headers[trustedStore.HeadHeight-1],
+			expectedHeight:     trustedStore.HeadHeight,
+			expectedHash:       trustedStore.Headers[trustedStore.HeadHeight].Hash(),
+		},
+		{
+			// request from untrusted peer should be the same as trusted bc of single-preflight
+			requestFromTrusted: false,
+			lastHeader:         trustedStore.Headers[trustedStore.HeadHeight-1],
+			expectedHeight:     trustedStore.HeadHeight,
+			expectedHash:       trustedStore.Headers[trustedStore.HeadHeight].Hash(),
+		},
+	}
+
+	var wg sync2.WaitGroup
+	// run over goroutine
+	for i, tt := range tests {
+		wg.Add(1)
+		go func(testStruct struct {
+			requestFromTrusted bool
+			lastHeader         *headertest.DummyHeader
+			expectedHeight     uint64
+			expectedHash       header.Hash
+		}, it int) {
+			defer wg.Done()
+			var opts []header.HeadOption[*headertest.DummyHeader]
+			if !testStruct.requestFromTrusted {
+				opts = append(opts, header.WithTrustedHead[*headertest.DummyHeader](testStruct.lastHeader))
+			}
+
+			h, errG := exchg.Head(ctx, opts...)
+			require.NoError(t, errG)
+
+			assert.Equal(t, testStruct.expectedHeight, h.Height())
+			assert.Equal(t, testStruct.expectedHash, h.Hash())
+
+		}(tt, i)
+		// ensure first Head will be locked by request from trusted peer
+		time.Sleep(time.Microsecond)
+	}
+	wg.Wait()
 }
 
 func TestExchange_RequestHeader(t *testing.T) {
