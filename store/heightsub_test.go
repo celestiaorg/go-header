@@ -104,30 +104,14 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 func TestHeightSub_monotonicHeight(t *testing.T) {
 	hs := newHeightSub[*headertest.DummyHeader]()
 
-	{
-		h := headertest.RandDummyHeader(t)
-		h.HeightI = 100
-		hs.SetHeight(99)
-		hs.Pub(h)
-	}
+	hs.SetHeight(99)
+	assert.Equal(t, int64(hs.height.Load()), int64(99))
 
-	{
-		h1 := headertest.RandDummyHeader(t)
-		h1.HeightI = 200
-		h2 := headertest.RandDummyHeader(t)
-		h2.HeightI = 300
-		hs.Pub(h1, h2)
-	}
+	hs.SetHeight(300)
+	assert.Equal(t, int64(hs.height.Load()), int64(300))
 
-	{
-		h1 := headertest.RandDummyHeader(t)
-		h1.HeightI = 120
-		h2 := headertest.RandDummyHeader(t)
-		h2.HeightI = 130
-		hs.Pub(h1, h2)
-	}
-
-	assert.Equal(t, hs.height.Load(), uint64(300))
+	hs.SetHeight(120)
+	assert.Equal(t, int64(hs.height.Load()), int64(300))
 }
 
 func TestHeightSubCancellation(t *testing.T) {
