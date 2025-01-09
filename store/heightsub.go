@@ -102,7 +102,6 @@ func (hs *heightSub[H]) Pub(headers ...H) {
 	if from > to {
 		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
 	}
-	hs.SetHeight(to)
 
 	hs.heightReqsLk.Lock()
 	defer hs.heightReqsLk.Unlock()

@@ -268,6 +268,51 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 	}
 }
 
+func TestStoreGetByHeight_whenGaps(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, head.Hash(), suite.Head().Hash())
+
+	firstChunk := suite.GenDummyHeaders(5)
+	_ = suite.GenDummyHeaders(5)
+	lastChunk := suite.GenDummyHeaders(5)
+
+	wantHead := firstChunk[len(firstChunk)-1]
+
+	{
+		err = store.Append(ctx, lastChunk...)
+		require.NoError(t, err)
+
+		shortCtx, shortCancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		defer shortCancel()
+
+		head, err = store.GetByHeight(shortCtx, wantHead.Height())
+		require.Error(t, err)
+	}
+
+	{
+		go func() {
+			// wait for batch to be written.
+			time.Sleep(100 * time.Millisecond)
+
+			err := store.Append(ctx, firstChunk...)
+			require.NoError(t, err)
+		}()
+
+		head, err = store.GetByHeight(ctx, wantHead.Height())
+		require.NoError(t, err)
+		assert.Equal(t, head.Hash(), wantHead.Hash())
+	}
+}
+
 // TestStore_GetRange tests possible combinations of requests and ensures that
 // the store can handle them adequately (even malformed requests)
 func TestStore_GetRange(t *testing.T) {
