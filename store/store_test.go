@@ -282,34 +282,65 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	assert.Equal(t, head.Hash(), suite.Head().Hash())
 
 	firstChunk := suite.GenDummyHeaders(5)
-	_ = suite.GenDummyHeaders(5)
+	missedChunk := suite.GenDummyHeaders(5)
 	lastChunk := suite.GenDummyHeaders(5)
 
-	wantHead := firstChunk[len(firstChunk)-1]
-
 	{
-		err = store.Append(ctx, lastChunk...)
-		require.NoError(t, err)
+		latestHead := firstChunk[len(firstChunk)-1]
 
-		shortCtx, shortCancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		err := store.Append(ctx, firstChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
+
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, head.Height(), latestHead.Height())
+		assert.Equal(t, head.Hash(), latestHead.Hash())
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		wantHead := lastChunk[len(lastChunk)-1]
+
+		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer shortCancel()
 
-		head, err = store.GetByHeight(shortCtx, wantHead.Height())
-		require.Error(t, err)
+		_, err := store.GetByHeight(shortCtx, wantHead.Height())
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("store.GetByHeight must be blocked, have error: %v", err)
+	default:
 	}
 
 	{
-		go func() {
-			// wait for batch to be written.
-			time.Sleep(100 * time.Millisecond)
-
-			err := store.Append(ctx, firstChunk...)
-			require.NoError(t, err)
-		}()
-
-		head, err = store.GetByHeight(ctx, wantHead.Height())
+		err := store.Append(ctx, lastChunk...)
 		require.NoError(t, err)
-		assert.Equal(t, head.Hash(), wantHead.Hash())
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("store.GetByHeight must be still blocked, have error: %v", err)
+	default:
+	}
+
+	{
+		err := store.Append(ctx, missedChunk...)
+		require.NoError(t, err)
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	default:
+		t.Fatal("store.GetByHeight must not be blocked")
 	}
 }
 

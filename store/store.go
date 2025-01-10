@@ -246,11 +246,13 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 	if h := s.pending.GetByHeight(height); !h.IsZero() {
+		println("pending", height)
 		return h, nil
 	}
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
+		println("index", height, err.Error())
 		var zero H
 		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
@@ -323,6 +325,8 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
+	println("APPEND", headers[0].Height(), headers[len(headers)-1].Height())
+
 	// take current contiguous head to verify headers against
 	head, err := s.Head(ctx)
 	if err != nil {
@@ -389,7 +393,7 @@ func (s *Store[H]) flushLoop() {
 		// and notify waiters if any + increase current read head height
 		// it is important to do Pub after updating pending
 		// so pending is consistent with atomic Height counter on the heightSub
-		s.heightSub.Pub(headers...)
+		// s.heightSub.Pub(headers...)
 		// try to advance contiguousHead if we don't have gaps.
 		s.advanceContiguousHead(ctx)
 		// don't flush and continue if pending batch is not grown enough,
@@ -519,8 +523,10 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 
 	var newHead H
 	for {
+		println("TRY", currHeight+1)
 		h, err := s.getByHeight(ctx, currHeight+1)
 		if err != nil {
+			println("FAIL", currHeight+1, err.Error())
 			break
 		}
 		newHead = h
@@ -528,6 +534,7 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 	}
 
 	if currHeight > prevHeight {
+		println("UPD", currHeight, prevHeight)
 		s.contiguousHead.Store(&newHead)
 		s.heightSub.SetHeight(currHeight)
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())

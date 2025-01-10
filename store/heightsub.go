@@ -42,6 +42,18 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 			return
 		}
 		if hs.height.CompareAndSwap(curr, height) {
+			println("CAS", curr, height)
+			hs.heightReqsLk.Lock()
+			for ; curr <= height; curr++ {
+				reqs, ok := hs.heightReqs[curr]
+				if ok {
+					for k := range reqs {
+						close(k)
+					}
+					delete(hs.heightReqs, curr)
+				}
+			}
+			hs.heightReqsLk.Unlock()
 			return
 		}
 	}
@@ -74,7 +86,10 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 	hs.heightReqsLk.Unlock()
 
 	select {
-	case resp := <-resp:
+	case resp, ok := <-resp:
+		if !ok {
+			return zero, errElapsedHeight
+		}
 		return resp, nil
 	case <-ctx.Done():
 		// no need to keep the request, if the op has canceled

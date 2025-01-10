@@ -76,7 +76,11 @@ func (b *batch[H]) getByHeight(height uint64) H {
 		return zero
 	}
 
-	return b.headers[height-base-1]
+	h := b.headers[height-base-1]
+	if h.Height() == height {
+		return h
+	}
+	return zero
 }
 
 // Append appends new headers to the batch.
