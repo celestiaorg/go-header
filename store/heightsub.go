@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -19,13 +18,13 @@ type heightSub[H header.Header[H]] struct {
 	// that has been fully verified and inserted into the subjective chain
 	height       atomic.Uint64
 	heightReqsLk sync.Mutex
-	heightReqs   map[uint64]map[chan H]struct{}
+	heightSubs   map[uint64]chan struct{}
 }
 
 // newHeightSub instantiates new heightSub.
 func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	return &heightSub[H]{
-		heightReqs: make(map[uint64]map[chan H]struct{}),
+		heightSubs: make(map[uint64]chan struct{}),
 	}
 }
 
@@ -44,12 +43,10 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 		if hs.height.CompareAndSwap(curr, height) {
 			hs.heightReqsLk.Lock()
 			for ; curr <= height; curr++ {
-				reqs, ok := hs.heightReqs[curr]
+				sub, ok := hs.heightSubs[curr]
 				if ok {
-					for k := range reqs {
-						close(k)
-					}
-					delete(hs.heightReqs, curr)
+					close(sub)
+					delete(hs.heightSubs, curr)
 				}
 			}
 			hs.heightReqsLk.Unlock()
@@ -58,13 +55,9 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 	}
 }
 
-// Sub subscribes for a header of a given height.
-// It can return errElapsedHeight, which means a requested header was already provided
-// and caller should get it elsewhere.
-func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
-	var zero H
+func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 	if hs.Height() >= height {
-		return zero, errElapsedHeight
+		return errElapsedHeight
 	}
 
 	hs.heightReqsLk.Lock()
@@ -73,78 +66,25 @@ func (hs *heightSub[H]) Sub(ctx context.Context, height uint64) (H, error) {
 		// The lock above can park a goroutine long enough for hs.height to change for a requested height,
 		// leaving the request never fulfilled and the goroutine deadlocked.
 		hs.heightReqsLk.Unlock()
-		return zero, errElapsedHeight
+		return errElapsedHeight
 	}
-	resp := make(chan H, 1)
-	reqs, ok := hs.heightReqs[height]
+
+	sub, ok := hs.heightSubs[height]
 	if !ok {
-		reqs = make(map[chan H]struct{})
-		hs.heightReqs[height] = reqs
+		sub = make(chan struct{}, 1)
+		hs.heightSubs[height] = sub
 	}
-	reqs[resp] = struct{}{}
 	hs.heightReqsLk.Unlock()
 
 	select {
-	case resp, ok := <-resp:
-		if !ok {
-			return zero, errElapsedHeight
-		}
-		return resp, nil
+	case <-sub:
+		return nil
 	case <-ctx.Done():
 		// no need to keep the request, if the op has canceled
 		hs.heightReqsLk.Lock()
-		delete(reqs, resp)
-		if len(reqs) == 0 {
-			delete(hs.heightReqs, height)
-		}
+		close(sub)
+		delete(hs.heightSubs, height)
 		hs.heightReqsLk.Unlock()
-		return zero, ctx.Err()
-	}
-}
-
-// Pub processes all the outstanding subscriptions matching the given headers.
-// Pub is only safe when called from one goroutine.
-// For Pub to work correctly, heightSub has to be initialized with SetHeight
-// so that given headers are contiguous to the height on heightSub.
-func (hs *heightSub[H]) Pub(headers ...H) {
-	ln := len(headers)
-	if ln == 0 {
-		return
-	}
-
-	from, to := headers[0].Height(), headers[ln-1].Height()
-	if from > to {
-		panic(fmt.Sprintf("from must be lower than to, have: %d and %d", from, to))
-	}
-
-	hs.heightReqsLk.Lock()
-	defer hs.heightReqsLk.Unlock()
-
-	// there is a common case where we Pub only header
-	// in this case, we shouldn't loop over each heightReqs
-	// and instead read from the map directly
-	if ln == 1 {
-		reqs, ok := hs.heightReqs[from]
-		if ok {
-			for req := range reqs {
-				req <- headers[0] // reqs must always be buffered, so this won't block
-			}
-			delete(hs.heightReqs, from)
-		}
-		return
-	}
-
-	// instead of looping over each header in 'headers', we can loop over each request
-	// which will drastically decrease idle iterations, as there will be less requests than headers
-	for height, reqs := range hs.heightReqs {
-		// then we look if any of the requests match the given range of headers
-		if height >= from && height <= to {
-			// and if so, calculate its position and fulfill requests
-			h := headers[height-from]
-			for req := range reqs {
-				req <- h // reqs must always be buffered, so this won't block
-			}
-			delete(hs.heightReqs, height)
-		}
+		return ctx.Err()
 	}
 }

@@ -18,14 +18,10 @@ func TestHeightSub(t *testing.T) {
 
 	// assert subscription returns nil for past heights
 	{
-		h := headertest.RandDummyHeader(t)
-		h.HeightI = 100
 		hs.SetHeight(99)
-		hs.Pub(h)
 
-		h, err := hs.Sub(ctx, 10)
+		err := hs.Wait(ctx, 10)
 		assert.ErrorIs(t, err, errElapsedHeight)
-		assert.Nil(t, h)
 	}
 
 	// assert actual subscription works
@@ -34,16 +30,11 @@ func TestHeightSub(t *testing.T) {
 			// fixes flakiness on CI
 			time.Sleep(time.Millisecond)
 
-			h1 := headertest.RandDummyHeader(t)
-			h1.HeightI = 101
-			h2 := headertest.RandDummyHeader(t)
-			h2.HeightI = 102
-			hs.Pub(h1, h2)
+			hs.SetHeight(102)
 		}()
 
-		h, err := hs.Sub(ctx, 101)
+		err := hs.Wait(ctx, 101)
 		assert.NoError(t, err)
-		assert.NotNil(t, h)
 	}
 
 	// assert multiple subscriptions work
@@ -75,29 +66,17 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 
 	hs := newHeightSub[*headertest.DummyHeader]()
 
-	{
-		h := headertest.RandDummyHeader(t)
-		h.HeightI = 100
-		hs.SetHeight(99)
-		hs.Pub(h)
-	}
+	hs.SetHeight(99)
 
-	{
-		go func() {
-			// fixes flakiness on CI
-			time.Sleep(time.Millisecond)
+	go func() {
+		// fixes flakiness on CI
+		time.Sleep(time.Millisecond)
 
-			h1 := headertest.RandDummyHeader(t)
-			h1.HeightI = 200
-			h2 := headertest.RandDummyHeader(t)
-			h2.HeightI = 300
-			hs.Pub(h1, h2)
-		}()
+		hs.SetHeight(300)
+	}()
 
-		h, err := hs.Sub(ctx, 200)
-		assert.NoError(t, err)
-		assert.NotNil(t, h)
-	}
+	err := hs.Wait(ctx, 200)
+	assert.NoError(t, err)
 }
 
 // Test heightSub's height cannot go down but only up.
@@ -119,13 +98,14 @@ func TestHeightSubCancellation(t *testing.T) {
 	defer cancel()
 
 	h := headertest.RandDummyHeader(t)
+	h.HeightI %= 100 // make it a bit lower
 	hs := newHeightSub[*headertest.DummyHeader]()
 
-	sub := make(chan *headertest.DummyHeader)
+	sub := make(chan struct{})
 	go func() {
 		// subscribe first time
-		h, _ := hs.Sub(ctx, h.HeightI)
-		sub <- h
+		hs.Wait(ctx, h.Height())
+		sub <- struct{}{}
 	}()
 
 	// give a bit time for subscription to settle
@@ -134,19 +114,18 @@ func TestHeightSubCancellation(t *testing.T) {
 	// subscribe again but with failed canceled context
 	canceledCtx, cancel := context.WithCancel(ctx)
 	cancel()
-	_, err := hs.Sub(canceledCtx, h.HeightI)
-	assert.Error(t, err)
+	err := hs.Wait(canceledCtx, h.Height())
+	assert.ErrorIs(t, err, context.Canceled)
 
-	// publish header
-	hs.Pub(h)
+	// update height
+	hs.SetHeight(h.Height())
 
 	// ensure we still get our header
 	select {
-	case subH := <-sub:
-		assert.Equal(t, h.HeightI, subH.HeightI)
+	case <-sub:
 	case <-ctx.Done():
 		t.Error(ctx.Err())
 	}
 	// ensure we don't have any active subscriptions
-	assert.Len(t, hs.heightReqs, 0)
+	assert.Len(t, hs.heightSubs, 0)
 }

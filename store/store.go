@@ -123,7 +123,7 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
 	s.contiguousHead.Store(&initial)
-	s.heightSub.Pub(initial)
+	s.heightSub.SetHeight(initial.Height())
 	return nil
 }
 
@@ -234,9 +234,10 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
-		h, err := s.heightSub.Sub(ctx, height)
-		if !errors.Is(err, errElapsedHeight) {
-			return h, err
+		err := s.heightSub.Wait(ctx, height)
+		if err != nil && !errors.Is(err, errElapsedHeight) {
+			var zero H
+			return zero, err
 		}
 	}
 	// otherwise, the errElapsedHeight is thrown,
