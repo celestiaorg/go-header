@@ -230,11 +230,14 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	if height == 0 {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
+
 	// if the requested 'height' was not yet published
 	// we subscribe to it
-	h, err := s.heightSub.Sub(ctx, height)
-	if !errors.Is(err, errElapsedHeight) {
-		return h, err
+	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
+		h, err := s.heightSub.Sub(ctx, height)
+		if !errors.Is(err, errElapsedHeight) {
+			return h, err
+		}
 	}
 	// otherwise, the errElapsedHeight is thrown,
 	// which means the requested 'height' should be present
@@ -246,13 +249,11 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 	if h := s.pending.GetByHeight(height); !h.IsZero() {
-		println("pending", height)
 		return h, nil
 	}
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height)
 	if err != nil {
-		println("index", height, err.Error())
 		var zero H
 		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
@@ -324,8 +325,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	if lh == 0 {
 		return nil
 	}
-
-	println("APPEND", headers[0].Height(), headers[len(headers)-1].Height())
 
 	// take current contiguous head to verify headers against
 	head, err := s.Head(ctx)
@@ -523,10 +522,8 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 
 	var newHead H
 	for {
-		println("TRY", currHeight+1)
 		h, err := s.getByHeight(ctx, currHeight+1)
 		if err != nil {
-			println("FAIL", currHeight+1, err.Error())
 			break
 		}
 		newHead = h
@@ -534,7 +531,6 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 	}
 
 	if currHeight > prevHeight {
-		println("UPD", currHeight, prevHeight)
 		s.contiguousHead.Store(&newHead)
 		s.heightSub.SetHeight(currHeight)
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())

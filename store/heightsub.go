@@ -42,7 +42,6 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 			return
 		}
 		if hs.height.CompareAndSwap(curr, height) {
-			println("CAS", curr, height)
 			hs.heightReqsLk.Lock()
 			for ; curr <= height; curr++ {
 				reqs, ok := hs.heightReqs[curr]
