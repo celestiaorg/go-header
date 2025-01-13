@@ -98,7 +98,7 @@ func TestHeightSubCancellation(t *testing.T) {
 	defer cancel()
 
 	h := headertest.RandDummyHeader(t)
-	h.HeightI %= 100 // make it a bit lower
+	h.HeightI %= 1000 // make it a bit lower
 	hs := newHeightSub[*headertest.DummyHeader]()
 
 	sub := make(chan struct{})

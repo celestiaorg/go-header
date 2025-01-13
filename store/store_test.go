@@ -284,6 +284,7 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	firstChunk := suite.GenDummyHeaders(5)
 	missedChunk := suite.GenDummyHeaders(5)
 	lastChunk := suite.GenDummyHeaders(5)
+	wantHead := lastChunk[len(lastChunk)-1]
 
 	{
 		latestHead := firstChunk[len(firstChunk)-1]
@@ -301,8 +302,6 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		wantHead := lastChunk[len(lastChunk)-1]
-
 		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer shortCancel()
 
@@ -339,6 +338,10 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	select {
 	case err := <-errCh:
 		require.NoError(t, err)
+
+		head, err := store.GetByHeight(ctx, wantHead.Height())
+		require.NoError(t, err)
+		require.Equal(t, head, wantHead)
 	default:
 		t.Fatal("store.GetByHeight must not be blocked")
 	}
