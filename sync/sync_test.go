@@ -229,10 +229,14 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 		have, err := localStore.Head(ctx)
 		require.NoError(t, err)
 
-		// assert.Equal(t, exp.Height(), have.Height())
-		// assert.Empty(t, syncer.pending.Head()) // assert all cache from pending is used
-
-		return exp.Height() == have.Height()
+		switch {
+		case exp.Height() != have.Height():
+			return false
+		case !syncer.pending.Head().IsZero():
+			return false
+		default:
+			return true
+		}
 	}, 2*time.Second, 100*time.Millisecond)
 }
 

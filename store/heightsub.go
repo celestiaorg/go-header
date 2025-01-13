@@ -34,6 +34,7 @@ func (hs *heightSub[H]) Height() uint64 {
 }
 
 // SetHeight sets the new head height for heightSub.
+// Unblocks all awaiting [Wait] calls in range from [heightSub.Height] to height.
 func (hs *heightSub[H]) SetHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
