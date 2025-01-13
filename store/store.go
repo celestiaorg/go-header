@@ -518,12 +518,12 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 	prevHeight := currHeight
 
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer advCancel()
 
 	var newHead H
 	for {
-		h, err := s.getByHeight(ctx, currHeight+1)
+		h, err := s.getByHeight(advCtx, currHeight+1)
 		if err != nil {
 			break
 		}
@@ -537,7 +537,7 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
 
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		b, err := newHead.Hash().MarshalJSON()
