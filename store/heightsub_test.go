@@ -45,6 +45,27 @@ func TestHeightSub(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, h)
 	}
+
+	// assert multiple subscriptions work
+	{
+		ch := make(chan error, 10)
+		for range cap(ch) {
+			go func() {
+				_, err := hs.Sub(ctx, 103)
+				ch <- err
+			}()
+		}
+
+		time.Sleep(time.Millisecond * 10)
+
+		h3 := headertest.RandDummyHeader(t)
+		h3.HeightI = 103
+		hs.Pub(h3)
+
+		for range cap(ch) {
+			assert.NoError(t, <-ch)
+		}
+	}
 }
 
 func TestHeightSubCancellation(t *testing.T) {
