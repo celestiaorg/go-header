@@ -42,16 +42,14 @@ func TestHeightSub(t *testing.T) {
 		ch := make(chan error, 10)
 		for range cap(ch) {
 			go func() {
-				_, err := hs.Sub(ctx, 103)
+				err := hs.Wait(ctx, 103)
 				ch <- err
 			}()
 		}
 
 		time.Sleep(time.Millisecond * 10)
 
-		h3 := headertest.RandDummyHeader(t)
-		h3.HeightI = 103
-		hs.Pub(h3)
+		hs.SetHeight(103)
 
 		for range cap(ch) {
 			assert.NoError(t, <-ch)
