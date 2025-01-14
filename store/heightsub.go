@@ -41,21 +41,27 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 		if curr >= height {
 			return
 		}
-		if hs.height.CompareAndSwap(curr, height) {
-			hs.heightReqsLk.Lock()
-			for ; curr <= height; curr++ {
-				sub, ok := hs.heightSubs[curr]
-				if ok {
-					close(sub)
-					delete(hs.heightSubs, curr)
-				}
-			}
-			hs.heightReqsLk.Unlock()
-			return
+		if !hs.height.CompareAndSwap(curr, height) {
+			continue
 		}
+
+		hs.heightReqsLk.Lock()
+		defer hs.heightReqsLk.Unlock() //nolint:gocritic we have a return below
+
+		for ; curr <= height; curr++ {
+			sub, ok := hs.heightSubs[curr]
+			if ok {
+				close(sub)
+				delete(hs.heightSubs, curr)
+			}
+		}
+		return
 	}
 }
 
+// Wait for a given height to be published.
+// It can return errElapsedHeight, which means a requested height was already seen
+// and caller should get it elsewhere.
 func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 	if hs.Height() >= height {
 		return errElapsedHeight

@@ -231,6 +231,13 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 
+	// switch h, err := s.getByHeight(ctx, height); {
+	// case err == nil:
+	// 	return h, nil
+	// case ctx.Err() != nil:
+	// 	return zero, ctx.Err()
+	// }
+
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
@@ -390,11 +397,8 @@ func (s *Store[H]) flushLoop() {
 	for headers := range s.writes {
 		// add headers to the pending and ensure they are accessible
 		s.pending.Append(headers...)
-		// and notify waiters if any + increase current read head height
-		// it is important to do Pub after updating pending
-		// so pending is consistent with atomic Height counter on the heightSub
-		// s.heightSub.Pub(headers...)
 		// try to advance contiguousHead if we don't have gaps.
+		// and notify waiters in heightSub.
 		s.advanceContiguousHead(ctx)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
