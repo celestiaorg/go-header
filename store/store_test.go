@@ -284,7 +284,8 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	firstChunk := suite.GenDummyHeaders(5)
 	missedChunk := suite.GenDummyHeaders(5)
 	lastChunk := suite.GenDummyHeaders(5)
-	wantHead := lastChunk[len(lastChunk)-1]
+	wantPreLastHead := lastChunk[len(lastChunk)-2]
+	wantLastHead := lastChunk[len(lastChunk)-1]
 
 	{
 		latestHead := firstChunk[len(firstChunk)-1]
@@ -300,18 +301,29 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		assert.Equal(t, head.Hash(), latestHead.Hash())
 	}
 
-	errCh := make(chan error, 1)
+	errChPreLast := make(chan error, 1)
 	go func() {
 		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer shortCancel()
 
-		_, err := store.GetByHeight(shortCtx, wantHead.Height())
-		errCh <- err
+		_, err := store.GetByHeight(shortCtx, wantPreLastHead.Height())
+		errChPreLast <- err
+	}()
+
+	errChLast := make(chan error, 1)
+	go func() {
+		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer shortCancel()
+
+		_, err := store.GetByHeight(shortCtx, wantLastHead.Height())
+		errChLast <- err
 	}()
 
 	select {
-	case err := <-errCh:
-		t.Fatalf("store.GetByHeight must be blocked, have error: %v", err)
+	case err := <-errChPreLast:
+		t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
+	case err := <-errChLast:
+		t.Fatalf("store.GetByHeight on last height MUST be blocked, have error: %v", err)
 	default:
 	}
 
@@ -323,9 +335,12 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 
 	select {
-	case err := <-errCh:
-		t.Fatalf("store.GetByHeight must be still blocked, have error: %v", err)
+	case err := <-errChPreLast:
+		t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
+	case err := <-errChLast:
+		require.NoError(t, err)
 	default:
+		t.Fatalf("store.GetByHeight on last height MUST NOT be blocked, have error: %v", err)
 	}
 
 	{
@@ -336,14 +351,14 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 
 	select {
-	case err := <-errCh:
+	case err := <-errChPreLast:
 		require.NoError(t, err)
 
-		head, err := store.GetByHeight(ctx, wantHead.Height())
+		head, err := store.GetByHeight(ctx, wantLastHead.Height())
 		require.NoError(t, err)
-		require.Equal(t, head, wantHead)
+		require.Equal(t, head, wantLastHead)
 	default:
-		t.Fatal("store.GetByHeight must not be blocked")
+		t.Fatal("store.GetByHeight on last height MUST NOT be blocked")
 	}
 }
 

@@ -57,6 +57,52 @@ func TestHeightSub(t *testing.T) {
 	}
 }
 
+func TestHeightSub_withWaitCancelled(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	hs := newHeightSub[*headertest.DummyHeader]()
+	hs.SetHeight(10)
+
+	const waiters = 5
+
+	cancelChs := make([]chan error, waiters)
+	blockedChs := make([]chan error, waiters)
+	for i := range waiters {
+		cancelChs[i] = make(chan error, 1)
+		blockedChs[i] = make(chan error, 1)
+
+		go func() {
+			ctx, cancel := context.WithTimeout(ctx, time.Duration(i+1)*time.Millisecond)
+			defer cancel()
+
+			err := hs.Wait(ctx, 100)
+			cancelChs[i] <- err
+		}()
+
+		go func() {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			err := hs.Wait(ctx, 100)
+			blockedChs[i] <- err
+		}()
+	}
+
+	for i := range cancelChs {
+		err := <-cancelChs[i]
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	}
+
+	for i := range blockedChs {
+		select {
+		case <-blockedChs[i]:
+			t.Error("channel should be blocked")
+		default:
+		}
+	}
+}
+
 // Test heightSub can accept non-adj headers without an error.
 func TestHeightSubNonAdjacement(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
