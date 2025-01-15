@@ -231,19 +231,11 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 
-	switch h, err := s.getByHeight(ctx, height); {
-	case err == nil:
-		return h, nil
-	case ctx.Err() != nil:
-		return zero, ctx.Err()
-	}
-
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
 		err := s.heightSub.Wait(ctx, height)
 		if err != nil && !errors.Is(err, errElapsedHeight) {
-			var zero H
 			return zero, err
 		}
 	}
@@ -399,7 +391,7 @@ func (s *Store[H]) flushLoop() {
 		s.pending.Append(headers...)
 		// try to advance contiguousHead if we don't have gaps.
 		// and notify waiters in heightSub.
-		s.advanceContiguousHead(ctx)
+		s.advanceContiguousHead(ctx, headers...)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -513,7 +505,12 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 }
 
 // try advance contiguous head based on already written headers.
-func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
+func (s *Store[H]) advanceContiguousHead(ctx context.Context, headers ...H) {
+	// always inform heightSub about new headers seen
+	for _, h := range headers {
+		s.heightSub.UnblockHeight(h.Height())
+	}
+
 	currHead := s.contiguousHead.Load()
 	if currHead == nil {
 		return
@@ -536,24 +533,28 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context) {
 	}
 
 	if currHeight > prevHeight {
-		s.contiguousHead.Store(&newHead)
-		s.heightSub.SetHeight(currHeight)
-		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-		s.metrics.newHead(newHead.Height())
+		s.updateContiguousHead(newHead, currHeight)
+	}
+}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+func (s *Store[H]) updateContiguousHead(newHead H, newHeight uint64) {
+	s.contiguousHead.Store(&newHead)
+	s.heightSub.UnblockHeight(newHeight)
+	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+	s.metrics.newHead(newHead.Height())
 
-		b, err := newHead.Hash().MarshalJSON()
-		if err != nil {
-			log.Errorw("cannot marshal new head",
-				"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-		if err := s.ds.Put(ctx, headKey, b); err != nil {
-			log.Errorw("cannot put new head",
-				"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
-		}
+	b, err := newHead.Hash().MarshalJSON()
+	if err != nil {
+		log.Errorw("cannot marshal new head",
+			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
+	}
+
+	if err := s.ds.Put(ctx, headKey, b); err != nil {
+		log.Errorw("cannot put new head",
+			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
 	}
 }
 

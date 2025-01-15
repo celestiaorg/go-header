@@ -284,7 +284,8 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	firstChunk := suite.GenDummyHeaders(5)
 	missedChunk := suite.GenDummyHeaders(5)
 	lastChunk := suite.GenDummyHeaders(5)
-	wantPreLastHead := lastChunk[len(lastChunk)-2]
+
+	wantMissHead := missedChunk[len(missedChunk)-2]
 	wantLastHead := lastChunk[len(lastChunk)-1]
 
 	{
@@ -301,13 +302,13 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		assert.Equal(t, head.Hash(), latestHead.Hash())
 	}
 
-	errChPreLast := make(chan error, 1)
+	errChMiss := make(chan error, 1)
 	go func() {
 		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
 		defer shortCancel()
 
-		_, err := store.GetByHeight(shortCtx, wantPreLastHead.Height())
-		errChPreLast <- err
+		_, err := store.GetByHeight(shortCtx, wantMissHead.Height())
+		errChMiss <- err
 	}()
 
 	errChLast := make(chan error, 1)
@@ -319,8 +320,11 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		errChLast <- err
 	}()
 
+	// wait for goroutines start
+	time.Sleep(100 * time.Millisecond)
+
 	select {
-	case err := <-errChPreLast:
+	case err := <-errChMiss:
 		t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
 	case err := <-errChLast:
 		t.Fatalf("store.GetByHeight on last height MUST be blocked, have error: %v", err)
@@ -335,7 +339,7 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 
 	select {
-	case err := <-errChPreLast:
+	case err := <-errChMiss:
 		t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
 	case err := <-errChLast:
 		require.NoError(t, err)
@@ -351,7 +355,7 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 
 	select {
-	case err := <-errChPreLast:
+	case err := <-errChMiss:
 		require.NoError(t, err)
 
 		head, err := store.GetByHeight(ctx, wantLastHead.Height())
