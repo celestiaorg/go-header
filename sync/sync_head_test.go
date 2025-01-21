@@ -358,6 +358,5 @@ func (t *wrappedGetter) GetRangeByHeight(
 	from *headertest.DummyHeader,
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
-	// TODO implement me
-	panic("implement me")
+	return t.ex.GetRangeByHeight(ctx, from, to)
 }
