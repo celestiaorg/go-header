@@ -396,7 +396,7 @@ func (t *wrappedGetter) GetRangeByHeight(
 	from *headertest.DummyHeader,
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
-	panic("implement me")
+	return t.ex.GetRangeByHeight(ctx, from, to)
 }
 
 type errorGetter struct{}
@@ -418,9 +418,9 @@ func (e errorGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.Dum
 }
 
 func (e errorGetter) GetRangeByHeight(
-	context.Context,
-	*headertest.DummyHeader,
-	uint64,
+	ctx context.Context,
+	from *headertest.DummyHeader,
+	to uint64,
 ) ([]*headertest.DummyHeader, error) {
 	panic("implement me")
 }
