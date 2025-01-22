@@ -539,7 +539,7 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, headers ...H) {
 
 func (s *Store[H]) updateContiguousHead(newHead H, newHeight uint64) {
 	s.contiguousHead.Store(&newHead)
-	s.heightSub.UnblockHeight(newHeight)
+	s.heightSub.SetHeight(newHeight)
 	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 	s.metrics.newHead(newHead.Height())
 

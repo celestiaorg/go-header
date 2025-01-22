@@ -54,11 +54,7 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 		defer hs.heightSubsLk.Unlock() //nolint:gocritic we have a return below
 
 		for ; curr <= height; curr++ {
-			sac, ok := hs.heightSubs[curr]
-			if ok {
-				close(sac.signal)
-				delete(hs.heightSubs, curr)
-			}
+			hs.unblockHeight(curr, true)
 		}
 		return
 	}
@@ -97,11 +93,7 @@ func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 	case <-ctx.Done():
 		// no need to keep the request, if the op has canceled
 		hs.heightSubsLk.Lock()
-		sac.count--
-		if sac.count == 0 {
-			close(sac.signal)
-			delete(hs.heightSubs, height)
-		}
+		hs.unblockHeight(height, false)
 		hs.heightSubsLk.Unlock()
 		return ctx.Err()
 	}
@@ -113,12 +105,18 @@ func (hs *heightSub[H]) UnblockHeight(height uint64) {
 	hs.heightSubsLk.Lock()
 	defer hs.heightSubsLk.Unlock()
 
+	hs.unblockHeight(height, true)
+}
+
+func (hs *heightSub[H]) unblockHeight(height uint64, all bool) {
 	sac, ok := hs.heightSubs[height]
-	if ok {
-		sac.count--
-		if sac.count == 0 {
-			close(sac.signal)
-		}
+	if !ok {
+		return
+	}
+
+	sac.count--
+	if all || sac.count == 0 {
+		close(sac.signal)
 		delete(hs.heightSubs, height)
 	}
 }
