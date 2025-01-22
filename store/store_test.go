@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
 	stdsync "sync"
@@ -188,14 +189,20 @@ func TestStore_Append(t *testing.T) {
 	// wait for batch to be written.
 	time.Sleep(100 * time.Millisecond)
 
-	// assert.Eventually(t, func() bool {
-	head, err = store.Head(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, int(head.Height()), int(headers[len(headers)-1].Height()))
+	assert.Eventually(t, func() bool {
+		head, err = store.Head(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, int(head.Height()), int(headers[len(headers)-1].Height()))
 
-	// 	return int(head.Height()) == int(headers[len(headers)-1].Height())
-	// }, time.Second, time.Millisecond)
-	assert.Equal(t, head.Hash(), headers[len(headers)-1].Hash())
+		switch {
+		case int(head.Height()) != int(headers[len(headers)-1].Height()):
+			return false
+		case !bytes.Equal(head.Hash(), headers[len(headers)-1].Hash()):
+			return false
+		default:
+			return true
+		}
+	}, time.Second, time.Millisecond)
 }
 
 func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
@@ -281,14 +288,8 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, head.Hash(), suite.Head().Hash())
 
-	firstChunk := suite.GenDummyHeaders(5)
-	missedChunk := suite.GenDummyHeaders(5)
-	lastChunk := suite.GenDummyHeaders(5)
-
-	wantMissHead := missedChunk[len(missedChunk)-2]
-	wantLastHead := lastChunk[len(lastChunk)-1]
-
 	{
+		firstChunk := suite.GenDummyHeaders(5)
 		latestHead := firstChunk[len(firstChunk)-1]
 
 		err := store.Append(ctx, firstChunk...)
@@ -302,6 +303,9 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		assert.Equal(t, head.Hash(), latestHead.Hash())
 	}
 
+	missedChunk := suite.GenDummyHeaders(5)
+	wantMissHead := missedChunk[len(missedChunk)-2]
+
 	errChMiss := make(chan error, 1)
 	go func() {
 		shortCtx, shortCancel := context.WithTimeout(ctx, 3*time.Second)
@@ -310,6 +314,9 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		_, err := store.GetByHeight(shortCtx, wantMissHead.Height())
 		errChMiss <- err
 	}()
+
+	lastChunk := suite.GenDummyHeaders(5)
+	wantLastHead := lastChunk[len(lastChunk)-1]
 
 	errChLast := make(chan error, 1)
 	go func() {
@@ -329,6 +336,7 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	case err := <-errChLast:
 		t.Fatalf("store.GetByHeight on last height MUST be blocked, have error: %v", err)
 	default:
+		// ok
 	}
 
 	{
@@ -336,15 +344,15 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		require.NoError(t, err)
 		// wait for batch to be written.
 		time.Sleep(100 * time.Millisecond)
-	}
 
-	select {
-	case err := <-errChMiss:
-		t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
-	case err := <-errChLast:
-		require.NoError(t, err)
-	default:
-		t.Fatalf("store.GetByHeight on last height MUST NOT be blocked, have error: %v", err)
+		select {
+		case err := <-errChMiss:
+			t.Fatalf("store.GetByHeight on prelast height MUST be blocked, have error: %v", err)
+		case err := <-errChLast:
+			require.NoError(t, err)
+		default:
+			t.Fatalf("store.GetByHeight on last height MUST NOT be blocked, have error: %v", err)
+		}
 	}
 
 	{
@@ -352,17 +360,17 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 		require.NoError(t, err)
 		// wait for batch to be written.
 		time.Sleep(100 * time.Millisecond)
-	}
 
-	select {
-	case err := <-errChMiss:
-		require.NoError(t, err)
+		select {
+		case err := <-errChMiss:
+			require.NoError(t, err)
 
-		head, err := store.GetByHeight(ctx, wantLastHead.Height())
-		require.NoError(t, err)
-		require.Equal(t, head, wantLastHead)
-	default:
-		t.Fatal("store.GetByHeight on last height MUST NOT be blocked")
+			head, err := store.GetByHeight(ctx, wantLastHead.Height())
+			require.NoError(t, err)
+			require.Equal(t, head, wantLastHead)
+		default:
+			t.Fatal("store.GetByHeight on last height MUST NOT be blocked")
+		}
 	}
 }
 
