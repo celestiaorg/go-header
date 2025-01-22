@@ -192,6 +192,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 			"hash_of_subjective", sbjHead.Hash(),
 			"reason", verErr.Reason)
 	}
+
 	return verErr.SoftFailure, err
 }
 
