@@ -192,8 +192,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
 			"hash_of_subjective", sbjHead.Hash(),
 			"reason", verErr.Reason)
 	}
-
-	return false, err
+	return verErr.SoftFailure, err
 }
 
 // verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
@@ -231,7 +230,6 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 
 		// candidate was validated properly, update subjHead.
 		subjHead = candidateHeader
-		s.setSubjectiveHead(ctx, subjHead)
 
 		if err := header.Verify(subjHead, networkHead); err == nil {
 			// network head validate properly, return success.
