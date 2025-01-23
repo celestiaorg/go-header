@@ -33,6 +33,21 @@ func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	}
 }
 
+// Init the heightSub with a given height.
+// Unblocks all awaiting [Wait] calls lower than height.
+func (hs *heightSub[H]) Init(height uint64) {
+	hs.height.Store(height)
+
+	hs.heightSubsLk.Lock()
+	defer hs.heightSubsLk.Unlock()
+
+	for h := range hs.heightSubs {
+		if h < height {
+			hs.unblockHeight(h, true)
+		}
+	}
+}
+
 // Height reports current height.
 func (hs *heightSub[H]) Height() uint64 {
 	return hs.height.Load()

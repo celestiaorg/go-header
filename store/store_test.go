@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 )
 
@@ -482,6 +483,7 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suite := headertest.NewTestSuite(t)
+	suite.Head().HeightI = 1_000_000
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store, err := NewStore[*headertest.DummyHeader](ds)
@@ -494,9 +496,8 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 		_ = store.Init(ctx, suite.Head())
 	}()
 
-	h, err := store.GetByHeight(ctx, 1)
-	require.NoError(t, err)
-	require.NotNil(t, h)
+	_, err = store.GetByHeight(ctx, 1)
+	require.ErrorIs(t, err, header.ErrNotFound)
 }
 
 func TestStoreInit(t *testing.T) {

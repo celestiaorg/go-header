@@ -123,7 +123,7 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
 	s.contiguousHead.Store(&initial)
-	s.heightSub.SetHeight(initial.Height())
+	s.heightSub.Init(initial.Height())
 	return nil
 }
 

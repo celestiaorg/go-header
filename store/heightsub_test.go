@@ -18,7 +18,7 @@ func TestHeightSub(t *testing.T) {
 
 	// assert subscription returns nil for past heights
 	{
-		hs.SetHeight(99)
+		hs.Init(99)
 
 		err := hs.Wait(ctx, 10)
 		assert.ErrorIs(t, err, errElapsedHeight)
@@ -62,7 +62,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 	defer cancel()
 
 	hs := newHeightSub[*headertest.DummyHeader]()
-	hs.SetHeight(10)
+	hs.Init(10)
 
 	const waiters = 5
 
@@ -109,8 +109,7 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 	defer cancel()
 
 	hs := newHeightSub[*headertest.DummyHeader]()
-
-	hs.SetHeight(99)
+	hs.Init(99)
 
 	go func() {
 		// fixes flakiness on CI
@@ -127,7 +126,7 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 func TestHeightSub_monotonicHeight(t *testing.T) {
 	hs := newHeightSub[*headertest.DummyHeader]()
 
-	hs.SetHeight(99)
+	hs.Init(99)
 	assert.Equal(t, int64(hs.height.Load()), int64(99))
 
 	hs.SetHeight(300)
