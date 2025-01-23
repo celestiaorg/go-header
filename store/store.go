@@ -231,6 +231,10 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 
+	if h, err := s.getByHeight(ctx, height); err == nil || ctx.Err() != nil {
+		return h, err
+	}
+
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
