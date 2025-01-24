@@ -165,19 +165,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 }
 
 func (s *Store[H]) Height() uint64 {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	head, err := s.Head(ctx)
-	if err != nil {
-		if errors.Is(err, context.Canceled) ||
-			errors.Is(err, context.DeadlineExceeded) ||
-			errors.Is(err, datastore.ErrNotFound) {
-			return 0
-		}
-		panic(err)
-	}
-	return head.Height()
+	return s.heightSub.Height()
 }
 
 func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
@@ -231,8 +219,8 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 
-	if h, err := s.getByHeight(ctx, height); err == nil || ctx.Err() != nil {
-		return h, err
+	if h, err := s.getByHeight(ctx, height); err == nil {
+		return h, nil
 	}
 
 	// if the requested 'height' was not yet published
@@ -537,17 +525,17 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, headers ...H) {
 	}
 
 	if currHeight > prevHeight {
-		s.updateContiguousHead(newHead, currHeight)
+		s.updateContiguousHead(ctx, newHead, currHeight)
 	}
 }
 
-func (s *Store[H]) updateContiguousHead(newHead H, newHeight uint64) {
+func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H, newHeight uint64) {
 	s.contiguousHead.Store(&newHead)
 	s.heightSub.SetHeight(newHeight)
 	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 	s.metrics.newHead(newHead.Height())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	b, err := newHead.Hash().MarshalJSON()

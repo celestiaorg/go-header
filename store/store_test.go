@@ -375,6 +375,34 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 }
 
+func TestStoreGetByHeight_earlyAvailable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	const skippedHeaders = 15
+	suite.GenDummyHeaders(skippedHeaders)
+	lastChunk := suite.GenDummyHeaders(1)
+
+	{
+		err := store.Append(ctx, lastChunk...)
+		require.NoError(t, err)
+
+		// wait for batch to be written.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	{
+		h, err := store.GetByHeight(ctx, lastChunk[0].Height())
+		require.NoError(t, err)
+		require.Equal(t, h, lastChunk[0])
+	}
+}
+
 // TestStore_GetRange tests possible combinations of requests and ensures that
 // the store can handle them adequately (even malformed requests)
 func TestStore_GetRange(t *testing.T) {
