@@ -174,18 +174,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	}
 
 	var zero H
-	head, err := s.readHead(ctx)
-	switch {
-	default:
-		return zero, err
-	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
-		return zero, header.ErrNoHead
-	case err == nil:
-		s.contiguousHead.Store(&head)
-		s.heightSub.SetHeight(head.Height())
-		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
-		return head, nil
-	}
+	return zero, header.ErrNoHead
 }
 
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
@@ -376,8 +365,7 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 // (1) Appends not to be blocked on long disk IO writes and underlying DB compactions
 // (2) Batching header writes
 func (s *Store[H]) flushLoop() {
-	// advance based on what we have on disk.
-	s.doAdvanceContiguousHead(context.Background(), s.Height())
+	s.loadHeadKey(context.Background())
 
 	defer close(s.writesDn)
 	ctx := context.Background()
@@ -467,6 +455,16 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	return batch.Commit(ctx)
 }
 
+func (s *Store[H]) loadHeadKey(ctx context.Context) error {
+	h, err := s.readHead(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.doAdvanceContiguousHead(ctx, h.Height())
+	return nil
+}
+
 // readHead loads the head from the datastore.
 func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 	var zero H
@@ -513,12 +511,11 @@ func (s *Store[H]) tryAdvanceContiguousHead(ctx context.Context, headers ...H) {
 }
 
 func (s *Store[H]) doAdvanceContiguousHead(ctx context.Context, currHeight uint64) {
-	prevHeight := currHeight
-
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
 	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer advCancel()
 
+	prevHeight := currHeight
 	var newHead H
 	for {
 		h, err := s.getByHeight(advCtx, currHeight+1)
