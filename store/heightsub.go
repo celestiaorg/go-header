@@ -18,10 +18,10 @@ type heightSub[H header.Header[H]] struct {
 	// that has been fully verified and inserted into the subjective chain
 	height       atomic.Uint64
 	heightSubsLk sync.Mutex
-	heightSubs   map[uint64]*signalAndCounter
+	heightSubs   map[uint64]*sub
 }
 
-type signalAndCounter struct {
+type sub struct {
 	signal chan struct{}
 	count  int
 }
@@ -29,7 +29,7 @@ type signalAndCounter struct {
 // newHeightSub instantiates new heightSub.
 func newHeightSub[H header.Header[H]]() *heightSub[H] {
 	return &heightSub[H]{
-		heightSubs: make(map[uint64]*signalAndCounter),
+		heightSubs: make(map[uint64]*sub),
 	}
 }
 
@@ -94,7 +94,7 @@ func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 
 	sac, ok := hs.heightSubs[height]
 	if !ok {
-		sac = &signalAndCounter{
+		sac = &sub{
 			signal: make(chan struct{}, 1),
 		}
 		hs.heightSubs[height] = sac

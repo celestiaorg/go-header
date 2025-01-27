@@ -127,7 +127,7 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	return nil
 }
 
-func (s *Store[H]) Start(context.Context) error {
+func (s *Store[H]) Start(ctx context.Context) error {
 	// closed s.writesDn means that store was stopped before, recreate chan.
 	select {
 	case <-s.writesDn:
@@ -135,8 +135,11 @@ func (s *Store[H]) Start(context.Context) error {
 	default:
 	}
 
-	if err := s.loadHeadKey(context.Background()); err != nil {
-		log.Errorw("cannot load headKey", "err", err)
+	if err := s.loadHeadKey(ctx); err != nil {
+		// we might start on an empty datastore, no key is okay.
+		if !errors.Is(err, datastore.ErrNotFound) {
+			return fmt.Errorf("header/store: cannot load headKey: %w", err)
+		}
 	}
 
 	go s.flushLoop()
