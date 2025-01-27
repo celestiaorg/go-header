@@ -135,6 +135,10 @@ func (s *Store[H]) Start(context.Context) error {
 	default:
 	}
 
+	if err := s.loadHeadKey(context.Background()); err != nil {
+		log.Errorw("cannot load headKey", "err", err)
+	}
+
 	go s.flushLoop()
 	return nil
 }
@@ -365,8 +369,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 // (1) Appends not to be blocked on long disk IO writes and underlying DB compactions
 // (2) Batching header writes
 func (s *Store[H]) flushLoop() {
-	s.loadHeadKey(context.Background())
-
 	defer close(s.writesDn)
 	ctx := context.Background()
 	for headers := range s.writes {
@@ -461,7 +463,11 @@ func (s *Store[H]) loadHeadKey(ctx context.Context) error {
 		return err
 	}
 
-	s.doAdvanceContiguousHead(ctx, h.Height())
+	newHeight := s.doAdvanceContiguousHead(ctx, h.Height())
+	if newHeight >= h.Height() {
+		s.contiguousHead.Store(&h)
+		s.heightSub.SetHeight(h.Height())
+	}
 	return nil
 }
 
@@ -510,7 +516,9 @@ func (s *Store[H]) tryAdvanceContiguousHead(ctx context.Context, headers ...H) {
 	}
 }
 
-func (s *Store[H]) doAdvanceContiguousHead(ctx context.Context, currHeight uint64) {
+// doAdvanceContiguousHead return a new highest contiguous height
+// or a given if not found.
+func (s *Store[H]) doAdvanceContiguousHead(ctx context.Context, currHeight uint64) uint64 {
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
 	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer advCancel()
@@ -529,6 +537,7 @@ func (s *Store[H]) doAdvanceContiguousHead(ctx context.Context, currHeight uint6
 	if currHeight > prevHeight {
 		s.updateContiguousHead(ctx, newHead, currHeight)
 	}
+	return currHeight
 }
 
 func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H, newHeight uint64) {
