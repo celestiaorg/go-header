@@ -34,7 +34,7 @@ func newHeightSub[H header.Header[H]]() *heightSub[H] {
 }
 
 // Init the heightSub with a given height.
-// Unblocks all awaiting [Wait] calls lower than height.
+// Notifies all awaiting [Wait] calls lower than height.
 func (hs *heightSub[H]) Init(height uint64) {
 	hs.height.Store(height)
 
@@ -43,7 +43,7 @@ func (hs *heightSub[H]) Init(height uint64) {
 
 	for h := range hs.heightSubs {
 		if h < height {
-			hs.unblockHeight(h, true)
+			hs.notifyHeight(h, true)
 		}
 	}
 }
@@ -54,7 +54,7 @@ func (hs *heightSub[H]) Height() uint64 {
 }
 
 // SetHeight sets the new head height for heightSub.
-// Unblocks all awaiting [Wait] calls in range from [heightSub.Height] to height.
+// Notifies all awaiting [Wait] calls in range from [heightSub.Height] to height.
 func (hs *heightSub[H]) SetHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
@@ -69,7 +69,7 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 		defer hs.heightSubsLk.Unlock() //nolint:gocritic we have a return below
 
 		for ; curr <= height; curr++ {
-			hs.unblockHeight(curr, true)
+			hs.notifyHeight(curr, true)
 		}
 		return
 	}
@@ -108,22 +108,22 @@ func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 	case <-ctx.Done():
 		// no need to keep the request, if the op has canceled
 		hs.heightSubsLk.Lock()
-		hs.unblockHeight(height, false)
+		hs.notifyHeight(height, false)
 		hs.heightSubsLk.Unlock()
 		return ctx.Err()
 	}
 }
 
-// UnblockHeight and release the waiters in [Wait].
+// NotifyHeight and release the waiters in [Wait].
 // Note: do not advance heightSub's height.
-func (hs *heightSub[H]) UnblockHeight(height uint64) {
+func (hs *heightSub[H]) NotifyHeight(height uint64) {
 	hs.heightSubsLk.Lock()
 	defer hs.heightSubsLk.Unlock()
 
-	hs.unblockHeight(height, true)
+	hs.notifyHeight(height, true)
 }
 
-func (hs *heightSub[H]) unblockHeight(height uint64, all bool) {
+func (hs *heightSub[H]) notifyHeight(height uint64, all bool) {
 	sac, ok := hs.heightSubs[height]
 	if !ok {
 		return

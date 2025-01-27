@@ -379,7 +379,7 @@ func (s *Store[H]) flushLoop() {
 		s.pending.Append(headers...)
 		// notify waiters in heightSub and advance contiguousHead
 		// if we don't have gaps.
-		s.unblockAndAdvance(ctx, headers...)
+		s.notifyAndAdvance(ctx, headers...)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -506,12 +506,12 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// unblockAndAdvance will notify waiters in heightSub and advance contiguousHead
+// notifyAndAdvance will notify waiters in heightSub and advance contiguousHead
 // based on already written headers.
-func (s *Store[H]) unblockAndAdvance(ctx context.Context, headers ...H) {
+func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 	// always inform heightSub about new headers seen
 	for _, h := range headers {
-		s.heightSub.UnblockHeight(h.Height())
+		s.heightSub.NotifyHeight(h.Height())
 	}
 
 	currHead := s.contiguousHead.Load()
