@@ -539,14 +539,14 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64)
 	}
 
 	if currHeight > prevHeight {
-		s.updateContiguousHead(ctx, newHead, currHeight)
+		s.updateContiguousHead(ctx, newHead)
 	}
 	return currHeight
 }
 
-func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H, newHeight uint64) {
+func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H) {
 	s.contiguousHead.Store(&newHead)
-	s.heightSub.SetHeight(newHeight)
+	s.heightSub.SetHeight(newHead.Height())
 	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 	s.metrics.newHead(newHead.Height())
 
