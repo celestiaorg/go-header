@@ -14,13 +14,13 @@ func TestHeightSub(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 
 	// assert subscription returns nil for past heights
 	{
 		hs.Init(99)
 
-		err := hs.WaitHeight(ctx, 10)
+		err := hs.Wait(ctx, 10)
 		assert.ErrorIs(t, err, errElapsedHeight)
 	}
 
@@ -33,7 +33,7 @@ func TestHeightSub(t *testing.T) {
 			hs.SetHeight(102)
 		}()
 
-		err := hs.WaitHeight(ctx, 101)
+		err := hs.Wait(ctx, 101)
 		assert.NoError(t, err)
 	}
 
@@ -42,7 +42,7 @@ func TestHeightSub(t *testing.T) {
 		ch := make(chan error, 10)
 		for range cap(ch) {
 			go func() {
-				err := hs.WaitHeight(ctx, 103)
+				err := hs.Wait(ctx, 103)
 				ch <- err
 			}()
 		}
@@ -61,7 +61,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 	hs.Init(10)
 
 	const waiters = 5
@@ -76,7 +76,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Duration(i+1)*time.Millisecond)
 			defer cancel()
 
-			err := hs.WaitHeight(ctx, 100)
+			err := hs.Wait(ctx, 100)
 			cancelChs[i] <- err
 		}()
 
@@ -84,7 +84,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			err := hs.WaitHeight(ctx, 100)
+			err := hs.Wait(ctx, 100)
 			blockedChs[i] <- err
 		}()
 	}
@@ -108,7 +108,7 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 	hs.Init(99)
 
 	go func() {
@@ -118,13 +118,13 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 		hs.SetHeight(300)
 	}()
 
-	err := hs.WaitHeight(ctx, 200)
+	err := hs.Wait(ctx, 200)
 	assert.NoError(t, err)
 }
 
 // Test heightSub's height cannot go down but only up.
 func TestHeightSub_monotonicHeight(t *testing.T) {
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 
 	hs.Init(99)
 	assert.Equal(t, int64(hs.height.Load()), int64(99))
@@ -142,12 +142,12 @@ func TestHeightSubCancellation(t *testing.T) {
 
 	h := headertest.RandDummyHeader(t)
 	h.HeightI %= 1000 // make it a bit lower
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 
 	sub := make(chan struct{})
 	go func() {
 		// subscribe first time
-		hs.WaitHeight(ctx, h.Height())
+		hs.Wait(ctx, h.Height())
 		sub <- struct{}{}
 	}()
 
@@ -157,7 +157,7 @@ func TestHeightSubCancellation(t *testing.T) {
 	// subscribe again but with failed canceled context
 	canceledCtx, cancel := context.WithCancel(ctx)
 	cancel()
-	err := hs.WaitHeight(canceledCtx, h.Height())
+	err := hs.Wait(canceledCtx, h.Height())
 	assert.ErrorIs(t, err, context.Canceled)
 
 	// update height

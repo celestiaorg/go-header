@@ -41,7 +41,7 @@ type Store[H header.Header[H]] struct {
 	heightIndex *heightIndexer[H]
 	// manages current store read head height (1) and
 	// allows callers to wait until header for a height is stored (2)
-	heightSub *heightSub[H]
+	heightSub *heightSub
 
 	// writing to datastore
 	//
@@ -103,7 +103,7 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 		cache:       cache,
 		metrics:     metrics,
 		heightIndex: index,
-		heightSub:   newHeightSub[H](),
+		heightSub:   newHeightSub(),
 		writes:      make(chan []H, 16),
 		writesDn:    make(chan struct{}),
 		pending:     newBatch[H](params.WriteBatchSize),
@@ -222,7 +222,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
-		err := s.heightSub.WaitHeight(ctx, height)
+		err := s.heightSub.Wait(ctx, height)
 		if err != nil && !errors.Is(err, errElapsedHeight) {
 			return zero, err
 		}
@@ -511,7 +511,7 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 	// always inform heightSub about new headers seen
 	for _, h := range headers {
-		s.heightSub.NotifyHeight(h.Height())
+		s.heightSub.Notify(h.Height())
 	}
 
 	currHead := s.contiguousHead.Load()

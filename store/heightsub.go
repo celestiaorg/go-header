@@ -5,15 +5,13 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
-
-	"github.com/celestiaorg/go-header"
 )
 
 // errElapsedHeight is thrown when a requested height was already provided to heightSub.
 var errElapsedHeight = errors.New("elapsed height")
 
 // heightSub provides a minimalistic mechanism to wait till header for a height becomes available.
-type heightSub[H header.Header[H]] struct {
+type heightSub struct {
 	// height refers to the latest locally available header height
 	// that has been fully verified and inserted into the subjective chain
 	height       atomic.Uint64
@@ -27,15 +25,15 @@ type sub struct {
 }
 
 // newHeightSub instantiates new heightSub.
-func newHeightSub[H header.Header[H]]() *heightSub[H] {
-	return &heightSub[H]{
+func newHeightSub() *heightSub {
+	return &heightSub{
 		heightSubs: make(map[uint64]*sub),
 	}
 }
 
 // Init the heightSub with a given height.
-// Notifies all awaiting [WaitHeight] calls lower than height.
-func (hs *heightSub[H]) Init(height uint64) {
+// Notifies all awaiting [Wait] calls lower than height.
+func (hs *heightSub) Init(height uint64) {
 	hs.height.Store(height)
 
 	hs.heightSubsLk.Lock()
@@ -43,19 +41,19 @@ func (hs *heightSub[H]) Init(height uint64) {
 
 	for h := range hs.heightSubs {
 		if h < height {
-			hs.notifyHeight(h, true)
+			hs.notify(h, true)
 		}
 	}
 }
 
 // Height reports current height.
-func (hs *heightSub[H]) Height() uint64 {
+func (hs *heightSub) Height() uint64 {
 	return hs.height.Load()
 }
 
 // SetHeight sets the new head height for heightSub.
-// Notifies all awaiting [WaitHeight] calls in range from [heightSub.Height] to height.
-func (hs *heightSub[H]) SetHeight(height uint64) {
+// Notifies all awaiting [Wait] calls in range from [heightSub.Height] to height.
+func (hs *heightSub) SetHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
 		if curr >= height {
@@ -69,16 +67,16 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 		defer hs.heightSubsLk.Unlock() //nolint:gocritic we have a return below
 
 		for ; curr <= height; curr++ {
-			hs.notifyHeight(curr, true)
+			hs.notify(curr, true)
 		}
 		return
 	}
 }
 
-// WaitHeight for a given height to be published.
+// Wait for a given height to be published.
 // It can return errElapsedHeight, which means a requested height was already seen
 // and caller should get it elsewhere.
-func (hs *heightSub[H]) WaitHeight(ctx context.Context, height uint64) error {
+func (hs *heightSub) Wait(ctx context.Context, height uint64) error {
 	if hs.Height() >= height {
 		return errElapsedHeight
 	}
@@ -108,22 +106,22 @@ func (hs *heightSub[H]) WaitHeight(ctx context.Context, height uint64) error {
 	case <-ctx.Done():
 		// no need to keep the request, if the op has canceled
 		hs.heightSubsLk.Lock()
-		hs.notifyHeight(height, false)
+		hs.notify(height, false)
 		hs.heightSubsLk.Unlock()
 		return ctx.Err()
 	}
 }
 
-// NotifyHeight and release the waiters in [WaitHeight].
+// Notify and release the waiters in [Wait].
 // Note: do not advance heightSub's height.
-func (hs *heightSub[H]) NotifyHeight(height uint64) {
+func (hs *heightSub) Notify(height uint64) {
 	hs.heightSubsLk.Lock()
 	defer hs.heightSubsLk.Unlock()
 
-	hs.notifyHeight(height, true)
+	hs.notify(height, true)
 }
 
-func (hs *heightSub[H]) notifyHeight(height uint64, all bool) {
+func (hs *heightSub) notify(height uint64, all bool) {
 	sac, ok := hs.heightSubs[height]
 	if !ok {
 		return
