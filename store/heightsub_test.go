@@ -20,7 +20,7 @@ func TestHeightSub(t *testing.T) {
 	{
 		hs.Init(99)
 
-		err := hs.Wait(ctx, 10)
+		err := hs.WaitHeight(ctx, 10)
 		assert.ErrorIs(t, err, errElapsedHeight)
 	}
 
@@ -33,7 +33,7 @@ func TestHeightSub(t *testing.T) {
 			hs.SetHeight(102)
 		}()
 
-		err := hs.Wait(ctx, 101)
+		err := hs.WaitHeight(ctx, 101)
 		assert.NoError(t, err)
 	}
 
@@ -42,7 +42,7 @@ func TestHeightSub(t *testing.T) {
 		ch := make(chan error, 10)
 		for range cap(ch) {
 			go func() {
-				err := hs.Wait(ctx, 103)
+				err := hs.WaitHeight(ctx, 103)
 				ch <- err
 			}()
 		}
@@ -76,7 +76,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Duration(i+1)*time.Millisecond)
 			defer cancel()
 
-			err := hs.Wait(ctx, 100)
+			err := hs.WaitHeight(ctx, 100)
 			cancelChs[i] <- err
 		}()
 
@@ -84,7 +84,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			err := hs.Wait(ctx, 100)
+			err := hs.WaitHeight(ctx, 100)
 			blockedChs[i] <- err
 		}()
 	}
@@ -118,7 +118,7 @@ func TestHeightSubNonAdjacement(t *testing.T) {
 		hs.SetHeight(300)
 	}()
 
-	err := hs.Wait(ctx, 200)
+	err := hs.WaitHeight(ctx, 200)
 	assert.NoError(t, err)
 }
 
@@ -147,7 +147,7 @@ func TestHeightSubCancellation(t *testing.T) {
 	sub := make(chan struct{})
 	go func() {
 		// subscribe first time
-		hs.Wait(ctx, h.Height())
+		hs.WaitHeight(ctx, h.Height())
 		sub <- struct{}{}
 	}()
 
@@ -157,7 +157,7 @@ func TestHeightSubCancellation(t *testing.T) {
 	// subscribe again but with failed canceled context
 	canceledCtx, cancel := context.WithCancel(ctx)
 	cancel()
-	err := hs.Wait(canceledCtx, h.Height())
+	err := hs.WaitHeight(canceledCtx, h.Height())
 	assert.ErrorIs(t, err, context.Canceled)
 
 	// update height

@@ -222,7 +222,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// if the requested 'height' was not yet published
 	// we subscribe to it
 	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
-		err := s.heightSub.Wait(ctx, height)
+		err := s.heightSub.WaitHeight(ctx, height)
 		if err != nil && !errors.Is(err, errElapsedHeight) {
 			return zero, err
 		}

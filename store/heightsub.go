@@ -34,7 +34,7 @@ func newHeightSub[H header.Header[H]]() *heightSub[H] {
 }
 
 // Init the heightSub with a given height.
-// Notifies all awaiting [Wait] calls lower than height.
+// Notifies all awaiting [WaitHeight] calls lower than height.
 func (hs *heightSub[H]) Init(height uint64) {
 	hs.height.Store(height)
 
@@ -54,7 +54,7 @@ func (hs *heightSub[H]) Height() uint64 {
 }
 
 // SetHeight sets the new head height for heightSub.
-// Notifies all awaiting [Wait] calls in range from [heightSub.Height] to height.
+// Notifies all awaiting [WaitHeight] calls in range from [heightSub.Height] to height.
 func (hs *heightSub[H]) SetHeight(height uint64) {
 	for {
 		curr := hs.height.Load()
@@ -75,10 +75,10 @@ func (hs *heightSub[H]) SetHeight(height uint64) {
 	}
 }
 
-// Wait for a given height to be published.
+// WaitHeight for a given height to be published.
 // It can return errElapsedHeight, which means a requested height was already seen
 // and caller should get it elsewhere.
-func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
+func (hs *heightSub[H]) WaitHeight(ctx context.Context, height uint64) error {
 	if hs.Height() >= height {
 		return errElapsedHeight
 	}
@@ -114,7 +114,7 @@ func (hs *heightSub[H]) Wait(ctx context.Context, height uint64) error {
 	}
 }
 
-// NotifyHeight and release the waiters in [Wait].
+// NotifyHeight and release the waiters in [WaitHeight].
 // Note: do not advance heightSub's height.
 func (hs *heightSub[H]) NotifyHeight(height uint64) {
 	hs.heightSubsLk.Lock()
