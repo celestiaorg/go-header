@@ -521,7 +521,7 @@ func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 }
 
 // advanceContiguousHead return a new highest contiguous height
-// or a given if not found.
+// or returns a given height if not found.
 func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64) uint64 {
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
 	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
@@ -557,11 +557,13 @@ func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H) {
 	if err != nil {
 		log.Errorw("cannot marshal new head",
 			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
+		return
 	}
 
 	if err := s.ds.Put(ctx, headKey, b); err != nil {
 		log.Errorw("cannot put new head",
 			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
+		return
 	}
 }
 

@@ -104,7 +104,7 @@ func TestHeightSub_withWaitCancelled(t *testing.T) {
 }
 
 // Test heightSub can accept non-adj headers without an error.
-func TestHeightSubNonAdjacement(t *testing.T) {
+func TestHeightSubNonAdjacency(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
