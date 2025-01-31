@@ -466,11 +466,7 @@ func (s *Store[H]) loadHeadKey(ctx context.Context) error {
 		return err
 	}
 
-	newHeight := s.advanceContiguousHead(ctx, h.Height())
-	if newHeight >= h.Height() {
-		s.contiguousHead.Store(&h)
-		s.heightSub.SetHeight(h.Height())
-	}
+	s.advanceContiguousHead(ctx, h.Height())
 	return nil
 }
 
@@ -521,8 +517,8 @@ func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 }
 
 // advanceContiguousHead return a new highest contiguous height
-// or returns a given height if not found.
-func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64) uint64 {
+// or returns the given height if not found.
+func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64) {
 	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
 	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer advCancel()
@@ -538,10 +534,9 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64)
 		currHeight++
 	}
 
-	if currHeight > prevHeight {
+	if currHeight >= prevHeight {
 		s.updateContiguousHead(ctx, newHead)
 	}
-	return currHeight
 }
 
 func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H) {
