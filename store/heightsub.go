@@ -64,7 +64,7 @@ func (hs *heightSub) SetHeight(height uint64) {
 		}
 
 		hs.heightSubsLk.Lock()
-		defer hs.heightSubsLk.Unlock() //nolint:gocritic we have a return below
+		defer hs.heightSubsLk.Unlock() //nolint:gocritic // we have a return below
 
 		for ; curr <= height; curr++ {
 			hs.notify(curr, true)

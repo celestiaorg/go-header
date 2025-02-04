@@ -178,7 +178,7 @@ func (s *Store[H]) Height() uint64 {
 	return s.heightSub.Height()
 }
 
-func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+func (s *Store[H]) Head(_ context.Context, _ ...header.HeadOption[H]) (H, error) {
 	if head := s.contiguousHead.Load(); head != nil {
 		return *head, nil
 	}
@@ -324,7 +324,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	// collect valid headers
 	verified := make([]H, 0, lh)
 	for i, h := range headers {
-
 		err = head.Verify(h)
 		if err != nil {
 			var verErr *header.VerifyError
