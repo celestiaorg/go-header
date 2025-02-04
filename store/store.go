@@ -518,10 +518,7 @@ func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 	}
 	s.heightSub.Notify(heights...)
 
-	currHead := s.contiguousHead.Load()
-	if currHead != nil {
-		s.advanceContiguousHead(ctx, s.heightSub.Height())
-	}
+	s.advanceContiguousHead(ctx, s.heightSub.Height())
 }
 
 // advanceContiguousHead return a new highest contiguous height
