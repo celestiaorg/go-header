@@ -378,9 +378,10 @@ func (s *Store[H]) flushLoop() {
 	for headers := range s.writes {
 		// add headers to the pending and ensure they are accessible
 		s.pending.Append(headers...)
-		// notify waiters in heightSub and advance contiguousHead
-		// if we don't have gaps.
-		s.notifyAndAdvance(ctx, headers...)
+		// always inform heightSub about new headers seen.
+		s.heightSub.Notify(getHeights(headers...)...)
+		// advance contiguousHead if we don't have gaps.
+		s.advanceContiguousHead(ctx, s.heightSub.Height())
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -508,19 +509,6 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// notifyAndAdvance will notify waiters in heightSub and advance contiguousHead
-// based on already written headers.
-func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
-	// always inform heightSub about new headers seen
-	heights := make([]uint64, len(headers))
-	for i := range headers {
-		heights[i] = headers[i].Height()
-	}
-	s.heightSub.Notify(heights...)
-
-	s.advanceContiguousHead(ctx, s.heightSub.Height())
-}
-
 // advanceContiguousHead return a new highest contiguous height
 // or returns the given height if not found.
 func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64) uint64 {
@@ -557,4 +545,12 @@ func indexTo[H header.Header[H]](ctx context.Context, batch datastore.Batch, hea
 		}
 	}
 	return nil
+}
+
+func getHeights[H header.Header[H]](headers ...H) []uint64 {
+	heights := make([]uint64, len(headers))
+	for i := range headers {
+		heights[i] = headers[i].Height()
+	}
+	return heights
 }
