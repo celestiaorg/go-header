@@ -115,6 +115,11 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	if s.heightSub.Height() != 0 {
 		return errors.New("store already initialized")
 	}
+
+	// initialize with the initial head before first flush.
+	s.contiguousHead.Store(&initial)
+	s.heightSub.Init(initial.Height())
+
 	// trust the given header as the initial head
 	err := s.flush(ctx, initial)
 	if err != nil {
@@ -122,8 +127,6 @@ func (s *Store[H]) Init(ctx context.Context, initial H) error {
 	}
 
 	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
-	s.contiguousHead.Store(&initial)
-	s.heightSub.Init(initial.Height())
 	return nil
 }
 
@@ -439,11 +442,8 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	}
 
 	// marshal and add to batch reference to the new head
-	head := headers[ln-1]
-	if h := s.contiguousHead.Load(); h != nil {
-		head = *h
-	}
-	b, err := head.Hash().MarshalJSON()
+	head := s.contiguousHead.Load()
+	b, err := (*head).Hash().MarshalJSON()
 	if err != nil {
 		return err
 	}
