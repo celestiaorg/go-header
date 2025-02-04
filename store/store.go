@@ -468,11 +468,8 @@ func (s *Store[H]) loadHeadKey(ctx context.Context) error {
 		return err
 	}
 
-	newHeight := s.advanceContiguousHead(ctx, h.Height())
-	if newHeight >= h.Height() {
-		s.contiguousHead.Store(&h)
-		s.heightSub.SetHeight(h.Height())
-	}
+	s.contiguousHead.Store(&h)
+	s.heightSub.SetHeight(h.Height())
 	return nil
 }
 
@@ -510,29 +507,28 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 
 // advanceContiguousHead return a new highest contiguous height
 // or returns the given height if not found.
-func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64) uint64 {
-	// TODO(cristaloleg): benchmark this timeout or make it dynamic.
-	advCtx, advCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer advCancel()
-
-	prevHeight := currHeight
-	var newHead H
-	for {
-		h, err := s.getByHeight(advCtx, currHeight+1)
-		if err != nil {
-			break
-		}
-		newHead = h
-		currHeight++
-	}
-
-	if currHeight > prevHeight {
+func (s *Store[H]) advanceContiguousHead(ctx context.Context, height uint64) {
+	newHead, ok := s.nextContiguous(ctx, height)
+	if ok && newHead.Height() > height {
 		s.contiguousHead.Store(&newHead)
 		s.heightSub.SetHeight(newHead.Height())
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
 	}
-	return currHeight
+}
+
+func (s *Store[H]) nextContiguous(ctx context.Context, height uint64) (H, bool) {
+	var newHead H
+	newHeight := height
+	for {
+		h, err := s.getByHeight(ctx, newHeight+1)
+		if err != nil {
+			break
+		}
+		newHead = h
+		newHeight++
+	}
+	return newHead, newHeight != height
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
