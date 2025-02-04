@@ -114,11 +114,13 @@ func (hs *heightSub) Wait(ctx context.Context, height uint64) error {
 
 // Notify and release the waiters in [Wait].
 // Note: do not advance heightSub's height.
-func (hs *heightSub) Notify(height uint64) {
+func (hs *heightSub) Notify(heights ...uint64) {
 	hs.heightSubsLk.Lock()
 	defer hs.heightSubsLk.Unlock()
 
-	hs.notify(height, true)
+	for _, h := range heights {
+		hs.notify(h, true)
+	}
 }
 
 func (hs *heightSub) notify(height uint64, all bool) {

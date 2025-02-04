@@ -221,11 +221,9 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 
 	// if the requested 'height' was not yet published
 	// we subscribe to it
-	if head := s.contiguousHead.Load(); head == nil || height > (*head).Height() {
-		err := s.heightSub.Wait(ctx, height)
-		if err != nil && !errors.Is(err, errElapsedHeight) {
-			return zero, err
-		}
+	err := s.heightSub.Wait(ctx, height)
+	if err != nil && !errors.Is(err, errElapsedHeight) {
+		return zero, err
 	}
 	// otherwise, the errElapsedHeight is thrown,
 	// which means the requested 'height' should be present
@@ -441,7 +439,11 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	}
 
 	// marshal and add to batch reference to the new head
-	b, err := headers[ln-1].Hash().MarshalJSON()
+	head := headers[ln-1]
+	if h := s.contiguousHead.Load(); h != nil {
+		head = *h
+	}
+	b, err := head.Hash().MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -510,13 +512,15 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 // based on already written headers.
 func (s *Store[H]) notifyAndAdvance(ctx context.Context, headers ...H) {
 	// always inform heightSub about new headers seen
-	for _, h := range headers {
-		s.heightSub.Notify(h.Height())
+	heights := make([]uint64, len(headers))
+	for i := range headers {
+		heights[i] = headers[i].Height()
 	}
+	s.heightSub.Notify(heights...)
 
 	currHead := s.contiguousHead.Load()
 	if currHead != nil {
-		s.advanceContiguousHead(ctx, (*currHead).Height())
+		s.advanceContiguousHead(ctx, s.heightSub.Height())
 	}
 }
 
@@ -539,32 +543,12 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, currHeight uint64)
 	}
 
 	if currHeight > prevHeight {
-		s.updateContiguousHead(ctx, newHead)
+		s.contiguousHead.Store(&newHead)
+		s.heightSub.SetHeight(newHead.Height())
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
 	}
 	return currHeight
-}
-
-func (s *Store[H]) updateContiguousHead(ctx context.Context, newHead H) {
-	s.contiguousHead.Store(&newHead)
-	s.heightSub.SetHeight(newHead.Height())
-	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-	s.metrics.newHead(newHead.Height())
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	b, err := newHead.Hash().MarshalJSON()
-	if err != nil {
-		log.Errorw("cannot marshal new head",
-			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
-		return
-	}
-
-	if err := s.ds.Put(ctx, headKey, b); err != nil {
-		log.Errorw("cannot put new head",
-			"height", newHead.Height(), "hash", newHead.Hash(), "err", err)
-		return
-	}
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
