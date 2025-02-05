@@ -138,7 +138,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.loadHeadKey(ctx); err != nil {
+	if err := s.loadContiguousHead(ctx); err != nil {
 		// we might start on an empty datastore, no key is okay.
 		if !errors.Is(err, datastore.ErrNotFound) {
 			return fmt.Errorf("header/store: cannot load headKey: %w", err)
@@ -442,8 +442,8 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	}
 
 	// marshal and add to batch reference to the new head
-	head := s.contiguousHead.Load()
-	b, err := (*head).Hash().MarshalJSON()
+	head := *s.contiguousHead.Load()
+	b, err := head.Hash().MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -462,7 +462,8 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	return batch.Commit(ctx)
 }
 
-func (s *Store[H]) loadHeadKey(ctx context.Context) error {
+// loadContiguousHead from the disk and sets contiguousHead and heightSub.
+func (s *Store[H]) loadContiguousHead(ctx context.Context) error {
 	h, err := s.readHead(ctx)
 	if err != nil {
 		return err
@@ -505,30 +506,32 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// advanceContiguousHead return a new highest contiguous height
-// or returns the given height if not found.
+// advanceContiguousHead updates contiguousHead and heightSub if a higher
+// contiguous header exists on a disk.
 func (s *Store[H]) advanceContiguousHead(ctx context.Context, height uint64) {
-	newHead, ok := s.nextContiguous(ctx, height)
-	if ok && newHead.Height() > height {
-		s.contiguousHead.Store(&newHead)
-		s.heightSub.SetHeight(newHead.Height())
-		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-		s.metrics.newHead(newHead.Height())
+	newHead := s.nextContiguousHead(ctx, height)
+	if newHead.IsZero() || newHead.Height() <= height {
+		return
 	}
+
+	s.contiguousHead.Store(&newHead)
+	s.heightSub.SetHeight(newHead.Height())
+	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+	s.metrics.newHead(newHead.Height())
 }
 
-func (s *Store[H]) nextContiguous(ctx context.Context, height uint64) (H, bool) {
+// nextContiguousHead returns a next contiguous header if any.
+func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
 	var newHead H
-	newHeight := height
 	for {
-		h, err := s.getByHeight(ctx, newHeight+1)
+		height++
+		h, err := s.getByHeight(ctx, height)
 		if err != nil {
 			break
 		}
 		newHead = h
-		newHeight++
 	}
-	return newHead, newHeight != height
+	return newHead
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
