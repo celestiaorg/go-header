@@ -520,7 +520,8 @@ func (s *Store[H]) advanceContiguousHead(ctx context.Context, height uint64) {
 	s.metrics.newHead(newHead.Height())
 }
 
-// nextContiguousHead returns a next contiguous header if any.
+// nextContiguousHead iterates up header by header until it finds a gap.
+// if height+1 header not found returns a default header.
 func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
 	var newHead H
 	for {
