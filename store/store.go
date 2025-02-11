@@ -206,7 +206,7 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 		return v, nil
 	}
 	// check if the requested header is not yet written on disk
-	if h := s.writesPending.Get(hash); !h.IsZero() {
+	if h, _ := s.writesPending.Get(hash); !h.IsZero() {
 		return h, nil
 	}
 
@@ -251,7 +251,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 	// TODO: Synchronize with prepareWrite?
-	if h := s.writesPending.GetByHeight(height); !h.IsZero() {
+	if h, _ := s.writesPending.GetByHeight(height); !h.IsZero() {
 		return h, nil
 	}
 
