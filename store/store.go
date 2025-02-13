@@ -179,6 +179,10 @@ func (s *Store[H]) Height() uint64 {
 }
 
 func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+	if head := s.contiguousHead.Load(); head != nil {
+		return *head, nil
+	}
+
 	head, err := s.GetByHeight(ctx, s.heightSub.Height())
 	if err == nil {
 		return head, nil
