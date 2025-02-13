@@ -178,13 +178,24 @@ func (s *Store[H]) Height() uint64 {
 	return s.heightSub.Height()
 }
 
-func (s *Store[H]) Head(_ context.Context, _ ...header.HeadOption[H]) (H, error) {
-	if head := s.contiguousHead.Load(); head != nil {
-		return *head, nil
+func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+	head, err := s.GetByHeight(ctx, s.heightSub.Height())
+	if err == nil {
+		return head, nil
 	}
 
 	var zero H
-	return zero, header.ErrNoHead
+	head, err = s.readHead(ctx)
+	switch {
+	default:
+		return zero, err
+	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
+		return zero, header.ErrNoHead
+	case err == nil:
+		s.heightSub.SetHeight(head.Height())
+		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
+		return head, nil
+	}
 }
 
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
