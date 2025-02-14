@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +15,35 @@ import (
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
 )
+
+func TestSyncer_HeadConcurrencyError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	store := headertest.NewStore[*headertest.DummyHeader](t, suite, 1)
+
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		errorGetter{},
+		store,
+		headertest.NewDummySubscriber(),
+		WithRecencyThreshold(time.Nanosecond), // force recent requests
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			_, err := syncer.Head(ctx)
+			require.NoError(t, err)
+		}()
+	}
+
+	wg.Wait()
+}
 
 func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -136,5 +166,27 @@ func (t *wrappedGetter) GetRangeByHeight(
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
 	// TODO implement me
+	panic("implement me")
+}
+
+type errorGetter struct{}
+
+func (e errorGetter) Head(ctx context.Context, h ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+	time.Sleep(time.Millisecond * 1)
+	return nil, fmt.Errorf("error")
+}
+
+func (e errorGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e errorGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e errorGetter) GetRangeByHeight(ctx context.Context, from *headertest.DummyHeader, to uint64) ([]*headertest.DummyHeader, error) {
+	//TODO implement me
 	panic("implement me")
 }
