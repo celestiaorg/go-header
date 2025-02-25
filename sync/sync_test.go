@@ -47,19 +47,37 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
 
-	exp, err := remoteStore.Head(ctx)
-	require.NoError(t, err)
+	// force sync to update underlying stores.
+	syncer.wantSync()
 
-	have, err := localStore.Head(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, exp.Height(), have.Height())
-	assert.Empty(t, syncer.pending.Head())
+	// we need to wait for a flush
+	assert.Eventually(t, func() bool {
+		exp, err := remoteStore.Head(ctx)
+		require.NoError(t, err)
 
-	state := syncer.State()
-	assert.Equal(t, exp.Height(), state.Height)
-	assert.EqualValues(t, 2, state.FromHeight)
-	assert.Equal(t, exp.Height(), state.ToHeight)
-	assert.True(t, state.Finished(), state)
+		have, err := localStore.Head(ctx)
+		require.NoError(t, err)
+
+		state := syncer.State()
+		switch {
+		case exp.Height() != have.Height():
+			return false
+		case syncer.pending.Head() != nil:
+			return false
+
+		case uint64(exp.Height()) != state.Height:
+			return false
+		case uint64(2) != state.FromHeight:
+			return false
+
+		case uint64(exp.Height()) != state.ToHeight:
+			return false
+		case !state.Finished():
+			return false
+		default:
+			return true
+		}
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 func TestDoSyncFullRangeFromExternalPeer(t *testing.T) {
@@ -210,11 +228,20 @@ func TestSyncPendingRangesWithMisses(t *testing.T) {
 	exp, err := remoteStore.Head(ctx)
 	require.NoError(t, err)
 
-	have, err := localStore.Head(ctx)
-	require.NoError(t, err)
+	// we need to wait for a flush
+	assert.Eventually(t, func() bool {
+		have, err := localStore.Head(ctx)
+		require.NoError(t, err)
 
-	assert.Equal(t, exp.Height(), have.Height())
-	assert.Empty(t, syncer.pending.Head()) // assert all cache from pending is used
+		switch {
+		case exp.Height() != have.Height():
+			return false
+		case !syncer.pending.Head().IsZero():
+			return false
+		default:
+			return true
+		}
+	}, 2*time.Second, 100*time.Millisecond)
 }
 
 // TestSyncer_FindHeadersReturnsCorrectRange ensures that `findHeaders` returns
