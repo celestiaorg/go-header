@@ -151,12 +151,10 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*
 }
 
 func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
-	// TODO implement me
 	panic("implement me")
 }
 
 func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
-	// TODO implement me
 	panic("implement me")
 }
 
@@ -165,7 +163,6 @@ func (t *wrappedGetter) GetRangeByHeight(
 	from *headertest.DummyHeader,
 	to uint64,
 ) ([]*headertest.DummyHeader, error) {
-	// TODO implement me
 	panic("implement me")
 }
 
@@ -177,16 +174,13 @@ func (e errorGetter) Head(ctx context.Context, h ...header.HeadOption[*headertes
 }
 
 func (e errorGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (e errorGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (e errorGetter) GetRangeByHeight(ctx context.Context, from *headertest.DummyHeader, to uint64) ([]*headertest.DummyHeader, error) {
-	//TODO implement me
 	panic("implement me")
 }
