@@ -41,9 +41,9 @@ For more information, go visit our docs at <https://pkg.go.dev/github.com/celest
 
 ## Package-specific documentation
 
-- [P2P](./p2p/doc.go)
-- [Sync](./sync/doc.go)
-- [Store](./store/doc.go)
+- [P2P](./doc.go)
+- [Sync](./doc.go)
+- [Store](./doc.go)
 
 ## Code of Conduct
 
