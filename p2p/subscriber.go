@@ -138,10 +138,18 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	if err != nil {
 		return err
 	}
+
+	opts = append(opts, pubsub.WithValidatorData(header))
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
 func (s *Subscriber[H]) verifyMessage(ctx context.Context, p peer.ID, msg *pubsub.Message) (res pubsub.ValidationResult) {
+	if msg.ValidatorData != nil {
+		// means the message is local and was already validated
+		// so simply accept it
+		return pubsub.ValidationAccept
+	}
+
 	defer func() {
 		err := recover()
 		if err != nil {
