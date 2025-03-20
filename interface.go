@@ -9,7 +9,7 @@ import (
 
 const (
 	// MaxRangeRequestSize defines the max amount of headers that can be handled/requested at once.
-	MaxRangeRequestSize uint64 = 512
+	MaxRangeRequestSize uint64 = 64
 )
 
 // Subscriber encompasses the behavior necessary to
