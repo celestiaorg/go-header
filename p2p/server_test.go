@@ -93,7 +93,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
 				defer cancel()
 
-				_, err := server.handleRangeRequest(ctx, 1, 100)
+				_, err := server.handleRangeRequest(ctx, 1, 64)
 				return err
 			},
 		},
