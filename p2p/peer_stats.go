@@ -14,10 +14,7 @@ type peerStat struct {
 	sync.RWMutex
 	peerID peer.ID
 	// score is the average speed per single request
-	peerScore float32
-	// pruneDeadline specifies when disconnected peer will be removed if
-	// it does not return online.
-	pruneDeadline time.Time
+	peerScore int
 }
 
 // updateStats recalculates peer.score by averaging the last score
@@ -26,33 +23,28 @@ type peerStat struct {
 // by dividing the amount by time, so the result score will represent how many bytes
 // were retrieved in 1 millisecond. This value will then be averaged relative to the
 // previous peerScore.
-func (p *peerStat) updateStats(amount uint64, duration time.Duration) {
-	p.Lock()
-	defer p.Unlock()
+func (p *peerStat) updateStats(amount uint64, duration time.Duration) int {
+	if amount == 0 && duration == 0 {
+		// decrease peerScore by 20% of the peer that failed the request by any reason.
+		// NOTE: peerScore will not be decreased if the score is less than 100.
+		p.peerScore -= p.peerScore / 100 * 20
+		return p.peerScore
+	}
+
 	averageSpeed := float32(amount)
 	if duration != 0 {
 		averageSpeed /= float32(duration.Milliseconds())
 	}
 	if p.peerScore == 0.0 {
-		p.peerScore = averageSpeed
-		return
+		p.peerScore = int(averageSpeed * 100)
+		return p.peerScore
 	}
-	p.peerScore = (p.peerScore + averageSpeed) / 2
-}
-
-// decreaseScore decreases peerScore by 20% of the peer that failed the request by any reason.
-// NOTE: decreasing peerScore in one session will not affect its position in queue in another
-// session(as we can have multiple sessions running concurrently).
-// TODO(vgonkivs): to figure out the better scoring increments/decrements
-func (p *peerStat) decreaseScore() {
-	p.Lock()
-	defer p.Unlock()
-
-	p.peerScore -= p.peerScore / 100 * 20
+	p.peerScore = (p.peerScore + int(averageSpeed*100)) / 2
+	return p.peerScore
 }
 
 // score reads a peer's latest score from the queue
-func (p *peerStat) score() float32 {
+func (p *peerStat) score() int {
 	p.RLock()
 	defer p.RUnlock()
 	return p.peerScore
@@ -123,10 +115,6 @@ func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
 // in case if there are no peer available in current session, it blocks until
 // the peer will be pushed in.
 func (p *peerQueue) waitPop(ctx context.Context) *peerStat {
-	// TODO(vgonkivs): implement fallback solution for cases when peer queue is empty.
-	// As we discussed with @Wondertan there could be 2 possible solutions:
-	// * use libp2p.Discovery to find new peers outside peerTracker to request headers;
-	// * implement IWANT/IHAVE messaging system and start requesting ranges from the Peerstore;
 	select {
 	case <-ctx.Done():
 		return &peerStat{}

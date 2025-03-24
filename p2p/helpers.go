@@ -103,7 +103,7 @@ func sendMessage(
 	}
 
 	if err == nil {
-		if closeErr := stream.Close(); closeErr != nil {
+		if closeErr := stream.CloseRead(); closeErr != nil {
 			log.Errorw("closing stream", "err", closeErr)
 		}
 	} else {
@@ -123,4 +123,14 @@ func convertStatusCodeToError(code p2p_pb.StatusCode) error {
 	default:
 		return fmt.Errorf("unknown status code %d", code)
 	}
+}
+
+// transform applies a provided function to each element of the input slice,
+// producing a new slice with the results of the function.
+func transform[T, U any](ts []T, f func(T) U) []U {
+	us := make([]U, len(ts))
+	for i := range ts {
+		us[i] = f(ts[i])
+	}
+	return us
 }

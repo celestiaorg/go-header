@@ -80,10 +80,11 @@ func NewExchange[H header.Header[H]](
 		}
 	}
 
+	id := protocolID(params.networkID)
 	ex := &Exchange[H]{
 		host:        host,
-		protocolID:  protocolID(params.networkID),
-		peerTracker: newPeerTracker(host, gater, params.pidstore, metrics),
+		protocolID:  id,
+		peerTracker: newPeerTracker(host, gater, params.networkID, params.pidstore, metrics),
 		Params:      params,
 		metrics:     metrics,
 	}
@@ -98,7 +99,6 @@ func (ex *Exchange[H]) Start(ctx context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
-	go ex.peerTracker.gc()
 	go ex.peerTracker.track()
 
 	// bootstrap the peerTracker with trusted peers as well as previously seen
@@ -150,9 +150,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	// their Head and verify against the given trusted header.
 	useTrackedPeers := !reqParams.TrustedHead.IsZero()
 	if useTrackedPeers {
-		trackedPeers := ex.peerTracker.getPeers(maxUntrustedHeadRequests)
+		trackedPeers := ex.peerTracker.peers(maxUntrustedHeadRequests)
 		if len(trackedPeers) > 0 {
-			peers = trackedPeers
+			peers = transform(trackedPeers, func(p *peerStat) peer.ID {
+				return p.peerID
+			})
 			log.Debugw("requesting head from tracked peers", "amount", len(peers))
 		}
 	}
@@ -292,9 +294,13 @@ func (ex *Exchange[H]) GetRangeByHeight(
 			attribute.Int64("to", int64(to)),
 		))
 	defer span.End()
-	session := newSession[H](
+	session, err := newSession[H](
 		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RequestTimeout, ex.metrics, withValidation(from),
 	)
+	// TODO(@vgonkivs): decide what to do with this error. Maybe we should fall into "discovery mode" and try to collect peers???
+	if err != nil {
+		return nil, err
+	}
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
 	amount := to - (from.Height() + 1)

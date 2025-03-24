@@ -60,23 +60,28 @@ func newSession[H header.Header[H]](
 	requestTimeout time.Duration,
 	metrics *exchangeMetrics,
 	options ...option[H],
-) *session[H] {
+) (*session[H], error) {
 	ctx, cancel := context.WithCancel(ctx)
 	ses := &session[H]{
 		ctx:            ctx,
 		cancel:         cancel,
 		protocolID:     protocolID,
 		host:           h,
-		queue:          newPeerQueue(ctx, peerTracker.peers()),
 		peerTracker:    peerTracker,
 		requestTimeout: requestTimeout,
 		metrics:        metrics,
 	}
 
+	peers := peerTracker.peers(len(peerTracker.trackedPeers))
+	if len(peers) == 0 {
+		return nil, errors.New("empty peer tracker")
+	}
+	ses.queue = newPeerQueue(ctx, peers)
+
 	for _, opt := range options {
 		opt(ses)
 	}
-	return ses
+	return ses, nil
 }
 
 // getRangeByHeight requests headers from different peers.
@@ -198,7 +203,7 @@ func (s *session[H]) doRequest(
 		switch err {
 		case header.ErrNotFound, errEmptyResponse:
 			logFn = log.Debugw
-			stat.decreaseScore()
+			s.peerTracker.updateScore(stat, 0, 0)
 		default:
 			s.peerTracker.blockPeer(stat.peerID, err)
 		}
@@ -234,7 +239,7 @@ func (s *session[H]) doRequest(
 	span.SetStatus(codes.Ok, "")
 
 	// update peer stats
-	stat.updateStats(size, took)
+	s.peerTracker.updateScore(stat, size, took)
 
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
