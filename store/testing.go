@@ -11,7 +11,7 @@ import (
 )
 
 // NewTestStore creates initialized and started in memory header Store which is useful for testing.
-func NewTestStore(tb testing.TB, ctx context.Context,
+func NewTestStore(tb testing.TB, ctx context.Context, //nolint:revive
 	ds datastore.Batching, head *headertest.DummyHeader, opts ...Option,
 ) *Store[*headertest.DummyHeader] {
 	store, err := NewStore[*headertest.DummyHeader](ds, opts...)

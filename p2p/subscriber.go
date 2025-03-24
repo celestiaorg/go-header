@@ -141,7 +141,11 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
-func (s *Subscriber[H]) verifyMessage(ctx context.Context, p peer.ID, msg *pubsub.Message) (res pubsub.ValidationResult) {
+func (s *Subscriber[H]) verifyMessage(
+	ctx context.Context,
+	p peer.ID,
+	msg *pubsub.Message,
+) (res pubsub.ValidationResult) {
 	defer func() {
 		err := recover()
 		if err != nil {

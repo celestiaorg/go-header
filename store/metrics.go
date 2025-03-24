@@ -61,7 +61,7 @@ func newMetrics() (m *metrics, err error) {
 }
 
 func (m *metrics) newHead(height uint64) {
-	m.observe(context.Background(), func(ctx context.Context) {
+	m.observe(context.Background(), func(context.Context) {
 		m.headHeight.Store(int64(height))
 	})
 }

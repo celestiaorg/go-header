@@ -56,9 +56,9 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 	assert.Empty(t, syncer.pending.Head())
 
 	state := syncer.State()
-	assert.Equal(t, uint64(exp.Height()), state.Height)
-	assert.Equal(t, uint64(2), state.FromHeight)
-	assert.Equal(t, uint64(exp.Height()), state.ToHeight)
+	assert.Equal(t, exp.Height(), state.Height)
+	assert.EqualValues(t, 2, state.FromHeight)
+	assert.Equal(t, exp.Height(), state.ToHeight)
 	assert.True(t, state.Finished(), state)
 }
 
@@ -146,9 +146,9 @@ func TestSyncCatchUp(t *testing.T) {
 	assert.Empty(t, syncer.pending.Head())
 
 	state := syncer.State()
-	assert.Equal(t, uint64(exp.Height()+1), state.Height)
-	assert.Equal(t, uint64(2), state.FromHeight)
-	assert.Equal(t, uint64(exp.Height()+1), state.ToHeight)
+	assert.Equal(t, exp.Height()+1, state.Height)
+	assert.EqualValues(t, 2, state.FromHeight)
+	assert.Equal(t, exp.Height()+1, state.ToHeight)
 	assert.True(t, state.Finished(), state)
 }
 
@@ -292,7 +292,7 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 
 // TestSync_InvalidSyncTarget tests the possible case that a sync target
 // passes non-adjacent verification but is actually invalid once it is processed
-// via VerifyAdjacent during sync. The expected behaviour is that the syncer would
+// via VerifyAdjacent during sync. The expected behavior is that the syncer would
 // discard the invalid sync target and listen for a new sync target from headersub
 // and sync the valid chain.
 func TestSync_InvalidSyncTarget(t *testing.T) {
@@ -302,7 +302,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 	head := suite.Head()
 
-	// create a local store which is initialised at genesis height
+	// create a local store which is initialized at genesis height
 	localStore := newTestStore(t, ctx, head)
 	// create a peer which is already on height 100
 	remoteStore := headertest.NewStore(t, suite, 100)
@@ -343,7 +343,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	cancel()
 	// ensure that syncer still expects to sync to the bad sync target's
 	// height
-	require.Equal(t, uint64(maliciousHeader.Height()), syncer.State().ToHeight)
+	require.Equal(t, maliciousHeader.Height(), syncer.State().ToHeight)
 	// ensure syncer could only sync up to one header below the bad sync target
 	h, err := localStore.Head(ctx)
 	require.NoError(t, err)
@@ -372,7 +372,7 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 
 	// ensure that maliciousHeader height was re-requested and a good one was
 	// found
-	rerequested, err := localStore.GetByHeight(ctx, uint64(maliciousHeader.Height()))
+	rerequested, err := localStore.GetByHeight(ctx, maliciousHeader.Height())
 	require.NoError(t, err)
 	require.False(t, rerequested.VerifyFailure)
 
@@ -400,7 +400,11 @@ func (d *delayedGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint
 }
 
 // newTestStore creates initialized and started in memory header Store which is useful for testing.
-func newTestStore(tb testing.TB, ctx context.Context, head *headertest.DummyHeader) header.Store[*headertest.DummyHeader] {
+func newTestStore(
+	tb testing.TB,
+	ctx context.Context,
+	head *headertest.DummyHeader,
+) header.Store[*headertest.DummyHeader] {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	return store.NewTestStore(tb, ctx, ds, head)
 }

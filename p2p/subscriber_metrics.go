@@ -101,7 +101,7 @@ func (m *subscriberMetrics) reject(ctx context.Context) {
 }
 
 func (m *subscriberMetrics) subscription(num int) {
-	m.observe(context.Background(), func(ctx context.Context) {
+	m.observe(context.Background(), func(context.Context) {
 		m.subscriptionNum.Add(int64(num))
 	})
 }
