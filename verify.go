@@ -59,12 +59,23 @@ func verify[H Header[H]](trstd, untrstd H) error {
 	}
 
 	if untrstd.Time().Before(trstd.Time()) {
-		return fmt.Errorf("%w: timestamp '%s' < current '%s'", ErrUnorderedTime, formatTime(untrstd.Time()), formatTime(trstd.Time()))
+		return fmt.Errorf(
+			"%w: timestamp '%s' < current '%s'",
+			ErrUnorderedTime,
+			formatTime(untrstd.Time()),
+			formatTime(trstd.Time()),
+		)
 	}
 
 	now := time.Now()
 	if untrstd.Time().After(now.Add(clockDrift)) {
-		return fmt.Errorf("%w: timestamp '%s' > now '%s', clock_drift '%v'", ErrFromFuture, formatTime(untrstd.Time()), formatTime(now), clockDrift)
+		return fmt.Errorf(
+			"%w: timestamp '%s' > now '%s', clock_drift '%v'",
+			ErrFromFuture,
+			formatTime(untrstd.Time()),
+			formatTime(now),
+			clockDrift,
+		)
 	}
 
 	return nil

@@ -145,15 +145,15 @@ func (p *peerTracker) track() {
 	}
 }
 
-// getPeers returns the tracker's currently tracked peers up to the `max`.
-func (p *peerTracker) getPeers(max int) []libpeer.ID {
+// getPeers returns the tracker's currently tracked peers up to the `maxPeers`.
+func (p *peerTracker) getPeers(maxPeers int) []libpeer.ID {
 	p.peerLk.RLock()
 	defer p.peerLk.RUnlock()
 
-	peers := make([]libpeer.ID, 0, max)
+	peers := make([]libpeer.ID, 0, maxPeers)
 	for peer := range p.trackedPeers {
 		peers = append(peers, peer)
-		if len(peers) == max {
+		if len(peers) == maxPeers {
 			break
 		}
 	}

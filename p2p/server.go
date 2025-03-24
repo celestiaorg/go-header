@@ -121,10 +121,10 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		return
 	}
 	var code p2p_pb.StatusCode
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		code = p2p_pb.StatusCode_OK
-	case header.ErrNotFound:
+	case errors.Is(err, header.ErrNotFound):
 		code = p2p_pb.StatusCode_NOT_FOUND
 	default:
 		stream.Reset() //nolint:errcheck
@@ -242,10 +242,10 @@ func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to 
 
 		log.Debugw("server: serving partial range",
 			"prevMaxHeight", to,
-			"newMaxHeight", uint64(head.Height())+1,
+			"newMaxHeight", head.Height()+1,
 		)
 		// change `to` height to return a partial range
-		to = uint64(head.Height()) + 1
+		to = head.Height() + 1
 	}
 
 	headersByRange, err := serv.store.GetRange(ctx, from, to)

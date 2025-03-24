@@ -320,7 +320,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	// collect valid headers
 	verified := make([]H, 0, lh)
 	for i, h := range headers {
-
 		err = head.Verify(h)
 		if err != nil {
 			var verErr *header.VerifyError

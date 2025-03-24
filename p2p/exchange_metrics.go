@@ -145,7 +145,7 @@ func (m *exchangeMetrics) peersDisconnected(num int) {
 }
 
 func (m *exchangeMetrics) peerBlocked() {
-	m.observe(context.Background(), func(ctx context.Context) {
+	m.observe(context.Background(), func(context.Context) {
 		m.blockedPeersNum.Add(1)
 	})
 }

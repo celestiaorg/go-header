@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -61,7 +62,7 @@ func sendMessage(
 	// hang until the server will close the stream by the timeout.
 	if dl, ok := ctx.Deadline(); ok {
 		if err = stream.SetDeadline(dl); err != nil {
-			log.Debugw("error setting deadline: %s", err)
+			log.Debugf("error setting deadline: %s", err)
 		}
 	}
 
@@ -98,7 +99,7 @@ func sendMessage(
 	// and then will close the stream.
 	// If the server side will have a part of the requested range, then it will send this part
 	// and then will close the connection
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		err = nil
 	}
 

@@ -607,7 +607,12 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 	return hosts
 }
 
-func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
+func client(
+	ctx context.Context,
+	t *testing.T,
+	host libhost.Host,
+	trusted []peer.ID,
+) *Exchange[*headertest.DummyHeader] {
 	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
 	require.NoError(t, err)
 
@@ -621,7 +626,12 @@ func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer
 	return client
 }
 
-func server(ctx context.Context, t *testing.T, host libhost.Host, store header.Store[*headertest.DummyHeader]) *ExchangeServer[*headertest.DummyHeader] {
+func server(
+	ctx context.Context,
+	t *testing.T,
+	host libhost.Host,
+	store header.Store[*headertest.DummyHeader],
+) *ExchangeServer[*headertest.DummyHeader] {
 	server, err := NewExchangeServer[*headertest.DummyHeader](host, store)
 	require.NoError(t, err)
 	err = server.Start(ctx)
@@ -643,7 +653,10 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(context.Context, ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(
+	context.Context,
+	...header.HeadOption[*headertest.DummyHeader],
+) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }

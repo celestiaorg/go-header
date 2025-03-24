@@ -143,7 +143,11 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
-func (s *Subscriber[H]) verifyMessage(ctx context.Context, p peer.ID, msg *pubsub.Message) (res pubsub.ValidationResult) {
+func (s *Subscriber[H]) verifyMessage(
+	ctx context.Context,
+	p peer.ID,
+	msg *pubsub.Message,
+) (res pubsub.ValidationResult) {
 	if msg.ValidatorData != nil {
 		// means the message is local and was already validated
 		// so simply accept it

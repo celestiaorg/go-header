@@ -94,8 +94,8 @@ func WithStorePrefix(prefix string) Option {
 }
 
 // WithParams is a functional option that overrides Parameters.
-func WithParams(new Parameters) Option {
+func WithParams(params Parameters) Option {
 	return func(old *Parameters) {
-		*old = new
+		*old = params
 	}
 }

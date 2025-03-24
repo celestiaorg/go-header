@@ -94,7 +94,7 @@ func NewExchange[H header.Header[H]](
 	return ex, nil
 }
 
-func (ex *Exchange[H]) Start(ctx context.Context) error {
+func (ex *Exchange[H]) Start(context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 

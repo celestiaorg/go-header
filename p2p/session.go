@@ -195,8 +195,8 @@ func (s *session[H]) doRequest(
 		span.SetStatus(codes.Error, err.Error())
 		logFn := log.Errorw
 
-		switch err {
-		case header.ErrNotFound, errEmptyResponse:
+		switch {
+		case errors.Is(err, header.ErrNotFound), errors.Is(err, errEmptyResponse):
 			logFn = log.Debugw
 			stat.decreaseScore()
 		default:
@@ -239,7 +239,7 @@ func (s *session[H]) doRequest(
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
 		span.AddEvent("remaining headers", trace.WithAttributes(
-			attribute.Int64("amount", int64(remainingHeaders))),
+			attribute.Int("amount", int(remainingHeaders))),
 		)
 
 		from := h[uint64(len(h))-1].Height()

@@ -22,7 +22,7 @@ func (mhs *Subscriber[H]) Subscribe() (header.Subscription[H], error) {
 	return mhs, nil
 }
 
-func (mhs *Subscriber[H]) NextHeader(ctx context.Context) (H, error) {
+func (mhs *Subscriber[H]) NextHeader(_ context.Context) (H, error) {
 	defer func() {
 		if len(mhs.Headers) > 1 {
 			// pop the already-returned header
