@@ -17,6 +17,9 @@ func TestExchangeServer_handleRequestTimeout(t *testing.T) {
 	peer := createMocknet(t, 1)
 	s, err := store.NewStore[*headertest.DummyHeader](datastore.NewMapDatastore())
 	require.NoError(t, err)
+	head := headertest.RandDummyHeader(t)
+	head.HeightI %= 1000 // make it a bit lower
+	s.Init(context.Background(), head)
 	server, err := NewExchangeServer[*headertest.DummyHeader](
 		peer[0],
 		s,

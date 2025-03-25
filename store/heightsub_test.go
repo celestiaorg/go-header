@@ -14,18 +14,14 @@ func TestHeightSub(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	hs := newHeightSub[*headertest.DummyHeader]()
+	hs := newHeightSub()
 
 	// assert subscription returns nil for past heights
 	{
-		h := headertest.RandDummyHeader(t)
-		h.HeightI = 100
-		hs.SetHeight(99)
-		hs.Pub(h)
+		hs.Init(99)
 
-		h, err := hs.Sub(ctx, 10)
+		err := hs.Wait(ctx, 10)
 		assert.ErrorIs(t, err, errElapsedHeight)
-		assert.Nil(t, h)
 	}
 
 	// assert actual subscription works
@@ -34,16 +30,11 @@ func TestHeightSub(t *testing.T) {
 			// fixes flakiness on CI
 			time.Sleep(time.Millisecond)
 
-			h1 := headertest.RandDummyHeader(t)
-			h1.HeightI = 101
-			h2 := headertest.RandDummyHeader(t)
-			h2.HeightI = 102
-			hs.Pub(h1, h2)
+			hs.SetHeight(102)
 		}()
 
-		h, err := hs.Sub(ctx, 101)
+		err := hs.Wait(ctx, 101)
 		assert.NoError(t, err)
-		assert.NotNil(t, h)
 	}
 
 	// assert multiple subscriptions work
@@ -51,16 +42,14 @@ func TestHeightSub(t *testing.T) {
 		ch := make(chan error, 10)
 		for range cap(ch) {
 			go func() {
-				_, err := hs.Sub(ctx, 103)
+				err := hs.Wait(ctx, 103)
 				ch <- err
 			}()
 		}
 
 		time.Sleep(time.Millisecond * 10)
 
-		h3 := headertest.RandDummyHeader(t)
-		h3.HeightI = 103
-		hs.Pub(h3)
+		hs.SetHeight(103)
 
 		for range cap(ch) {
 			assert.NoError(t, <-ch)
@@ -68,18 +57,98 @@ func TestHeightSub(t *testing.T) {
 	}
 }
 
+func TestHeightSub_withWaitCancelled(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	hs := newHeightSub()
+	hs.Init(10)
+
+	const waiters = 5
+
+	cancelChs := make([]chan error, waiters)
+	blockedChs := make([]chan error, waiters)
+	for i := range waiters {
+		cancelChs[i] = make(chan error, 1)
+		blockedChs[i] = make(chan error, 1)
+
+		go func() {
+			ctx, cancel := context.WithTimeout(ctx, time.Duration(i+1)*time.Millisecond)
+			defer cancel()
+
+			err := hs.Wait(ctx, 100)
+			cancelChs[i] <- err
+		}()
+
+		go func() {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			err := hs.Wait(ctx, 100)
+			blockedChs[i] <- err
+		}()
+	}
+
+	for i := range cancelChs {
+		err := <-cancelChs[i]
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	}
+
+	for i := range blockedChs {
+		select {
+		case <-blockedChs[i]:
+			t.Error("channel should be blocked")
+		default:
+		}
+	}
+}
+
+// Test heightSub can accept non-adj headers without an error.
+func TestHeightSubNonAdjacency(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	hs := newHeightSub()
+	hs.Init(99)
+
+	go func() {
+		// fixes flakiness on CI
+		time.Sleep(time.Millisecond)
+
+		hs.SetHeight(300)
+	}()
+
+	err := hs.Wait(ctx, 200)
+	assert.NoError(t, err)
+}
+
+// Test heightSub's height cannot go down but only up.
+func TestHeightSub_monotonicHeight(t *testing.T) {
+	hs := newHeightSub()
+
+	hs.Init(99)
+	assert.Equal(t, int64(hs.height.Load()), int64(99))
+
+	hs.SetHeight(300)
+	assert.Equal(t, int64(hs.height.Load()), int64(300))
+
+	hs.SetHeight(120)
+	assert.Equal(t, int64(hs.height.Load()), int64(300))
+}
+
 func TestHeightSubCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	h := headertest.RandDummyHeader(t)
-	hs := newHeightSub[*headertest.DummyHeader]()
+	h.HeightI %= 1000 // make it a bit lower
+	hs := newHeightSub()
 
-	sub := make(chan *headertest.DummyHeader)
+	sub := make(chan struct{})
 	go func() {
 		// subscribe first time
-		h, _ := hs.Sub(ctx, h.HeightI)
-		sub <- h
+		hs.Wait(ctx, h.Height())
+		sub <- struct{}{}
 	}()
 
 	// give a bit time for subscription to settle
@@ -88,19 +157,18 @@ func TestHeightSubCancellation(t *testing.T) {
 	// subscribe again but with failed canceled context
 	canceledCtx, cancel := context.WithCancel(ctx)
 	cancel()
-	_, err := hs.Sub(canceledCtx, h.HeightI)
-	assert.Error(t, err)
+	err := hs.Wait(canceledCtx, h.Height())
+	assert.ErrorIs(t, err, context.Canceled)
 
-	// publish header
-	hs.Pub(h)
+	// update height
+	hs.SetHeight(h.Height())
 
 	// ensure we still get our header
 	select {
-	case subH := <-sub:
-		assert.Equal(t, h.HeightI, subH.HeightI)
+	case <-sub:
 	case <-ctx.Done():
 		t.Error(ctx.Err())
 	}
 	// ensure we don't have any active subscriptions
-	assert.Len(t, hs.heightReqs, 0)
+	assert.Len(t, hs.heightSubs, 0)
 }
