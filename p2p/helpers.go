@@ -51,7 +51,7 @@ func sendMessage(
 	to peer.ID,
 	protocol protocol.ID,
 	req *p2p_pb.HeaderRequest,
-) ([]*p2p_pb.HeaderResponse, uint64, error) {
+) ([]*p2p_pb.HeaderResponse, int, error) {
 	stream, err := host.NewStream(ctx, to, protocol)
 	if err != nil {
 		return nil, 0, fmt.Errorf("header/p2p: failed to open a new stream: %w", err)
@@ -80,8 +80,8 @@ func sendMessage(
 
 	headers := make([]*p2p_pb.HeaderResponse, 0)
 
-	var totalRespLn uint64
-	for i := 0; i < int(req.Amount); i++ {
+	var totalRespLn int
+	for i := uint64(0); i < req.Amount; i++ {
 		resp := new(p2p_pb.HeaderResponse)
 		respLn, readErr := serde.Read(stream, resp)
 		if readErr != nil {
@@ -89,7 +89,7 @@ func sendMessage(
 			break
 		}
 
-		totalRespLn += uint64(respLn)
+		totalRespLn += respLn
 		headers = append(headers, resp)
 	}
 

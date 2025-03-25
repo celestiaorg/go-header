@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -13,7 +15,7 @@ import (
 var meter = otel.Meter("header/store")
 
 type metrics struct {
-	headHeight     atomic.Int64
+	headHeight     atomic.Uint64
 	headHeightInst metric.Int64ObservableGauge
 	headHeightReg  metric.Registration
 
@@ -62,12 +64,17 @@ func newMetrics() (m *metrics, err error) {
 
 func (m *metrics) newHead(height uint64) {
 	m.observe(context.Background(), func(context.Context) {
-		m.headHeight.Store(int64(height))
+		m.headHeight.Store(height)
 	})
 }
 
 func (m *metrics) observeHeight(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.headHeightInst, m.headHeight.Load())
+	height := m.headHeight.Load()
+	if height > math.MaxInt64 {
+		return fmt.Errorf("height overflows int64: %d", height)
+	}
+
+	obs.ObserveInt64(m.headHeightInst, int64(height))
 	return nil
 }
 

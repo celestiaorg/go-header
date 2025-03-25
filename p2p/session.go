@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
+	otelattr "github.com/celestiaorg/go-header/otel"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
@@ -87,8 +88,8 @@ func (s *session[H]) getRangeByHeight(
 	log.Debugw("requesting headers", "from", from, "to", from+amount-1) // -1 need to exclude to+1 height
 
 	ctx, span := tracerSession.Start(ctx, "get-range-by-height", trace.WithAttributes(
-		attribute.Int64("from", int64(from)),
-		attribute.Int64("to", int64(from+amount-1)),
+		otelattr.Uint64("from", from),
+		otelattr.Uint64("to", from+amount-1),
 	))
 	defer span.End()
 
@@ -170,8 +171,8 @@ func (s *session[H]) doRequest(
 ) {
 	ctx, span := tracerSession.Start(ctx, "request-headers-from-peer", trace.WithAttributes(
 		attribute.String("peerID", stat.peerID.String()),
-		attribute.Int64("from", int64(req.GetOrigin())),
-		attribute.Int64("amount", int64(req.Amount)),
+		otelattr.Uint64("from", req.GetOrigin()),
+		otelattr.Uint64("amount", req.Amount),
 	))
 	defer span.End()
 
@@ -239,8 +240,8 @@ func (s *session[H]) doRequest(
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
 		span.AddEvent("remaining headers", trace.WithAttributes(
-			attribute.Int("amount", int(remainingHeaders))),
-		)
+			otelattr.Uint64("amount", remainingHeaders),
+		))
 
 		from := h[uint64(len(h))-1].Height()
 		select {

@@ -40,4 +40,5 @@ func (mhs *Subscriber[H]) NextHeader(_ context.Context) (H, error) {
 }
 
 func (mhs *Subscriber[H]) Stop(context.Context) error { return nil }
-func (mhs *Subscriber[H]) Cancel()                    {}
+
+func (mhs *Subscriber[H]) Cancel() {}
