@@ -45,7 +45,7 @@ func (bs *batches[H]) Append(headers ...H) (*batch[H], bool) {
 		curr := bs.batches[mergeIdx]
 		next := bs.batches[idx]
 
-		if curr.Tail()-1 <= next.Head() {
+		if !next.IsReadOnly() && curr.Tail()-1 <= next.Head() {
 			curr.Append(next.GetAll()...)
 		} else {
 			mergeIdx++
@@ -54,6 +54,18 @@ func (bs *batches[H]) Append(headers ...H) (*batch[H], bool) {
 	}
 	clear(bs.batches[mergeIdx+1:])
 	bs.batches = bs.batches[:mergeIdx+1]
+
+	// 4. Mark filled batches as read only and return if any
+	for i := len(bs.batches) - 1; i >= 0; i-- {
+		// Why in reverse? There might be several batches
+		// but only one is processed, so there needs to be prioritization
+		// which in this case is for lower heights.
+		b := bs.batches[i]
+		if b.Len() >= bs.batchLenLimit {
+			b.MarkReadOnly()
+			return b, true
+		}
+	}
 
 	return nil, false
 }
@@ -120,6 +132,14 @@ func newBatch[H header.Header[H]](size int) *batch[H] {
 		heights: make(map[string]uint64, size),
 		headers: make([]H, 0, size),
 	}
+}
+
+func (b *batch[H]) MarkReadOnly() {
+	b.readOnly = true
+}
+
+func (b *batch[H]) IsReadOnly() bool {
+	return b.readOnly
 }
 
 func (b *batch[H]) Head() uint64 {
