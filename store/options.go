@@ -33,9 +33,9 @@ type Parameters struct {
 // DefaultParameters returns the default params to configure the store.
 func DefaultParameters() Parameters {
 	return Parameters{
-		StoreCacheSize: 4096,
-		IndexCacheSize: 16384,
-		WriteBatchSize: 2048,
+		StoreCacheSize: 512,
+		IndexCacheSize: 2048,
+		WriteBatchSize: 64,
 	}
 }
 
