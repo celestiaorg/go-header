@@ -119,7 +119,7 @@ func (m *exchangeMetrics) head(ctx context.Context, duration time.Duration, head
 	})
 }
 
-func (m *exchangeMetrics) response(ctx context.Context, size uint64, duration time.Duration, err error) {
+func (m *exchangeMetrics) response(ctx context.Context, size int, duration time.Duration, err error) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.responseSizeInst.Record(ctx,
 			int64(size),

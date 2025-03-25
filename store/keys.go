@@ -11,7 +11,7 @@ import (
 var headKey = datastore.NewKey("head")
 
 func heightKey(h uint64) datastore.Key {
-	return datastore.NewKey(strconv.Itoa(int(h)))
+	return datastore.NewKey(strconv.FormatUint(h, 10))
 }
 
 func headerKey[H header.Header[H]](h H) datastore.Key {

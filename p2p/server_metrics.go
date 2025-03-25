@@ -2,10 +2,13 @@ package p2p
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	otelattr "github.com/celestiaorg/go-header/otel"
 )
 
 const (
@@ -66,15 +69,20 @@ func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration, 
 	})
 }
 
-func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed int, failed bool) {
+func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed uint64, failed bool) {
+	if headersServed > math.MaxInt64 {
+		return
+	}
+	headers := int64(headersServed)
+
 	m.observe(ctx, func(ctx context.Context) {
 		m.headersServedInst.Add(ctx,
-			int64(headersServed),
+			headers,
 			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 		m.rangeServeTimeInst.Record(ctx,
 			duration.Seconds(),
-			metric.WithAttributes(attribute.Int(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
+			metric.WithAttributes(otelattr.Uint64(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
 			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 	})
