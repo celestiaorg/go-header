@@ -352,20 +352,14 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
 
-	last, err := s.GetByHeight(ctx, to-1)
-	if err != nil {
-		return fmt.Errorf("header/store: get by height: %w", err)
-	}
-
-	chunk := to - from
-	headers := make([]H, chunk)
-	for i := chunk - 1; i > 0; i-- {
-		headers[i], err = s.Get(ctx, last.LastHeader())
+	headers := make([]H, to-from)
+	for i := from; i < to; i++ {
+		var err error
+		headers[i], err = s.GetByHeight(ctx, i)
 		if err != nil {
 			return fmt.Errorf("header/store: get header: %w", err)
 		}
 	}
-	headers[0] = last
 
 	batch, err := s.ds.Batch(ctx)
 	if err != nil {
@@ -373,8 +367,10 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	}
 
 	for _, h := range headers {
-		err := batch.Delete(ctx, headerKey(h))
-		if err != nil {
+		if err := batch.Delete(ctx, headerKey(h)); err != nil {
+			return err
+		}
+		if err := batch.Delete(ctx, heightKey(h.Height())); err != nil {
 			return err
 		}
 	}
