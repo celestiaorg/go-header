@@ -346,6 +346,46 @@ func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
 	return height != uint64(0) && s.Height() >= height
 }
 
+// DeleteRange implements [header.Store] interface.
+func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	if from >= to {
+		return fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
+	}
+
+	last, err := s.GetByHeight(ctx, to-1)
+	if err != nil {
+		return fmt.Errorf("header/store: get by height: %w", err)
+	}
+
+	chunk := to - from
+	headers := make([]H, chunk)
+	for i := chunk - 1; i > 0; i-- {
+		headers[i], err = s.Get(ctx, last.LastHeader())
+		if err != nil {
+			return fmt.Errorf("header/store: get header: %w", err)
+		}
+	}
+	headers[0] = last
+
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, h := range headers {
+		err := batch.Delete(ctx, headerKey(h))
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("header/store: batch commit: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	lh := len(headers)
 	if lh == 0 {

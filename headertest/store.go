@@ -82,6 +82,10 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
+func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	panic("not implemented")
+}
+
 func (m *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
 	return m.getRangeByHeight(ctx, from, to)
 }
