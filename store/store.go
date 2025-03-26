@@ -191,6 +191,23 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	}
 }
 
+// Tail implements [header.Store] interface.
+func (s *Store[H]) Tail(ctx context.Context) (H, error) {
+	tailPtr := s.tailHeader.Load()
+	if tailPtr != nil {
+		return *tailPtr, nil
+	}
+
+	tail, err := s.readTail(ctx)
+	if err != nil {
+		var zero H
+		return zero, nil
+	}
+
+	s.tailHeader.Store(&tail)
+	return tail, nil
+}
+
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	var zero H
 	if v, ok := s.cache.Get(hash.String()); ok {
@@ -486,6 +503,22 @@ func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 	}
 
 	return s.Get(ctx, head)
+}
+
+// readTail loads the tail from the datastore.
+func (s *Store[H]) readTail(ctx context.Context) (H, error) {
+	var zero H
+	b, err := s.ds.Get(ctx, tailKey)
+	if err != nil {
+		return zero, err
+	}
+
+	var tail header.Hash
+	if err := tail.UnmarshalJSON(b); err != nil {
+		return zero, err
+	}
+
+	return s.Get(ctx, tail)
 }
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
