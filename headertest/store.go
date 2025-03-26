@@ -51,6 +51,19 @@ func (m *Store[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 	return m.Headers[m.HeadHeight], nil
 }
 
+func (m *Store[H]) Tail(context.Context) (H, error) {
+	err := header.ErrNotFound
+
+	var tail H
+	for _, h := range m.Headers {
+		if tail.IsZero() || h.Height() < tail.Height() {
+			tail = h
+		}
+	}
+
+	return tail, err
+}
+
 func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	for _, header := range m.Headers {
 		if bytes.Equal(header.Hash(), hash) {
