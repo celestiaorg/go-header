@@ -138,6 +138,8 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	if err != nil {
 		return err
 	}
+
+	opts = append(opts, pubsub.WithValidatorData(header))
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
