@@ -18,5 +18,9 @@ func heightKey(h uint64) datastore.Key {
 }
 
 func headerKey[H header.Header[H]](h H) datastore.Key {
-	return datastore.NewKey(h.Hash().String())
+	return hashKey(h.Hash())
+}
+
+func hashKey(h header.Hash) datastore.Key {
+	return datastore.NewKey(h.String())
 }
