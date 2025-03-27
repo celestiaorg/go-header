@@ -491,6 +491,87 @@ func TestStore_GetRange(t *testing.T) {
 	}
 }
 
+func TestStore_DeleteRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	in := suite.GenDummyHeaders(100)
+	err := store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	// wait until headers are written
+	time.Sleep(100 * time.Millisecond)
+
+	tests := []struct {
+		name      string
+		from      uint64
+		to        uint64
+		wantError bool
+	}{
+		{
+			name:      "valid delete request",
+			from:      9,
+			to:        14,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      40,
+			to:        50,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request (overvlaps with deleted)",
+			from:      45,
+			to:        55,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      49,
+			to:        50,
+			wantError: false,
+		},
+		{
+			name:      "invalid range",
+			from:      50,
+			to:        30,
+			wantError: true,
+		},
+		{
+			name:      "valid range but is partially does not exist",
+			from:      87,
+			to:        109,
+			wantError: false,
+		},
+		{
+			name:      "valid range out of written headers",
+			from:      177,
+			to:        200,
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			err := store.DeleteRange(ctx, tt.from, tt.to)
+			if tt.wantError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestStorePendingCacheMiss(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
