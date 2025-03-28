@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	otelattr "github.com/celestiaorg/go-header/otel"
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
 )
 
 const (
@@ -69,7 +69,12 @@ func (m *serverMetrics) headServed(ctx context.Context, duration time.Duration, 
 	})
 }
 
-func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration, headersServed uint64, failed bool) {
+func (m *serverMetrics) rangeServed(
+	ctx context.Context,
+	duration time.Duration,
+	headersServed uint64,
+	failed bool,
+) {
 	if headersServed > math.MaxInt64 {
 		return
 	}
@@ -80,9 +85,12 @@ func (m *serverMetrics) rangeServed(ctx context.Context, duration time.Duration,
 			headers,
 			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
-		m.rangeServeTimeInst.Record(ctx,
+		m.rangeServeTimeInst.Record(
+			ctx,
 			duration.Seconds(),
-			metric.WithAttributes(otelattr.Uint64(headersServedKey, headersServed/100)), // divide by 100 to reduce cardinality
+			metric.WithAttributes(
+				otelattr.Uint64(headersServedKey, headersServed/100),
+			), // divide by 100 to reduce cardinality
 			metric.WithAttributes(attribute.Bool(failedRequestKey, failed)),
 		)
 	})

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/celestiaorg/go-header/internal/otelattr"
+
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"go.opentelemetry.io/otel"
@@ -15,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
-	otelattr "github.com/celestiaorg/go-header/otel"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
@@ -85,7 +86,13 @@ func (s *session[H]) getRangeByHeight(
 	ctx context.Context,
 	from, amount, headersPerPeer uint64,
 ) (_ []H, err error) {
-	log.Debugw("requesting headers", "from", from, "to", from+amount-1) // -1 need to exclude to+1 height
+	log.Debugw(
+		"requesting headers",
+		"from",
+		from,
+		"to",
+		from+amount-1,
+	) // -1 need to exclude to+1 height
 
 	ctx, span := tracerSession.Start(ctx, "get-range-by-height", trace.WithAttributes(
 		otelattr.Uint64("from", from),
@@ -298,7 +305,8 @@ func (s *session[H]) verify(headers []H) error {
 		if trusted.Height() != s.from.Height() {
 			if trusted.Height()+1 != untrusted.Height() {
 				// Exchange requires requested ranges to always consist of adjacent headers
-				return fmt.Errorf("peer sent valid but non-adjacent header. expected:%d, received:%d",
+				return fmt.Errorf(
+					"peer sent valid but non-adjacent header. expected:%d, received:%d",
 					trusted.Height()+1,
 					untrusted.Height(),
 				)

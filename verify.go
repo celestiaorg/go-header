@@ -55,7 +55,12 @@ func verify[H Header[H]](trstd, untrstd H) error {
 
 	known := untrstd.Height() <= trstd.Height()
 	if known {
-		return fmt.Errorf("%w: '%d' <= current '%d'", ErrKnownHeader, untrstd.Height(), trstd.Height())
+		return fmt.Errorf(
+			"%w: '%d' <= current '%d'",
+			ErrKnownHeader,
+			untrstd.Height(),
+			trstd.Height(),
+		)
 	}
 
 	if untrstd.Time().Before(trstd.Time()) {

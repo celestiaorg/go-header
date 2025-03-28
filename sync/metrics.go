@@ -7,11 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-
-	otelattr "github.com/celestiaorg/go-header/otel"
 )
 
 var meter = otel.Meter("header/sync")
@@ -123,7 +123,11 @@ func newMetrics() (*metrics, error) {
 		subjectiveHeadInst:    subjectiveHead,
 	}
 
-	m.syncerReg, err = meter.RegisterCallback(m.observeMetrics, m.subjectiveHeadInst, m.syncLoopRunningInst)
+	m.syncerReg, err = meter.RegisterCallback(
+		m.observeMetrics,
+		m.subjectiveHeadInst,
+		m.syncLoopRunningInst,
+	)
 	if err != nil {
 		return nil, err
 	}

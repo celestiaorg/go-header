@@ -26,7 +26,11 @@ func TestSubscriber(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	// get mock host and create new gossipsub on it
-	pubsub1, err := pubsub.NewGossipSub(ctx, net.Hosts()[0], pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign))
+	pubsub1, err := pubsub.NewGossipSub(
+		ctx,
+		net.Hosts()[0],
+		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
+	)
 	require.NoError(t, err)
 
 	// create sub-service lifecycles for header service 1

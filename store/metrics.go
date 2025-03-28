@@ -47,7 +47,9 @@ func newMetrics() (m *metrics, err error) {
 	}
 	m.readTimeInst, err = meter.Float64Histogram(
 		"hdr_store_read_time_hist",
-		metric.WithDescription("header store single header read time from datastore in seconds and ignoring cache"),
+		metric.WithDescription(
+			"header store single header read time from datastore in seconds and ignoring cache",
+		),
 	)
 	if err != nil {
 		return nil, err

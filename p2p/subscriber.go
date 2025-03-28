@@ -126,7 +126,9 @@ func (s *Subscriber[H]) SetVerifier(verifier func(context.Context, H) error) err
 // topic.
 func (s *Subscriber[H]) Subscribe() (header.Subscription[H], error) {
 	if s.topic == nil {
-		return nil, errors.New("header topic is not instantiated, service must be started before subscribing")
+		return nil, errors.New(
+			"header topic is not instantiated, service must be started before subscribing",
+		)
 	}
 
 	return newSubscription[H](s.topic, s.metrics)
@@ -185,7 +187,11 @@ func (s *Subscriber[H]) verifyMessage(
 	select {
 	case <-s.verifierSema:
 	case <-ctx.Done():
-		log.Errorw("verifier was not set before incoming header verification", "from", p.ShortString())
+		log.Errorw(
+			"verifier was not set before incoming header verification",
+			"from",
+			p.ShortString(),
+		)
 		s.metrics.ignore(ctx)
 		return pubsub.ValidationIgnore
 	}
