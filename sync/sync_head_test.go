@@ -153,11 +153,17 @@ func (t *wrappedGetter) Head(
 	return t.ex.Head(ctx, options...)
 }
 
-func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) Get(
+	ctx context.Context,
+	hash header.Hash,
+) (*headertest.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) GetByHeight(
+	ctx context.Context,
+	u uint64,
+) (*headertest.DummyHeader, error) {
 	panic("implement me")
 }
 

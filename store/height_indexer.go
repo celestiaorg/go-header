@@ -18,7 +18,10 @@ type heightIndexer[H header.Header[H]] struct {
 }
 
 // newHeightIndexer creates new heightIndexer.
-func newHeightIndexer[H header.Header[H]](ds datastore.Batching, indexCacheSize int) (*heightIndexer[H], error) {
+func newHeightIndexer[H header.Header[H]](
+	ds datastore.Batching,
+	indexCacheSize int,
+) (*heightIndexer[H], error) {
 	cache, err := lru.New2Q[uint64, header.Hash](indexCacheSize)
 	if err != nil {
 		return nil, err

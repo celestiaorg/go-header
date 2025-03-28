@@ -13,10 +13,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/celestiaorg/go-header/internal/otelattr"
+
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
 	"github.com/celestiaorg/go-header"
-	otelattr "github.com/celestiaorg/go-header/otel"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
@@ -198,7 +199,10 @@ func (serv *ExchangeServer[H]) handleRequestByHash(ctx context.Context, hash []b
 
 // handleRangeRequest fetches the Header at the given origin and
 // writes it to the stream.
-func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to uint64) ([]H, error) {
+func (serv *ExchangeServer[H]) handleRangeRequest(
+	ctx context.Context,
+	from, to uint64,
+) ([]H, error) {
 	if from == uint64(0) {
 		return serv.handleHeadRequest(ctx)
 	}

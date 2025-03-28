@@ -142,7 +142,11 @@ func TestSyncCatchUp(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, have.Height(), incomingHead.Height())
-	assert.Equal(t, exp.Height()+1, have.Height()) // plus one as we didn't add last header to remoteStore
+	assert.Equal(
+		t,
+		exp.Height()+1,
+		have.Height(),
+	) // plus one as we didn't add last header to remoteStore
 	assert.Empty(t, syncer.pending.Head())
 
 	state := syncer.State()

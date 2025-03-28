@@ -1,6 +1,7 @@
 package otelattr
 
 import (
+	"fmt"
 	"math"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -12,7 +13,7 @@ import (
 //	This helper localizes the unsafe conversion from uint64 to int64 in a single place.
 func Uint64(key string, value uint64) attribute.KeyValue {
 	if value > math.MaxInt64 {
-		return attribute.String(key, "height overflows int64")
+		return attribute.String(key, fmt.Sprintf("%d overflows int64", value))
 	}
 	return attribute.Int64(key, int64(value))
 }

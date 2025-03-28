@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
-	otelattr "github.com/celestiaorg/go-header/otel"
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
@@ -295,12 +295,23 @@ func (ex *Exchange[H]) GetRangeByHeight(
 	)
 	defer span.End()
 	session := newSession[H](
-		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RequestTimeout, ex.metrics, withValidation(from),
+		ex.ctx,
+		ex.host,
+		ex.peerTracker,
+		ex.protocolID,
+		ex.Params.RequestTimeout,
+		ex.metrics,
+		withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
 	amount := to - (from.Height() + 1)
-	result, err := session.getRangeByHeight(ctx, from.Height()+1, amount, ex.Params.MaxHeadersPerRangeRequest)
+	result, err := session.getRangeByHeight(
+		ctx,
+		from.Height()+1,
+		amount,
+		ex.Params.MaxHeadersPerRangeRequest,
+	)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
@@ -448,7 +459,9 @@ func bestHead[H header.Header[H]](result []H) (H, error) {
 			return res, nil
 		}
 	}
-	log.Debug("could not find latest header received from at least two peers, returning header with the max height")
+	log.Debug(
+		"could not find latest header received from at least two peers, returning header with the max height",
+	)
 	// otherwise return header with the max height
 	return result[0], nil
 }
