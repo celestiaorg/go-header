@@ -31,9 +31,8 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 
 	// single-flight protection ensure only one Head is requested at the time
 	if !s.getter.Lock() {
-		// means that other routine held the lock and set the subjective head for us,
-		// so just recursively get it
-		return s.Head(ctx)
+		// means that other routine held the lock and set the subjective head
+		return s.subjectiveHead(ctx)
 	}
 	defer s.getter.Unlock()
 
