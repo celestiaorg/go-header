@@ -360,7 +360,7 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
-			if errors.Is(err, header.ErrNotFound) || errors.Is(err, datastore.ErrNotFound) {
+			if errors.Is(err, datastore.ErrNotFound) {
 				continue
 			}
 			return fmt.Errorf("header/store: hash by height (%d): %w", h, err)
