@@ -31,7 +31,7 @@ func TestSyncGetterHead(t *testing.T) {
 			}
 			defer sex.Unlock()
 			h, err := sex.Head(ctx)
-			if h != nil || err != errFakeHead {
+			if h != nil || !errors.Is(err, errFakeHead) {
 				t.Fail()
 			}
 		}()

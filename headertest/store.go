@@ -24,7 +24,7 @@ func NewDummyStore(t *testing.T) *Store[*DummyHeader] {
 }
 
 // NewStore creates a generic mock store supporting different type of Headers based on Generator.
-func NewStore[H header.Header[H]](t *testing.T, gen Generator[H], numHeaders int) *Store[H] {
+func NewStore[H header.Header[H]](_ *testing.T, gen Generator[H], numHeaders int) *Store[H] {
 	store := &Store[H]{
 		Headers:    make(map[uint64]H),
 		HeadHeight: 0,
@@ -44,14 +44,14 @@ func NewStore[H header.Header[H]](t *testing.T, gen Generator[H], numHeaders int
 func (m *Store[H]) Init(context.Context, H) error { return nil }
 
 func (m *Store[H]) Height() uint64 {
-	return uint64(m.HeadHeight)
+	return m.HeadHeight
 }
 
 func (m *Store[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 	return m.Headers[m.HeadHeight], nil
 }
 
-func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
+func (m *Store[H]) Get(_ context.Context, hash header.Hash) (H, error) {
 	for _, header := range m.Headers {
 		if bytes.Equal(header.Hash(), hash) {
 			return header, nil
@@ -61,7 +61,7 @@ func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	return zero, header.ErrNotFound
 }
 
-func (m *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
+func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	if header, exists := m.Headers[height]; exists {
 		return header, nil
 	}
@@ -79,7 +79,7 @@ func (m *Store[H]) GetRangeByHeight(ctx context.Context, fromHead H, to uint64) 
 	return m.getRangeByHeight(ctx, from, to)
 }
 
-func (m *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, error) {
+func (m *Store[H]) getRangeByHeight(_ context.Context, from, to uint64) ([]H, error) {
 	if to <= from {
 		return nil, fmt.Errorf("malformed range, from: %d, to: %d", from, to)
 	}
@@ -107,7 +107,7 @@ func (m *Store[H]) HasAt(_ context.Context, height uint64) bool {
 	return height != 0 && m.HeadHeight >= height
 }
 
-func (m *Store[H]) Append(ctx context.Context, headers ...H) error {
+func (m *Store[H]) Append(_ context.Context, headers ...H) error {
 	for _, header := range headers {
 		m.Headers[header.Height()] = header
 		// set head

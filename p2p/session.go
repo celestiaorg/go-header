@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/celestiaorg/go-header/internal/otelattr"
+
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"go.opentelemetry.io/otel"
@@ -84,11 +86,17 @@ func (s *session[H]) getRangeByHeight(
 	ctx context.Context,
 	from, amount, headersPerPeer uint64,
 ) (_ []H, err error) {
-	log.Debugw("requesting headers", "from", from, "to", from+amount-1) // -1 need to exclude to+1 height
+	log.Debugw(
+		"requesting headers",
+		"from",
+		from,
+		"to",
+		from+amount-1,
+	) // -1 need to exclude to+1 height
 
 	ctx, span := tracerSession.Start(ctx, "get-range-by-height", trace.WithAttributes(
-		attribute.Int64("from", int64(from)),
-		attribute.Int64("to", int64(from+amount-1)),
+		otelattr.Uint64("from", from),
+		otelattr.Uint64("to", from+amount-1),
 	))
 	defer span.End()
 
@@ -170,8 +178,8 @@ func (s *session[H]) doRequest(
 ) {
 	ctx, span := tracerSession.Start(ctx, "request-headers-from-peer", trace.WithAttributes(
 		attribute.String("peerID", stat.peerID.String()),
-		attribute.Int64("from", int64(req.GetOrigin())),
-		attribute.Int64("amount", int64(req.Amount)),
+		otelattr.Uint64("from", req.GetOrigin()),
+		otelattr.Uint64("amount", req.Amount),
 	))
 	defer span.End()
 
@@ -195,8 +203,8 @@ func (s *session[H]) doRequest(
 		span.SetStatus(codes.Error, err.Error())
 		logFn := log.Errorw
 
-		switch err {
-		case header.ErrNotFound, errEmptyResponse:
+		switch {
+		case errors.Is(err, header.ErrNotFound), errors.Is(err, errEmptyResponse):
 			logFn = log.Debugw
 			stat.decreaseScore()
 		default:
@@ -239,8 +247,8 @@ func (s *session[H]) doRequest(
 	// ensure that we received the correct amount of headers.
 	if remainingHeaders > 0 {
 		span.AddEvent("remaining headers", trace.WithAttributes(
-			attribute.Int64("amount", int64(remainingHeaders))),
-		)
+			otelattr.Uint64("amount", remainingHeaders),
+		))
 
 		from := h[uint64(len(h))-1].Height()
 		select {
@@ -297,7 +305,8 @@ func (s *session[H]) verify(headers []H) error {
 		if trusted.Height() != s.from.Height() {
 			if trusted.Height()+1 != untrusted.Height() {
 				// Exchange requires requested ranges to always consist of adjacent headers
-				return fmt.Errorf("peer sent valid but non-adjacent header. expected:%d, received:%d",
+				return fmt.Errorf(
+					"peer sent valid but non-adjacent header. expected:%d, received:%d",
 					trusted.Height()+1,
 					untrusted.Height(),
 				)

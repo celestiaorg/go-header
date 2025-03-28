@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
@@ -94,7 +95,7 @@ func NewExchange[H header.Header[H]](
 	return ex, nil
 }
 
-func (ex *Exchange[H]) Start(ctx context.Context) error {
+func (ex *Exchange[H]) Start(context.Context) error {
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
@@ -255,7 +256,7 @@ func (ex *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error
 	log.Debugw("requesting header", "height", height)
 	ctx, span := tracerClient.Start(ctx, "get-by-height",
 		trace.WithAttributes(
-			attribute.Int64("height", int64(height)),
+			otelattr.Uint64("height", height),
 		))
 	defer span.End()
 	var zero H
@@ -288,17 +289,29 @@ func (ex *Exchange[H]) GetRangeByHeight(
 ) ([]H, error) {
 	ctx, span := tracerClient.Start(ctx, "get-range-by-height",
 		trace.WithAttributes(
-			attribute.Int64("from", int64(from.Height())),
-			attribute.Int64("to", int64(to)),
-		))
+			otelattr.Uint64("from", from.Height()),
+			otelattr.Uint64("to", to),
+		),
+	)
 	defer span.End()
 	session := newSession[H](
-		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, ex.Params.RequestTimeout, ex.metrics, withValidation(from),
+		ex.ctx,
+		ex.host,
+		ex.peerTracker,
+		ex.protocolID,
+		ex.Params.RequestTimeout,
+		ex.metrics,
+		withValidation(from),
 	)
 	defer session.close()
 	// we request the next header height that we don't have: `fromHead`+1
 	amount := to - (from.Height() + 1)
-	result, err := session.getRangeByHeight(ctx, from.Height()+1, amount, ex.Params.MaxHeadersPerRangeRequest)
+	result, err := session.getRangeByHeight(
+		ctx,
+		from.Height()+1,
+		amount,
+		ex.Params.MaxHeadersPerRangeRequest,
+	)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
@@ -446,7 +459,9 @@ func bestHead[H header.Header[H]](result []H) (H, error) {
 			return res, nil
 		}
 	}
-	log.Debug("could not find latest header received from at least two peers, returning header with the max height")
+	log.Debug(
+		"could not find latest header received from at least two peers, returning header with the max height",
+	)
 	// otherwise return header with the max height
 	return result[0], nil
 }

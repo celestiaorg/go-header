@@ -26,11 +26,19 @@ func TestSubscriber(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	// get mock host and create new gossipsub on it
-	pubsub1, err := pubsub.NewGossipSub(ctx, net.Hosts()[0], pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign))
+	pubsub1, err := pubsub.NewGossipSub(
+		ctx,
+		net.Hosts()[0],
+		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
+	)
 	require.NoError(t, err)
 
 	// create sub-service lifecycles for header service 1
-	p2pSub1, err := NewSubscriber[*headertest.DummyHeader](pubsub1, pubsub.DefaultMsgIdFn, WithSubscriberNetworkID(networkID))
+	p2pSub1, err := NewSubscriber[*headertest.DummyHeader](
+		pubsub1,
+		pubsub.DefaultMsgIdFn,
+		WithSubscriberNetworkID(networkID),
+	)
 	require.NoError(t, err)
 	err = p2pSub1.Start(context.Background())
 	require.NoError(t, err)
@@ -45,7 +53,11 @@ func TestSubscriber(t *testing.T) {
 	require.NoError(t, err)
 
 	// create sub-service lifecycles for header service 2
-	p2pSub2, err := NewSubscriber[*headertest.DummyHeader](pubsub2, pubsub.DefaultMsgIdFn, WithSubscriberNetworkID(networkID))
+	p2pSub2, err := NewSubscriber[*headertest.DummyHeader](
+		pubsub2,
+		pubsub.DefaultMsgIdFn,
+		WithSubscriberNetworkID(networkID),
+	)
 	require.NoError(t, err)
 	err = p2pSub2.Start(context.Background())
 	require.NoError(t, err)

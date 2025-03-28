@@ -106,7 +106,12 @@ func (m *exchangeMetrics) observeMetrics(_ context.Context, obs metric.Observer)
 	return nil
 }
 
-func (m *exchangeMetrics) head(ctx context.Context, duration time.Duration, headersReceived int, tp, status string) {
+func (m *exchangeMetrics) head(
+	ctx context.Context,
+	duration time.Duration,
+	headersReceived int,
+	tp, status string,
+) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.headRequestTimeInst.Record(ctx,
 			duration.Seconds(),
@@ -119,7 +124,12 @@ func (m *exchangeMetrics) head(ctx context.Context, duration time.Duration, head
 	})
 }
 
-func (m *exchangeMetrics) response(ctx context.Context, size uint64, duration time.Duration, err error) {
+func (m *exchangeMetrics) response(
+	ctx context.Context,
+	size int,
+	duration time.Duration,
+	err error,
+) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.responseSizeInst.Record(ctx,
 			int64(size),
@@ -145,7 +155,7 @@ func (m *exchangeMetrics) peersDisconnected(num int) {
 }
 
 func (m *exchangeMetrics) peerBlocked() {
-	m.observe(context.Background(), func(ctx context.Context) {
+	m.observe(context.Background(), func(context.Context) {
 		m.blockedPeersNum.Add(1)
 	})
 }

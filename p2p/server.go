@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/celestiaorg/go-header/internal/otelattr"
+
 	"github.com/celestiaorg/go-libp2p-messenger/serde"
 
 	"github.com/celestiaorg/go-header"
@@ -121,10 +123,10 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		return
 	}
 	var code p2p_pb.StatusCode
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		code = p2p_pb.StatusCode_OK
-	case header.ErrNotFound:
+	case errors.Is(err, header.ErrNotFound):
 		code = p2p_pb.StatusCode_NOT_FOUND
 	default:
 		stream.Reset() //nolint:errcheck
@@ -187,8 +189,8 @@ func (serv *ExchangeServer[H]) handleRequestByHash(ctx context.Context, hash []b
 
 	span.AddEvent("fetched-header-from-store", trace.WithAttributes(
 		attribute.String("hash", header.Hash(hash).String()),
-		attribute.Int64("height", int64(h.Height()))),
-	)
+		otelattr.Uint64("height", h.Height()),
+	))
 	span.SetStatus(codes.Ok, "")
 
 	serv.metrics.getServed(ctx, time.Since(startTime), false)
@@ -197,7 +199,10 @@ func (serv *ExchangeServer[H]) handleRequestByHash(ctx context.Context, hash []b
 
 // handleRangeRequest fetches the Header at the given origin and
 // writes it to the stream.
-func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to uint64) ([]H, error) {
+func (serv *ExchangeServer[H]) handleRangeRequest(
+	ctx context.Context,
+	from, to uint64,
+) ([]H, error) {
 	if from == uint64(0) {
 		return serv.handleHeadRequest(ctx)
 	}
@@ -205,14 +210,15 @@ func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to 
 	startTime := time.Now()
 	log.Debugw("server: handling range request", "from", from, "to", to)
 	ctx, span := tracerServ.Start(ctx, "request-range", trace.WithAttributes(
-		attribute.Int64("from", int64(from)),
-		attribute.Int64("to", int64(to))))
+		otelattr.Uint64("from", from),
+		otelattr.Uint64("to", to),
+	))
 	defer span.End()
 
 	if to-from > header.MaxRangeRequestSize {
 		log.Errorw("server: skip request for too many headers.", "amount", to-from)
 		span.SetStatus(codes.Error, header.ErrHeadersLimitExceeded.Error())
-		serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), true)
+		serv.metrics.rangeServed(ctx, time.Since(startTime), to-from, true)
 		return nil, header.ErrHeadersLimitExceeded
 	}
 
@@ -223,7 +229,7 @@ func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to 
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			log.Debugw("server: could not get current head", "err", err)
-			serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), true)
+			serv.metrics.rangeServed(ctx, time.Since(startTime), to-from, true)
 			return nil, err
 		}
 
@@ -236,16 +242,16 @@ func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to 
 				"currentHead",
 				head.Height(),
 			)
-			serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), true)
+			serv.metrics.rangeServed(ctx, time.Since(startTime), to-from, true)
 			return nil, header.ErrNotFound
 		}
 
 		log.Debugw("server: serving partial range",
 			"prevMaxHeight", to,
-			"newMaxHeight", uint64(head.Height())+1,
+			"newMaxHeight", head.Height()+1,
 		)
 		// change `to` height to return a partial range
-		to = uint64(head.Height()) + 1
+		to = head.Height() + 1
 	}
 
 	headersByRange, err := serv.store.GetRange(ctx, from, to)
@@ -256,14 +262,14 @@ func (serv *ExchangeServer[H]) handleRangeRequest(ctx context.Context, from, to 
 			return nil, header.ErrNotFound
 		}
 		log.Errorw("server: getting headers", "from", from, "to", to, "err", err)
-		serv.metrics.rangeServed(ctx, time.Since(startTime), int(to-from), true)
+		serv.metrics.rangeServed(ctx, time.Since(startTime), to-from, true)
 		return nil, err
 	}
 
 	span.AddEvent("fetched-range-of-headers", trace.WithAttributes(
 		attribute.Int("amount", len(headersByRange))))
 	span.SetStatus(codes.Ok, "")
-	serv.metrics.rangeServed(ctx, time.Since(startTime), len(headersByRange), false)
+	serv.metrics.rangeServed(ctx, time.Since(startTime), uint64(len(headersByRange)), false)
 	return headersByRange, nil
 }
 
@@ -284,8 +290,8 @@ func (serv *ExchangeServer[H]) handleHeadRequest(ctx context.Context) ([]H, erro
 
 	span.AddEvent("fetched-head", trace.WithAttributes(
 		attribute.String("hash", head.Hash().String()),
-		attribute.Int64("height", int64(head.Height()))),
-	)
+		otelattr.Uint64("height", head.Height()),
+	))
 	span.SetStatus(codes.Ok, "")
 	serv.metrics.headServed(ctx, time.Since(startTime), false)
 	return []H{head}, nil

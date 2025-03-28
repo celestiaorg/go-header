@@ -61,7 +61,10 @@ func newSubscriberMetrics() (m *subscriberMetrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.subscriptionNumReg, err = subsMeter.RegisterCallback(m.subscriptionCallback, m.subscriptionNumInst)
+	m.subscriptionNumReg, err = subsMeter.RegisterCallback(
+		m.subscriptionCallback,
+		m.subscriptionNumInst,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +104,7 @@ func (m *subscriberMetrics) reject(ctx context.Context) {
 }
 
 func (m *subscriberMetrics) subscription(num int) {
-	m.observe(context.Background(), func(ctx context.Context) {
+	m.observe(context.Background(), func(context.Context) {
 		m.subscriptionNum.Add(int64(num))
 	})
 }

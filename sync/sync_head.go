@@ -42,7 +42,13 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	defer cancel()
 	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
-		log.Warnw("failed to get recent head, returning current subjective", "sbjHead", sbjHead.Height(), "err", err)
+		log.Warnw(
+			"failed to get recent head, returning current subjective",
+			"sbjHead",
+			sbjHead.Height(),
+			"err",
+			err,
+		)
 		return s.subjectiveHead(ctx)
 	}
 

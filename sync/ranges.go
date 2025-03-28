@@ -94,7 +94,7 @@ type headerRange[H header.Header[H]] struct {
 
 func newRange[H header.Header[H]](h H) *headerRange[H] {
 	return &headerRange[H]{
-		start:   uint64(h.Height()),
+		start:   h.Height(),
 		headers: []H{h},
 	}
 }
@@ -142,7 +142,7 @@ func (r *headerRange[H]) Remove(end uint64) {
 	amnt := r.rangeAmount(end)
 	r.headers = r.headers[amnt:]
 	if len(r.headers) != 0 {
-		r.start = uint64(r.headers[0].Height())
+		r.start = r.headers[0].Height()
 	}
 }
 
