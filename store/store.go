@@ -302,6 +302,41 @@ func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
 	return height != uint64(0) && s.Height() >= height
 }
 
+// DeleteRange implements [header.Store] interface.
+func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	if from >= to {
+		return fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
+	}
+
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: batch: %w", err)
+	}
+
+	for h := from; h < to; h++ {
+		hash, err := s.heightIndex.HashByHeight(ctx, h)
+		if err != nil {
+			if errors.Is(err, datastore.ErrNotFound) {
+				continue
+			}
+			return fmt.Errorf("header/store: hash by height (%d): %w", h, err)
+		}
+
+		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
+			return fmt.Errorf("header/store: adding hash to batch: %w", err)
+		}
+		if err := batch.Delete(ctx, heightKey(h)); err != nil {
+			return fmt.Errorf("header/store: adding height to batch: %w", err)
+		}
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("header/store: batch commit: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	lh := len(headers)
 	if lh == 0 {

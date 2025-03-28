@@ -180,3 +180,8 @@ func (timeoutStore[H]) GetRange(ctx context.Context, _ uint64, _ uint64) ([]H, e
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
+
+func (timeoutStore[H]) DeleteRange(ctx context.Context, _, _ uint64) error {
+	<-ctx.Done()
+	return ctx.Err()
+}

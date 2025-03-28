@@ -69,6 +69,17 @@ func (m *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
+func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	if from >= to {
+		return fmt.Errorf("invalid range(%d,%d)", from, to)
+	}
+
+	for h := from; h < to; h++ {
+		delete(m.Headers, h)
+	}
+	return nil
+}
+
 func (m *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {
 	return m.getRangeByHeight(ctx, from, to)
 }
