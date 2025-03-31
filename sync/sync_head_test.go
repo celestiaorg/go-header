@@ -8,13 +8,46 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/local"
+	"github.com/celestiaorg/go-header/store"
 )
+
+func TestSyncer_Tail(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	remoteStore := headertest.NewDummyStore(t)
+
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	localStore, err := store.NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+	err = localStore.Start(ctx)
+	require.NoError(t, err)
+
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		remoteStore,
+		localStore,
+		headertest.NewDummySubscriber(),
+		WithRecencyThreshold(time.Nanosecond), // force recent requests
+		WithBlockTime(time.Second*6),
+	)
+	require.NoError(t, err)
+
+	tail, err := syncer.Tail(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, tail)
+
+	storeTail, err := localStore.Tail(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, tail.Height(), storeTail.Height())
+}
 
 func TestSyncer_HeadConcurrencyError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)

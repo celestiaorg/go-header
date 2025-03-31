@@ -3,6 +3,8 @@ package sync
 import (
 	"fmt"
 	"time"
+
+	"github.com/celestiaorg/go-header"
 )
 
 // Option is the functional option that is applied to the Syner instance
@@ -20,6 +22,22 @@ type Parameters struct {
 	// needed to report and punish misbehavior should be less than the unbonding
 	// period.
 	TrustingPeriod time.Duration
+	// SyncFromHash is the hash of the header from which the syncer should start syncing.
+	//
+	// By default, the syncer will start syncing from Tail, height of which is identified by the
+	// network head time minus TrustingPeriod. SyncFromHash overrides this default, allowing
+	// user to specify a custom starting point.
+	//
+	// SyncFromHash has higher priority than SyncFromHeight.
+	SyncFromHash header.Hash
+	// SyncFromHeight is the height of the header from which the syncer should start syncing.
+	//
+	// By default, the syncer will start syncing from Tail, height of which is identified by the
+	// network head time minus TrustingPeriod. SyncFromHeight overrides this default, allowing
+	// user to specify a custom starting point.
+	//
+	// SyncFromHeight has lower priority than SyncFromHash.
+	SyncFromHeight uint64
 	// blockTime provides a reference point for the Syncer to determine
 	// whether its subjective head is outdated.
 	// Keeping it private to disable serialization for it.
