@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -56,6 +57,80 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	return s.subjectiveHead(ctx)
 }
 
+func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
+	tail, err := s.store.Tail(ctx)
+	switch {
+	case errors.Is(err, header.ErrEmptyStore):
+		switch {
+		case s.Params.SyncFromHash != nil:
+			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
+			if err != nil {
+				return tail, fmt.Errorf("getting tail header by hash(%s): %w", s.Params.SyncFromHash, err)
+			}
+		case s.Params.SyncFromHeight != 0:
+			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
+			if err != nil {
+				return tail, fmt.Errorf("getting tail header(%d): %w", s.Params.SyncFromHeight, err)
+			}
+		default:
+			head, err := s.Head(ctx)
+			if err != nil {
+				return head, err
+			}
+
+			tailHeight := estimateTail(head, s.Params.blockTime, s.Params.TrustingPeriod)
+			tail, err = s.getter.GetByHeight(ctx, tailHeight)
+			if err != nil {
+				return tail, fmt.Errorf("getting estimated tail header(%d): %w", tailHeight, err)
+			}
+		}
+
+		err = s.store.Store.Append(ctx, tail)
+		if err != nil {
+			return tail, fmt.Errorf("appending tail header: %w", err)
+		}
+
+	case !s.isTailActual(tail):
+		if s.Params.SyncFromHash != nil {
+			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
+			if err != nil {
+				return tail, fmt.Errorf("getting tail header by hash(%s): %w", s.Params.SyncFromHash, err)
+			}
+		} else if s.Params.SyncFromHeight != 0 {
+			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
+			if err != nil {
+				return tail, fmt.Errorf("getting tail header(%d): %w", s.Params.SyncFromHeight, err)
+			}
+		}
+
+		// TODO: Delete or sync up the diff
+
+	case err != nil:
+		return tail, err
+	}
+
+	return tail, nil
+}
+
+// isTailActual checks if the given tail is actual based on the sync parameters.
+func (s *Syncer[H]) isTailActual(tail H) bool {
+	if tail.IsZero() {
+		return false
+	}
+
+	switch {
+	case s.Params.SyncFromHash == nil && s.Params.SyncFromHeight == 0:
+		// if both overrides are zero value, then we good with whatever tail there is
+		return true
+	case s.Params.SyncFromHash != nil && bytes.Equal(s.Params.SyncFromHash, tail.Hash()):
+		return true
+	case s.Params.SyncFromHeight != 0 && s.Params.SyncFromHeight == tail.Height():
+		return true
+	default:
+		return false
+	}
+}
+
 // subjectiveHead returns the latest known local header that is not expired(within trusting period).
 // If the header is expired, it is retrieved from a trusted peer without validation;
 // in other words, an automatic subjective initialization is performed.
@@ -70,15 +145,14 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// if pending is empty - get the latest stored/synced head
 	storeHead, err := s.store.Head(ctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, header.ErrEmptyStore):
+		log.Infow("no stored head, initializing...", "height")
+	case !storeHead.IsZero() && isExpired(storeHead, s.Params.TrustingPeriod):
+		log.Infow("stored head header expired", "height", storeHead.Height())
+	default:
 		return storeHead, err
 	}
-	// check if the stored header is not expired and use it
-	if !isExpired(storeHead, s.Params.TrustingPeriod) {
-		return storeHead, nil
-	}
-	// otherwise, request head from a trusted peer
-	log.Infow("stored head header expired", "height", storeHead.Height())
 
 	trustHead, err := s.head.Head(ctx)
 	if err != nil {
@@ -256,4 +330,14 @@ func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Dur
 		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
 	}
 	return time.Since(header.Time()) <= recencyThreshold
+}
+
+func estimateTail[H header.Header[H]](head H, blockTime, trustingPeriod time.Duration) (height uint64) {
+	headersToRetain := uint64(trustingPeriod / blockTime)
+
+	if headersToRetain >= head.Height() {
+		return 1
+	}
+	tail := head.Height() - headersToRetain
+	return tail
 }
