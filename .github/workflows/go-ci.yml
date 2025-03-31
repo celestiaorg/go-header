@@ -22,13 +22,11 @@ jobs:
         run: go build -v ./...
 
       - name: Test & Coverage
-        run: |
-          go install github.com/ory/go-acc@v0.2.6
-          go-acc -o coverage.txt ./... -- -v --race
-
+        run: go test -cover -coverprofile coverage.o ./... -- -v --race
       - uses: codecov/codecov-action@v3
         with:
-          file: ./coverage.txt
+          file: ./coverage.o
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
