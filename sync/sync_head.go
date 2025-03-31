@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -76,15 +77,14 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// if pending is empty - get the latest stored/synced head
 	storeHead, err := s.store.Head(ctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, header.ErrNotFound):
+		log.Infow("no stored head, initializing...", "height")
+	case isExpired(storeHead, s.Params.TrustingPeriod):
+		log.Infow("stored head header expired", "height", storeHead.Height())
+	case err != nil:
 		return storeHead, err
 	}
-	// check if the stored header is not expired and use it
-	if !isExpired(storeHead, s.Params.TrustingPeriod) {
-		return storeHead, nil
-	}
-	// otherwise, request head from a trusted peer
-	log.Infow("stored head header expired", "height", storeHead.Height())
 	// single-flight protection
 	// ensure only one Head is requested at the time
 	if !s.getter.Lock() {
@@ -98,6 +98,16 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	if err != nil {
 		return trustHead, err
 	}
+
+	if errors.Is(err, header.ErrNotFound) {
+		tail, err := s.subjectiveTail(ctx, trustHead)
+		if err != nil {
+			return tail, err
+		}
+
+		// TODO: verify trustHead against tail
+	}
+
 	s.metrics.subjectiveInitialization(s.ctx)
 	// and set it as the new subjective head without validation,
 	// or, in other words, do 'automatic subjective initialization'
@@ -115,6 +125,32 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	log.Warn("trusted peer is out of sync")
 	s.metrics.trustedPeersOutOufSync(s.ctx)
 	return trustHead, nil
+}
+
+func (s *Syncer[H]) subjectiveTail(ctx context.Context, trustHead H) (H, error) {
+	var tail H
+	var err error
+	if s.Params.SyncFromHash != nil {
+		tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
+		if err != nil {
+			return tail, fmt.Errorf("failed to get tail header: %w", err)
+		}
+	} else {
+		// TODO(@Wondertan): as we using trustHead as a time reference point to estimate tail height
+		//  we should check if the trustHead is recent enough to estimate tail height
+		tailHeight := estimateTail(trustHead, s.Params.blockTime, s.Params.TrustingPeriod)
+		tail, err = s.getter.GetByHeight(ctx, tailHeight)
+		if err != nil {
+			return tail, fmt.Errorf("failed to get tail header(%d): %w", tailHeight, err)
+		}
+	}
+
+	err = s.store.Store.Append(ctx, tail)
+	if err != nil {
+		return tail, fmt.Errorf("failed to append tail header: %w", err)
+	}
+
+	return tail, nil
 }
 
 // setSubjectiveHead takes already validated head and sets it as the new sync target.
@@ -206,4 +242,10 @@ func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Dur
 		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
 	}
 	return time.Since(header.Time()) <= recencyThreshold
+}
+
+func estimateTail[H header.Header[H]](head H, blockTime, trustingPeriod time.Duration) (height uint64) {
+	headersToRetain := uint64(trustingPeriod / blockTime)
+	tail := head.Height() - headersToRetain
+	return tail
 }
