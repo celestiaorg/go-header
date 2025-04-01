@@ -144,7 +144,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 
 	if err := s.loadContiguousHead(ctx); err != nil {
 		// we might start on an empty datastore, no key is okay.
-		if !errors.Is(err, header.ErrNotFound) {
+		if !errors.Is(err, datastore.ErrNotFound) {
 			return fmt.Errorf("header/store: cannot load headKey: %w", err)
 		}
 	}
@@ -455,17 +455,51 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
+	// take current contiguous head to verify headers against
+	head, err := s.Head(ctx)
+	if err != nil {
+		return err
+	}
+
+	// collect valid headers
+	verified := make([]H, 0, lh)
+	for i, h := range headers {
+		err = head.Verify(h)
+		if err != nil {
+			var verErr *header.VerifyError
+			if errors.As(err, &verErr) {
+				log.Errorw("invalid header",
+					"height_of_head", head.Height(),
+					"hash_of_head", head.Hash(),
+					"height_of_invalid", h.Height(),
+					"hash_of_invalid", h.Hash(),
+					"reason", verErr.Reason)
+			}
+			// if the first header is invalid, no need to go further
+			if i == 0 {
+				// and simply return
+				return err
+			}
+			// otherwise, stop the loop and apply headers appeared to be valid
+			break
+		}
+		verified = append(verified, h)
+		head = h
+	}
+
 	// queue headers to be written on disk
 	select {
-	case s.writes <- headers:
-		return nil
+	case s.writes <- verified:
+		// we return an error here after writing,
+		// as there might be an invalid header in between of a given range
+		return err
 	default:
 		s.metrics.writesQueueBlocked(ctx)
 	}
 	// if the writes queue is full, we block until it is not
 	select {
-	case s.writes <- headers:
-		return nil
+	case s.writes <- verified:
+		return err
 	case <-s.writesDn:
 		return errStoppedStore
 	case <-ctx.Done():
