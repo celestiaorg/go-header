@@ -352,23 +352,27 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
 
-	hashes, err := s.deleteRange(ctx, from, to)
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: batch: %w", err)
+	}
+
+	hashes, err := s.deleteRange(ctx, batch, from, to)
 	if err != nil {
 		return fmt.Errorf("header/store: deleting range: %w", err)
 	}
 
-	if err := s.deleteRangeCaches(ctx, from, to, hashes); err != nil {
+	if err := s.deleteRangeCaches(ctx, batch, from, to, hashes); err != nil {
 		return fmt.Errorf("header/store: deleting range in caches: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("header/store: commit: %w", err)
 	}
 	return nil
 }
 
-func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) ([]header.Hash, error) {
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) ([]header.Hash, error) {
 	hashes := make([]header.Hash, 0, to-from)
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
@@ -389,15 +393,11 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) ([]header.H
 			return nil, err
 		}
 	}
-
-	if err := batch.Commit(ctx); err != nil {
-		return nil, err
-	}
 	return hashes, nil
 }
 
-func (s *Store[H]) deleteRangeCaches(ctx context.Context, from, to uint64, hashes []header.Hash) error {
-	if err := s.heightIndex.DeleteRange(ctx, from, to); err != nil {
+func (s *Store[H]) deleteRangeCaches(ctx context.Context, batch datastore.Batch, from, to uint64, hashes []header.Hash) error {
+	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
 		return err
 	}
 
