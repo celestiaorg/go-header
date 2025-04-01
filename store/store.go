@@ -362,6 +362,7 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
 			if errors.Is(err, datastore.ErrNotFound) {
+				log.Debugw("removing non-existent header", "height", h)
 				continue
 			}
 			return fmt.Errorf("header/store: hash by height (%d): %w", h, err)
