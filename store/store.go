@@ -362,7 +362,7 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	}
 
 	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("height index: %w", err)
+		return fmt.Errorf("header/store: height index: %w", err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
