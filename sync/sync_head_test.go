@@ -139,7 +139,10 @@ func newWrappedGetter(ex header.Exchange[*headertest.DummyHeader]) *wrappedGette
 	}
 }
 
-func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) Head(
+	ctx context.Context,
+	options ...header.HeadOption[*headertest.DummyHeader],
+) (*headertest.DummyHeader, error) {
 	params := header.HeadParams[*headertest.DummyHeader]{}
 	for _, opt := range options {
 		opt(&params)
@@ -150,11 +153,17 @@ func (t *wrappedGetter) Head(ctx context.Context, options ...header.HeadOption[*
 	return t.ex.Head(ctx, options...)
 }
 
-func (t *wrappedGetter) Get(ctx context.Context, hash header.Hash) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) Get(
+	ctx context.Context,
+	hash header.Hash,
+) (*headertest.DummyHeader, error) {
 	panic("implement me")
 }
 
-func (t *wrappedGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.DummyHeader, error) {
+func (t *wrappedGetter) GetByHeight(
+	ctx context.Context,
+	u uint64,
+) (*headertest.DummyHeader, error) {
 	panic("implement me")
 }
 
@@ -168,7 +177,10 @@ func (t *wrappedGetter) GetRangeByHeight(
 
 type errorGetter struct{}
 
-func (e errorGetter) Head(ctx context.Context, h ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+func (e errorGetter) Head(
+	context.Context,
+	...header.HeadOption[*headertest.DummyHeader],
+) (*headertest.DummyHeader, error) {
 	time.Sleep(time.Millisecond * 1)
 	return nil, fmt.Errorf("error")
 }
@@ -181,6 +193,10 @@ func (e errorGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.Dum
 	panic("implement me")
 }
 
-func (e errorGetter) GetRangeByHeight(ctx context.Context, from *headertest.DummyHeader, to uint64) ([]*headertest.DummyHeader, error) {
+func (e errorGetter) GetRangeByHeight(
+	context.Context,
+	*headertest.DummyHeader,
+	uint64,
+) ([]*headertest.DummyHeader, error) {
 	panic("implement me")
 }

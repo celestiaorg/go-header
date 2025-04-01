@@ -57,7 +57,7 @@ func (p *ServerParameters) Validate() error {
 
 func WithMetrics[T parameters]() Option[T] {
 	return func(p *T) {
-		switch t := any(p).(type) { //nolint:gocritic
+		switch t := any(p).(type) {
 		case *ServerParameters:
 			t.metrics = true
 		case *ClientParameters:
