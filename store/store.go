@@ -390,7 +390,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 	}
 
 	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("heightIndex: %w", err)
+		return fmt.Errorf("height index: %w", err)
 	}
 
 	s.pending.DeleteRange(from, to)
