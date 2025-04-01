@@ -361,6 +361,10 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("header/store: delete range: %w", err)
 	}
 
+	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("height index: %w", err)
+	}
+
 	if err := batch.Commit(ctx); err != nil {
 		return fmt.Errorf("header/store: delete range commit: %w", err)
 	}
@@ -382,10 +386,6 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
 			return fmt.Errorf("delete hash key: %w", err)
 		}
-	}
-
-	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("height index: %w", err)
 	}
 
 	s.pending.DeleteRange(from, to)
