@@ -65,12 +65,12 @@ func TestSyncSimpleRequestingHead(t *testing.T) {
 		case syncer.pending.Head() != nil:
 			return false
 
-		case uint64(exp.Height()) != state.Height:
+		case exp.Height() != state.Height:
 			return false
 		case uint64(2) != state.FromHeight:
 			return false
 
-		case uint64(exp.Height()) != state.ToHeight:
+		case exp.Height() != state.ToHeight:
 			return false
 		case !state.Finished():
 			return false

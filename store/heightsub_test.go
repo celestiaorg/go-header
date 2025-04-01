@@ -147,7 +147,9 @@ func TestHeightSubCancellation(t *testing.T) {
 	sub := make(chan struct{})
 	go func() {
 		// subscribe first time
-		hs.Wait(ctx, h.Height())
+		if err := hs.Wait(ctx, h.Height()); err != nil {
+			panic(err)
+		}
 		sub <- struct{}{}
 	}()
 
