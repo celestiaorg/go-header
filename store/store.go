@@ -354,25 +354,20 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 
 	batch, err := s.ds.Batch(ctx)
 	if err != nil {
-		return fmt.Errorf("header/store: batch: %w", err)
+		return fmt.Errorf("header/store: delete range batch: %w", err)
 	}
 
-	hashes, err := s.deleteRange(ctx, batch, from, to)
-	if err != nil {
-		return fmt.Errorf("header/store: deleting range: %w", err)
-	}
-
-	if err := s.deleteRangeCaches(ctx, batch, from, to, hashes); err != nil {
-		return fmt.Errorf("header/store: deleting range in caches: %w", err)
+	if err := s.deleteRange(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("header/store: delete range: %w", err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("header/store: commit: %w", err)
+		return fmt.Errorf("header/store: delete range commit: %w", err)
 	}
 	return nil
 }
 
-func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) ([]header.Hash, error) {
+func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) error {
 	hashes := make([]header.Hash, 0, to-from)
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
@@ -381,24 +376,21 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 				log.Debugw("removing non-existent header", "height", h)
 				continue
 			}
-			return nil, err
+			return fmt.Errorf("hash by height: %w", err)
 		}
 
 		hashes = append(hashes, hash)
 
 		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
-			return nil, err
+			return fmt.Errorf("delete hash key: %w", err)
 		}
 		if err := batch.Delete(ctx, heightKey(h)); err != nil {
-			return nil, err
+			return fmt.Errorf("delete height key: %w", err)
 		}
 	}
-	return hashes, nil
-}
 
-func (s *Store[H]) deleteRangeCaches(ctx context.Context, batch datastore.Batch, from, to uint64, hashes []header.Hash) error {
 	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return err
+		return fmt.Errorf("heightIndex: %w", err)
 	}
 
 	s.pending.DeleteRange(from, to)
