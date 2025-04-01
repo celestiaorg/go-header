@@ -1,6 +1,8 @@
 package store
 
 import (
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/celestiaorg/go-header"
@@ -99,6 +101,21 @@ func (b *batch[H]) Has(hash header.Hash) bool {
 	defer b.lk.RUnlock()
 	_, ok := b.heights[hash.String()]
 	return ok
+}
+
+// DeleteRange checks whether header by the hash is present in the batch.
+func (b *batch[H]) DeleteRange(from, to uint64) {
+	b.lk.Lock()
+	defer b.lk.Unlock()
+
+	maps.DeleteFunc(b.heights, func(_ string, height uint64) bool {
+		return !(from <= height && height < to)
+	})
+
+	b.headers = slices.DeleteFunc(b.headers, func(h H) bool {
+		height := h.Height()
+		return !(from <= height && height < to)
+	})
 }
 
 // Reset cleans references to batched headers.

@@ -357,6 +357,7 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("header/store: batch: %w", err)
 	}
 
+	hashes := make([]header.Hash, 0, to-from)
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
@@ -365,6 +366,8 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 			}
 			return fmt.Errorf("header/store: hash by height (%d): %w", h, err)
 		}
+
+		hashes = append(hashes, hash)
 
 		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
 			return fmt.Errorf("header/store: adding hash to batch: %w", err)
@@ -377,6 +380,11 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	if err := batch.Commit(ctx); err != nil {
 		return fmt.Errorf("header/store: batch commit: %w", err)
 	}
+
+	for _, h := range hashes {
+		s.cache.Remove(h.String())
+	}
+	s.pending.DeleteRange(from, to)
 
 	return nil
 }

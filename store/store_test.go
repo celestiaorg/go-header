@@ -500,9 +500,15 @@ func TestStore_DeleteRange(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
 
-	in := suite.GenDummyHeaders(100)
+	const count = 100
+	in := suite.GenDummyHeaders(count)
 	err := store.Append(ctx, in...)
 	require.NoError(t, err)
+
+	hashes := make(map[uint64]header.Hash, count)
+	for _, h := range in {
+		hashes[h.Height()] = h.Hash()
+	}
 
 	// wait until headers are written
 	time.Sleep(100 * time.Millisecond)
@@ -568,6 +574,13 @@ func TestStore_DeleteRange(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+
+			// check that cache and pending doesn't contain old headers
+			for h := tt.from; h < tt.to; h++ {
+				hash := hashes[h]
+				assert.False(t, store.cache.Contains(hash.String()))
+				assert.False(t, store.pending.Has(hash))
+			}
 		})
 	}
 }
