@@ -368,7 +368,6 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 }
 
 func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) error {
-	hashes := make([]header.Hash, 0, to-from)
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
@@ -378,14 +377,10 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 			}
 			return fmt.Errorf("hash by height: %w", err)
 		}
-
-		hashes = append(hashes, hash)
+		s.cache.Remove(hash.String())
 
 		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
 			return fmt.Errorf("delete hash key: %w", err)
-		}
-		if err := batch.Delete(ctx, heightKey(h)); err != nil {
-			return fmt.Errorf("delete height key: %w", err)
 		}
 	}
 
@@ -394,10 +389,6 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 	}
 
 	s.pending.DeleteRange(from, to)
-
-	for _, h := range hashes {
-		s.cache.Remove(h.String())
-	}
 	return nil
 }
 
