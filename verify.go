@@ -6,6 +6,24 @@ import (
 	"time"
 )
 
+// VerifyRange verifies untrusted Headers against trusted following general Header checks and
+// custom user-specific checks defined in [Verify].
+//
+// In case of error, returns verified sub-range of Headers and error.
+func VerifyRange[H Header[H]](trstd H, untrstd []H) ([]H, error) {
+	verified := make([]H, 0, len(untrstd))
+	for _, h := range untrstd {
+		err := trstd.Verify(h)
+		if err != nil {
+			return verified, err
+		}
+		verified = append(verified, h)
+		trstd = h
+	}
+
+	return verified, nil
+}
+
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify.
 //
