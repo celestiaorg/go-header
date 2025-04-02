@@ -31,7 +31,7 @@ type DummyHeader struct {
 	// verification with SoftFailure set to true
 	SoftFailure bool
 
-	// VerifyFn can be used to change header.Verify behaviour per header.
+	// VerifyFn can be used to change header.Verify behavior per header.
 	VerifyFn func(hdr *DummyHeader) error `json:"-"`
 }
 
