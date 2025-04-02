@@ -417,9 +417,9 @@ func (e errorGetter) GetByHeight(ctx context.Context, u uint64) (*headertest.Dum
 }
 
 func (e errorGetter) GetRangeByHeight(
-	ctx context.Context,
-	from *headertest.DummyHeader,
-	to uint64,
+	context.Context,
+	*headertest.DummyHeader,
+	uint64,
 ) ([]*headertest.DummyHeader, error) {
 	panic("implement me")
 }
