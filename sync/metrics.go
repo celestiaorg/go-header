@@ -214,7 +214,7 @@ func (m *metrics) failedBifurcation(ctx context.Context, height uint64, hash str
 	m.observe(ctx, func(ctx context.Context) {
 		m.failedBifurcations.Add(ctx, 1,
 			metric.WithAttributes(
-				attribute.Int64("height", int64(height)),
+				attribute.Int64("height", int64(height)), //nolint:gosec
 				attribute.String("hash", hash),
 			),
 		)
