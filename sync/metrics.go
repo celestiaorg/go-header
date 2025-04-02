@@ -210,11 +210,11 @@ func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestam
 	})
 }
 
-func (m *metrics) failedBifurcation(ctx context.Context, height int64, hash string) {
+func (m *metrics) failedBifurcation(ctx context.Context, height uint64, hash string) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.failedBifurcations.Add(ctx, 1,
 			metric.WithAttributes(
-				attribute.Int64("height", height),
+				attribute.Int64("height", int64(height)),
 				attribute.String("hash", hash),
 			),
 		)

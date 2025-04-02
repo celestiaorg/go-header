@@ -242,7 +242,6 @@ func TestSyncer_verifyBifurcatingSuccessWithBadCandidates(t *testing.T) {
 	})
 
 	const total = 1000
-	const badHeaderHeight = total + 1
 	const iters = 4
 
 	headers := suite.GenDummyHeaders(total)
