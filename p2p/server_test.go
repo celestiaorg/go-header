@@ -139,6 +139,12 @@ func (timeoutStore[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, 
 	return zero, ctx.Err()
 }
 
+func (timeoutStore[H]) Tail(ctx context.Context) (H, error) {
+	<-ctx.Done()
+	var zero H
+	return zero, ctx.Err()
+}
+
 func (timeoutStore[H]) Get(ctx context.Context, _ header.Hash) (H, error) {
 	<-ctx.Done()
 	var zero H
