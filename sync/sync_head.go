@@ -30,18 +30,11 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return sbjHead, nil
 	}
 
-	// single-flight protection ensure only one Head is requested at the time
-	if !s.getter.Lock() {
-		// means that other routine held the lock and set the subjective head
-		return s.subjectiveHead(ctx)
-	}
-	defer s.getter.Unlock()
-
 	s.metrics.outdatedHead(s.ctx)
 
 	reqCtx, cancel := context.WithTimeout(ctx, headRequestTimeout)
 	defer cancel()
-	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
+	netHead, err := s.head.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw(
 			"failed to get recent head, returning current subjective",
@@ -86,16 +79,8 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// otherwise, request head from a trusted peer
 	log.Infow("stored head header expired", "height", storeHead.Height())
-	// single-flight protection
-	// ensure only one Head is requested at the time
-	if !s.getter.Lock() {
-		// means that other routine held the lock and set the subjective head for us,
-		// so just recursively get it
-		return s.subjectiveHead(ctx)
-	}
-	defer s.getter.Unlock()
 
-	trustHead, err := s.getter.Head(ctx)
+	trustHead, err := s.head.Head(ctx)
 	if err != nil {
 		return trustHead, err
 	}
