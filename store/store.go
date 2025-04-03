@@ -355,10 +355,6 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	if err := s.deleteRange(ctx, from, to); err != nil {
 		return fmt.Errorf("header/store: delete range: %w", err)
 	}
-
-	if err := s.updateTail(ctx, from, to); err != nil {
-		return fmt.Errorf("header/store: update tail: %w", err)
-	}
 	return nil
 }
 
@@ -374,6 +370,10 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 
 	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
 		return fmt.Errorf("height index: %w", err)
+	}
+
+	if err := s.updateTail(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("update tail: %w", err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
@@ -405,7 +405,9 @@ func (s *Store[H]) deleteRangePrepare(
 	return nil
 }
 
-func (s *Store[H]) updateTail(ctx context.Context, from, to uint64) error {
+func (s *Store[H]) updateTail(
+	ctx context.Context, batch datastore.Batch, from, to uint64,
+) error {
 	tailPtr := s.tailHeader.Load()
 	if tailPtr == nil {
 		return nil
@@ -422,6 +424,14 @@ func (s *Store[H]) updateTail(ctx context.Context, from, to uint64) error {
 		newTail, err := s.getByHeight(ctx, h)
 		if err == nil {
 			s.tailHeader.Store(&newTail)
+
+			b, err := newTail.MarshalBinary()
+			if err != nil {
+				return err
+			}
+			if err := batch.Put(ctx, tailKey, b); err != nil {
+				return err
+			}
 			return nil
 		}
 
