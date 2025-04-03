@@ -425,7 +425,7 @@ func (s *Store[H]) updateTail(
 		if err == nil {
 			s.tailHeader.Store(&newTail)
 
-			b, err := newTail.MarshalBinary()
+			b, err := newTail.Hash().MarshalJSON()
 			if err != nil {
 				return err
 			}
