@@ -382,7 +382,9 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 	return nil
 }
 
-func (s *Store[H]) deleteRangePrepare(ctx context.Context, batch datastore.Batch, from, to uint64) error {
+func (s *Store[H]) deleteRangePrepare(
+	ctx context.Context, batch datastore.Batch, from, to uint64,
+) error {
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
