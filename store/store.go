@@ -49,7 +49,6 @@ type Store[H header.Header[H]] struct {
 	writes chan []H
 	// signals when writes are finished
 	writesDn chan struct{}
-
 	// tailHeader maintains the current tail header.
 	tailHeader atomic.Pointer[H]
 	// contiguousHead is the highest contiguous header observed
