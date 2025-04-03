@@ -68,7 +68,7 @@ func Test_StatsUpdateStats(t *testing.T) {
 	heap.Push(&pQueue.stats, stat)
 	testCases := []struct {
 		inputTime   time.Duration
-		inputBytes  uint64
+		inputBytes  int
 		resultScore float32
 	}{
 		// common case, where time and bytes is not equal to 0

@@ -126,7 +126,9 @@ func (s *Subscriber[H]) SetVerifier(verifier func(context.Context, H) error) err
 // topic.
 func (s *Subscriber[H]) Subscribe() (header.Subscription[H], error) {
 	if s.topic == nil {
-		return nil, errors.New("header topic is not instantiated, service must be started before subscribing")
+		return nil, errors.New(
+			"header topic is not instantiated, service must be started before subscribing",
+		)
 	}
 
 	return newSubscription[H](s.topic, s.metrics)
@@ -138,10 +140,22 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 	if err != nil {
 		return err
 	}
+
+	opts = append(opts, pubsub.WithValidatorData(header))
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
-func (s *Subscriber[H]) verifyMessage(ctx context.Context, p peer.ID, msg *pubsub.Message) (res pubsub.ValidationResult) {
+func (s *Subscriber[H]) verifyMessage(
+	ctx context.Context,
+	p peer.ID,
+	msg *pubsub.Message,
+) (res pubsub.ValidationResult) {
+	if msg.ValidatorData != nil {
+		// means the message is local and was already validated
+		// so simply accept it
+		return pubsub.ValidationAccept
+	}
+
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -173,7 +187,11 @@ func (s *Subscriber[H]) verifyMessage(ctx context.Context, p peer.ID, msg *pubsu
 	select {
 	case <-s.verifierSema:
 	case <-ctx.Done():
-		log.Errorw("verifier was not set before incoming header verification", "from", p.ShortString())
+		log.Errorw(
+			"verifier was not set before incoming header verification",
+			"from",
+			p.ShortString(),
+		)
 		s.metrics.ignore(ctx)
 		return pubsub.ValidationIgnore
 	}

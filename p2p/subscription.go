@@ -19,7 +19,10 @@ type subscription[H header.Header[H]] struct {
 
 // newSubscription creates a new Header event subscription
 // on the given host.
-func newSubscription[H header.Header[H]](topic *pubsub.Topic, metrics *subscriberMetrics) (*subscription[H], error) {
+func newSubscription[H header.Header[H]](
+	topic *pubsub.Topic,
+	metrics *subscriberMetrics,
+) (*subscription[H], error) {
 	sub, err := topic.Subscribe()
 	if err != nil {
 		return nil, err
@@ -40,7 +43,7 @@ func (s *subscription[H]) NextHeader(ctx context.Context) (H, error) {
 		var zero H
 		return zero, err
 	}
-	log.Debugw("received message", "topic", msg.Message.GetTopic(), "sender", msg.ReceivedFrom)
+	log.Debugw("received message", "topic", msg.GetTopic(), "sender", msg.ReceivedFrom)
 
 	header, ok := msg.ValidatorData.(H)
 	if !ok {

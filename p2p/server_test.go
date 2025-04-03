@@ -17,6 +17,10 @@ func TestExchangeServer_handleRequestTimeout(t *testing.T) {
 	peer := createMocknet(t, 1)
 	s, err := store.NewStore[*headertest.DummyHeader](datastore.NewMapDatastore())
 	require.NoError(t, err)
+	head := headertest.RandDummyHeader(t)
+	head.HeightI %= 1000 // make it a bit lower
+	err = s.Init(context.Background(), head)
+	require.NoError(t, err)
 	server, err := NewExchangeServer[*headertest.DummyHeader](
 		peer[0],
 		s,
@@ -93,7 +97,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
 				defer cancel()
 
-				_, err := server.handleRangeRequest(ctx, 1, 100)
+				_, err := server.handleRangeRequest(ctx, 1, header.MaxRangeRequestSize)
 				return err
 			},
 		},
@@ -182,7 +186,7 @@ func (timeoutStore[H]) Append(ctx context.Context, _ ...H) error {
 	return ctx.Err()
 }
 
-func (timeoutStore[H]) GetRange(ctx context.Context, _ uint64, _ uint64) ([]H, error) {
+func (timeoutStore[H]) GetRange(ctx context.Context, _, _ uint64) ([]H, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

@@ -2,8 +2,12 @@ package sync
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
+
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,14 +27,14 @@ type metrics struct {
 	outdatedHeader        metric.Int64Counter
 	subjectiveInit        metric.Int64Counter
 
-	subjectiveHead atomic.Int64
+	subjectiveHead atomic.Uint64
 
 	syncLoopDurationHist metric.Float64Histogram
 	syncLoopActive       atomic.Int64
-	syncStartedTs        time.Time
+	syncStartedTS        time.Time
 
 	requestRangeTimeHist metric.Float64Histogram
-	requestRangeStartTs  time.Time
+	requestRangeStartTS  time.Time
 
 	blockTime  metric.Float64Histogram
 	prevHeader time.Time
@@ -119,7 +123,11 @@ func newMetrics() (*metrics, error) {
 		subjectiveHeadInst:    subjectiveHead,
 	}
 
-	m.syncerReg, err = meter.RegisterCallback(m.observeMetrics, m.subjectiveHeadInst, m.syncLoopRunningInst)
+	m.syncerReg, err = meter.RegisterCallback(
+		m.observeMetrics,
+		m.subjectiveHeadInst,
+		m.syncLoopRunningInst,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -128,14 +136,18 @@ func newMetrics() (*metrics, error) {
 }
 
 func (m *metrics) observeMetrics(_ context.Context, obs metric.Observer) error {
-	obs.ObserveInt64(m.subjectiveHeadInst, m.subjectiveHead.Load())
+	headHeight := m.subjectiveHead.Load()
+	if headHeight > math.MaxInt64 {
+		return fmt.Errorf("height overflows int64: %d", headHeight)
+	}
+	obs.ObserveInt64(m.subjectiveHeadInst, int64(headHeight))
 	obs.ObserveInt64(m.syncLoopRunningInst, m.syncLoopActive.Load())
 	return nil
 }
 
 func (m *metrics) syncStarted(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.syncStartedTs = time.Now()
+		m.syncStartedTS = time.Now()
 		m.syncLoopStarted.Add(ctx, 1)
 		m.syncLoopActive.Store(1)
 	})
@@ -144,7 +156,7 @@ func (m *metrics) syncStarted(ctx context.Context) {
 func (m *metrics) syncFinished(ctx context.Context) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.syncLoopActive.Store(0)
-		m.syncLoopDurationHist.Record(ctx, time.Since(m.syncStartedTs).Seconds())
+		m.syncLoopDurationHist.Record(ctx, time.Since(m.syncStartedTS).Seconds())
 	})
 }
 
@@ -166,11 +178,11 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 	})
 }
 
-func (m *metrics) updateGetRangeRequestInfo(ctx context.Context, amount int, failed bool) {
+func (m *metrics) updateGetRangeRequestInfo(ctx context.Context, amount uint64, failed bool) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.requestRangeTimeHist.Record(ctx, time.Since(m.requestRangeStartTs).Seconds(),
+		m.requestRangeTimeHist.Record(ctx, time.Since(m.requestRangeStartTS).Seconds(),
 			metric.WithAttributes(
-				attribute.Int("headers amount", amount),
+				otelattr.Uint64("headers amount", amount),
 				attribute.Bool("request failed", failed),
 			))
 	})
@@ -178,7 +190,7 @@ func (m *metrics) updateGetRangeRequestInfo(ctx context.Context, amount int, fai
 
 func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
 	m.observe(ctx, func(ctx context.Context) {
-		m.subjectiveHead.Store(int64(height))
+		m.subjectiveHead.Store(height)
 
 		if !m.prevHeader.IsZero() {
 			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
@@ -190,14 +202,14 @@ func (m *metrics) rangeRequestStart() {
 	if m == nil {
 		return
 	}
-	m.requestRangeStartTs = time.Now()
+	m.requestRangeStartTS = time.Now()
 }
 
 func (m *metrics) rangeRequestStop() {
 	if m == nil {
 		return
 	}
-	m.requestRangeStartTs = time.Time{}
+	m.requestRangeStartTS = time.Time{}
 }
 
 func (m *metrics) observe(ctx context.Context, observeFn func(context.Context)) {

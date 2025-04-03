@@ -14,7 +14,7 @@ import (
 	"github.com/celestiaorg/go-header/headertest"
 )
 
-// TestSubscriber tests the header Module's implementation of Subscriber.
+// TestSubscriber a simple test to check if the subscriber can receive headers from the network.
 func TestSubscriber(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
@@ -26,11 +26,19 @@ func TestSubscriber(t *testing.T) {
 	suite := headertest.NewTestSuite(t)
 
 	// get mock host and create new gossipsub on it
-	pubsub1, err := pubsub.NewGossipSub(ctx, net.Hosts()[0], pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign))
+	pubsub1, err := pubsub.NewGossipSub(
+		ctx,
+		net.Hosts()[0],
+		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
+	)
 	require.NoError(t, err)
 
 	// create sub-service lifecycles for header service 1
-	p2pSub1, err := NewSubscriber[*headertest.DummyHeader](pubsub1, pubsub.DefaultMsgIdFn, WithSubscriberNetworkID(networkID))
+	p2pSub1, err := NewSubscriber[*headertest.DummyHeader](
+		pubsub1,
+		pubsub.DefaultMsgIdFn,
+		WithSubscriberNetworkID(networkID),
+	)
 	require.NoError(t, err)
 	err = p2pSub1.Start(context.Background())
 	require.NoError(t, err)
@@ -45,7 +53,11 @@ func TestSubscriber(t *testing.T) {
 	require.NoError(t, err)
 
 	// create sub-service lifecycles for header service 2
-	p2pSub2, err := NewSubscriber[*headertest.DummyHeader](pubsub2, pubsub.DefaultMsgIdFn, WithSubscriberNetworkID(networkID))
+	p2pSub2, err := NewSubscriber[*headertest.DummyHeader](
+		pubsub2,
+		pubsub.DefaultMsgIdFn,
+		WithSubscriberNetworkID(networkID),
+	)
 	require.NoError(t, err)
 	err = p2pSub2.Start(context.Background())
 	require.NoError(t, err)
@@ -73,23 +85,24 @@ func TestSubscriber(t *testing.T) {
 	}
 
 	// subscribe
-	_, err = p2pSub2.Subscribe()
+	senderSubscription, err := p2pSub2.Subscribe()
 	require.NoError(t, err)
 
 	subscription, err := p2pSub1.Subscribe()
 	require.NoError(t, err)
 
 	expectedHeader := suite.GenDummyHeaders(1)[0]
-	bin, err := expectedHeader.MarshalBinary()
-	require.NoError(t, err)
-
-	err = p2pSub2.topic.Publish(ctx, bin, pubsub.WithReadiness(pubsub.MinTopicSize(1)))
+	err = p2pSub2.Broadcast(ctx, expectedHeader, pubsub.WithReadiness(pubsub.MinTopicSize(1)))
 	require.NoError(t, err)
 
 	// get next Header from network
 	header, err := subscription.NextHeader(ctx)
 	require.NoError(t, err)
+	assert.Equal(t, expectedHeader.Height(), header.Height())
+	assert.Equal(t, expectedHeader.Hash(), header.Hash())
 
+	header, err = senderSubscription.NextHeader(ctx)
+	require.NoError(t, err)
 	assert.Equal(t, expectedHeader.Height(), header.Height())
 	assert.Equal(t, expectedHeader.Hash(), header.Hash())
 }

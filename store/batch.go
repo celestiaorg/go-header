@@ -6,7 +6,7 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-// batch keeps an adjacent range of headers and loosely mimics the Store
+// batch keeps a range of headers and loosely mimics the Store
 // interface. NOTE: Can fully implement Store for a use case.
 //
 // It keeps a mapping 'height -> header' and 'hash -> height'
@@ -76,7 +76,11 @@ func (b *batch[H]) getByHeight(height uint64) H {
 		return zero
 	}
 
-	return b.headers[height-base-1]
+	h := b.headers[height-base-1]
+	if h.Height() == height {
+		return h
+	}
+	return zero
 }
 
 // Append appends new headers to the batch.

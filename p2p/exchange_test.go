@@ -144,7 +144,9 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
 	_ = server(ctx, t, hosts[1], goodStore)
 
-	badStore := &timedOutStore{timeout: time.Millisecond * 500} // simulates peer that does not respond
+	badStore := &timedOutStore{
+		timeout: time.Millisecond * 500,
+	} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
 	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
@@ -219,12 +221,19 @@ func TestExchange_GetRangeByHeight_FailsVerification(t *testing.T) {
 func TestExchange_RequestFullRangeHeaders(t *testing.T) {
 	// create mocknet with 5 peers
 	hosts := createMocknet(t, 5)
-	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), int(header.MaxRangeRequestSize)+1)
+	store := headertest.NewStore[*headertest.DummyHeader](
+		t,
+		headertest.NewTestSuite(t),
+		int(header.MaxRangeRequestSize)+1,
+	)
 	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
 	require.NoError(t, err)
 
 	// create new exchange
-	exchange, err := NewExchange[*headertest.DummyHeader](hosts[len(hosts)-1], []peer.ID{hosts[4].ID()}, connGater,
+	exchange, err := NewExchange[*headertest.DummyHeader](
+		hosts[len(hosts)-1],
+		[]peer.ID{hosts[4].ID()},
+		connGater,
 		WithNetworkID[ClientParameters](networkID),
 		WithChainID(networkID),
 	)
@@ -314,7 +323,11 @@ func TestExchange_RequestByHash(t *testing.T) {
 	})
 
 	// start a new stream via Peer to see if Host can handle inbound requests
-	stream, err := peer.NewStream(context.Background(), libhost.InfoFromHost(host).ID, protocolID(networkID))
+	stream, err := peer.NewStream(
+		context.Background(),
+		libhost.InfoFromHost(host).ID,
+		protocolID(networkID),
+	)
 	require.NoError(t, err)
 	// create request for a header at a random height
 	reqHeight := store.HeadHeight - 2
@@ -424,7 +437,11 @@ func TestExchange_RequestByHashFails(t *testing.T) {
 		serv.Stop(context.Background()) //nolint:errcheck
 	})
 
-	stream, err := peer.NewStream(context.Background(), libhost.InfoFromHost(host).ID, protocolID(networkID))
+	stream, err := peer.NewStream(
+		context.Background(),
+		libhost.InfoFromHost(host).ID,
+		protocolID(networkID),
+	)
 	require.NoError(t, err)
 	req := &p2p_pb.HeaderRequest{
 		Data:   &p2p_pb.HeaderRequest_Hash{Hash: []byte("dummy_hash")},
@@ -599,15 +616,22 @@ func quicHosts(t *testing.T, n int) []libhost.Host {
 		swrm := swarm.GenSwarm(t, swarm.OptDisableTCP)
 		hosts[i] = blankhost.NewBlankHost(swrm)
 		for _, host := range hosts[:i] {
-			hosts[i].Peerstore().AddAddrs(host.ID(), host.Network().ListenAddresses(), peerstore.PermanentAddrTTL)
-			host.Peerstore().AddAddrs(hosts[i].ID(), hosts[i].Network().ListenAddresses(), peerstore.PermanentAddrTTL)
+			hosts[i].Peerstore().
+				AddAddrs(host.ID(), host.Network().ListenAddresses(), peerstore.PermanentAddrTTL)
+			host.Peerstore().
+				AddAddrs(hosts[i].ID(), hosts[i].Network().ListenAddresses(), peerstore.PermanentAddrTTL)
 		}
 	}
 
 	return hosts
 }
 
-func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer.ID) *Exchange[*headertest.DummyHeader] {
+func client(
+	ctx context.Context,
+	t *testing.T,
+	host libhost.Host,
+	trusted []peer.ID,
+) *Exchange[*headertest.DummyHeader] {
 	client, err := NewExchange[*headertest.DummyHeader](host, trusted, nil)
 	require.NoError(t, err)
 
@@ -621,7 +645,12 @@ func client(ctx context.Context, t *testing.T, host libhost.Host, trusted []peer
 	return client
 }
 
-func server(ctx context.Context, t *testing.T, host libhost.Host, store header.Store[*headertest.DummyHeader]) *ExchangeServer[*headertest.DummyHeader] {
+func server(
+	ctx context.Context,
+	t *testing.T,
+	host libhost.Host,
+	store header.Store[*headertest.DummyHeader],
+) *ExchangeServer[*headertest.DummyHeader] {
 	server, err := NewExchangeServer[*headertest.DummyHeader](host, store)
 	require.NoError(t, err)
 	err = server.Start(ctx)
@@ -643,7 +672,10 @@ func (t *timedOutStore) HasAt(_ context.Context, _ uint64) bool {
 	return true
 }
 
-func (t *timedOutStore) Head(context.Context, ...header.HeadOption[*headertest.DummyHeader]) (*headertest.DummyHeader, error) {
+func (t *timedOutStore) Head(
+	context.Context,
+	...header.HeadOption[*headertest.DummyHeader],
+) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
 	return nil, header.ErrNoHead
 }
