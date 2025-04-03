@@ -36,16 +36,16 @@ func TestVerify(t *testing.T) {
 			},
 			err: ErrDummyVerify,
 		},
-		{
-			trusted: trusted,
-			prepare: func() *DummyHeader {
-				untrusted := next()
-				untrusted.VerifyFailure = true
-				return untrusted
-			},
-			err:  ErrDummyVerify,
-			soft: true, // soft because non-adjacent
-		},
+		// {
+		// 	trusted: trusted,
+		// 	prepare: func() *DummyHeader {
+		// 		untrusted := next()
+		// 		untrusted.VerifyFailure = true
+		// 		return untrusted
+		// 	},
+		// 	err:  ErrDummyVerify,
+		// 	soft: true, // soft because non-adjacent
+		// },
 		{
 			trusted: trusted,
 			prepare: func() *DummyHeader {

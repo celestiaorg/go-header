@@ -4,7 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	logging "github.com/ipfs/go-log/v2"
 )
+
+var log = logging.Logger("header")
 
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify.
@@ -12,43 +16,51 @@ import (
 // Given headers must be non-zero
 // Always returns VerifyError.
 func Verify[H Header[H]](trstd, untrstd H) error {
+	if trstd.IsZero() || untrstd.IsZero() {
+		return &VerifyError{Reason: ErrZeroHeader}
+	}
+
 	// general mandatory verification
 	err := verify[H](trstd, untrstd)
-	if err != nil {
-		return &VerifyError{Reason: err}
-	}
-	// user defined verification
-	err = trstd.Verify(untrstd)
 	if err == nil {
-		return nil
+		// user defined verification
+		err = trstd.Verify(untrstd)
+		if err == nil {
+			return nil
+		}
 	}
 	// if that's an error, ensure we always return VerifyError
 	var verErr *VerifyError
 	if !errors.As(err, &verErr) {
 		verErr = &VerifyError{Reason: err}
 	}
-	// check adjacency of failed verification
-	adjacent := untrstd.Height() == trstd.Height()+1
-	if !adjacent {
-		// if non-adjacent, we don't know if the header is *really* wrong
-		// so set as soft
-		verErr.SoftFailure = true
+
+	if verErr.SoftFailure {
+		log.Warnw(
+			"potentially invalid header",
+			"height_of_trusted", trstd.Height(),
+			"hash_of_trusted", trstd.Hash(),
+			"height_of_invalid", untrstd.Height(),
+			"hash_of_invalid", untrstd.Hash(),
+			"reason", verErr.Reason,
+		)
+	} else {
+		log.Errorw(
+			"invalid header",
+			"height_of_trusted", trstd.Height(),
+			"hash_of_trusted", trstd.Hash(),
+			"height_of_invalid", untrstd.Height(),
+			"hash_of_invalid", untrstd.Hash(),
+			"reason", verErr.Reason,
+		)
 	}
-	// we trust adjacent verification to it's fullest
-	// if verification fails - the header is *really* wrong
+
 	return verErr
 }
 
 // verify is a little bro of Verify yet performs mandatory Header checks
 // for any Header implementation.
 func verify[H Header[H]](trstd, untrstd H) error {
-	if trstd.IsZero() {
-		return ErrZeroHeader
-	}
-	if untrstd.IsZero() {
-		return ErrZeroHeader
-	}
-
 	if untrstd.ChainID() != trstd.ChainID() {
 		return fmt.Errorf("%w: '%s' != '%s'", ErrWrongChainID, untrstd.ChainID(), trstd.ChainID())
 	}
