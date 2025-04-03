@@ -216,7 +216,7 @@ func (s *Store[H]) Tail(ctx context.Context) (H, error) {
 	tail, err := s.readTail(ctx)
 	if err != nil {
 		var zero H
-		return zero, nil
+		return zero, err
 	}
 
 	s.tailHeader.Store(&tail)

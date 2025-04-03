@@ -64,7 +64,7 @@ func (m *Store[H]) Tail(context.Context) (H, error) {
 	return tail, err
 }
 
-func (m *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
+func (m *Store[H]) Get(_ context.Context, hash header.Hash) (H, error) {
 	for _, header := range m.Headers {
 		if bytes.Equal(header.Hash(), hash) {
 			return header, nil

@@ -553,4 +553,5 @@ func TestStoreInit(t *testing.T) {
 
 	tail, err := store.Tail(ctx)
 	assert.Equal(t, tail.Hash(), h.Hash())
+	require.NoError(t, err)
 }
