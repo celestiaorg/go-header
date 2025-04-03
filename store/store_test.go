@@ -126,25 +126,6 @@ func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
 	assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
 }
 
-func TestStore_Append_BadHeader(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head())
-
-	head, err := store.Head(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
-
-	in := suite.GenDummyHeaders(10)
-	in[0].VerifyFailure = true
-	err = store.Append(ctx, in...)
-	require.Error(t, err)
-}
-
 // TestStore_GetRange tests possible combinations of requests and ensures that
 // the store can handle them adequately (even malformed requests)
 func TestStore_GetRange(t *testing.T) {

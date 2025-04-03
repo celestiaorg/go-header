@@ -304,47 +304,8 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	var err error
-	// take current write head to verify headers against
-	var head H
-	headPtr := s.writeHead.Load()
-	if headPtr == nil {
-		head, err = s.Head(ctx)
-		if err != nil {
-			return err
-		}
-	} else {
-		head = *headPtr
-	}
-
-	// collect valid headers
-	verified := make([]H, 0, lh)
-	for i, h := range headers {
-		err = head.Verify(h)
-		if err != nil {
-			var verErr *header.VerifyError
-			if errors.As(err, &verErr) {
-				log.Errorw("invalid header",
-					"height_of_head", head.Height(),
-					"hash_of_head", head.Hash(),
-					"height_of_invalid", h.Height(),
-					"hash_of_invalid", h.Hash(),
-					"reason", verErr.Reason)
-			}
-			// if the first header is invalid, no need to go further
-			if i == 0 {
-				// and simply return
-				return err
-			}
-			// otherwise, stop the loop and apply headers appeared to be valid
-			break
-		}
-		verified = append(verified, h)
-		head = h
-	}
-
 	onWrite := func() {
-		newHead := verified[len(verified)-1]
+		newHead := headers[len(headers)-1]
 		s.writeHead.Store(&newHead)
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
@@ -352,19 +313,17 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 
 	// queue headers to be written on disk
 	select {
-	case s.writes <- verified:
-		// we return an error here after writing,
-		// as there might be an invalid header in between of a given range
+	case s.writes <- headers:
 		onWrite()
-		return err
+		return nil
 	default:
 		s.metrics.writesQueueBlocked(ctx)
 	}
 	// if the writes queue is full, we block until it is not
 	select {
-	case s.writes <- verified:
+	case s.writes <- headers:
 		onWrite()
-		return err
+		return nil
 	case <-s.writesDn:
 		return errStoppedStore
 	case <-ctx.Done():
