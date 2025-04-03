@@ -352,26 +352,37 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
 
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: delete range batch: %w", err)
-	}
-
-	if err := s.deleteRange(ctx, batch, from, to); err != nil {
+	if err := s.deleteRange(ctx, from, to); err != nil {
 		return fmt.Errorf("header/store: delete range: %w", err)
 	}
 
-	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("header/store: height index: %w", err)
-	}
-
-	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("header/store: delete range commit: %w", err)
+	if err := s.updateTail(ctx, from, to); err != nil {
+		return fmt.Errorf("header/store: update tail: %w", err)
 	}
 	return nil
 }
 
-func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) error {
+func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("delete range batch: %w", err)
+	}
+
+	if err := s.deleteRangePrepare(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("delete range: %w", err)
+	}
+
+	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("height index: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("delete range commit: %w", err)
+	}
+	return nil
+}
+
+func (s *Store[H]) deleteRangePrepare(ctx context.Context, batch datastore.Batch, from, to uint64) error {
 	for h := from; h < to; h++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
@@ -390,6 +401,32 @@ func (s *Store[H]) deleteRange(ctx context.Context, batch datastore.Batch, from,
 
 	s.pending.DeleteRange(from, to)
 	return nil
+}
+
+func (s *Store[H]) updateTail(ctx context.Context, from, to uint64) error {
+	tailPtr := s.tailHeader.Load()
+	if tailPtr == nil {
+		return nil
+	}
+
+	tailH := (*tailPtr).Height()
+	// tail is far below from - we will update it in the future
+	// tail is far above to - we are removing irrelevant headers
+	if tailH < from || to < tailH {
+		return nil
+	}
+
+	for h := to; ; h++ {
+		newTail, err := s.getByHeight(ctx, h)
+		if err == nil {
+			s.tailHeader.Store(&newTail)
+			return nil
+		}
+
+		if !errors.Is(err, header.ErrNotFound) {
+			return fmt.Errorf("cannot fetch next tail: %w", err)
+		}
+	}
 }
 
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {

@@ -517,48 +517,63 @@ func TestStore_DeleteRange(t *testing.T) {
 		name      string
 		from      uint64
 		to        uint64
+		wantTail  uint64
 		wantError bool
 	}{
 		{
 			name:      "valid delete request",
 			from:      9,
 			to:        14,
+			wantTail:  1,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      1,
+			to:        5,
+			wantTail:  5,
 			wantError: false,
 		},
 		{
 			name:      "valid delete request",
 			from:      40,
 			to:        50,
+			wantTail:  5,
 			wantError: false,
 		},
 		{
 			name:      "valid delete request (overvlaps with deleted)",
 			from:      45,
 			to:        55,
+			wantTail:  5,
 			wantError: false,
 		},
 		{
 			name:      "valid delete request",
-			from:      49,
+			from:      1,
 			to:        50,
+			wantTail:  55,
 			wantError: false,
 		},
 		{
 			name:      "invalid range",
 			from:      50,
 			to:        30,
+			wantTail:  55,
 			wantError: true,
 		},
 		{
 			name:      "valid range but is partially does not exist",
 			from:      87,
 			to:        109,
+			wantTail:  55,
 			wantError: false,
 		},
 		{
 			name:      "valid range out of written headers",
 			from:      177,
 			to:        200,
+			wantTail:  55,
 			wantError: false,
 		},
 	}
@@ -581,6 +596,9 @@ func TestStore_DeleteRange(t *testing.T) {
 				assert.False(t, store.cache.Contains(hash.String()))
 				assert.False(t, store.pending.Has(hash))
 			}
+
+			tailPtr := store.tailHeader.Load()
+			require.EqualValues(t, (*tailPtr).Height(), tt.wantTail)
 		})
 	}
 }
