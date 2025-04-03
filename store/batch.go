@@ -109,12 +109,12 @@ func (b *batch[H]) DeleteRange(from, to uint64) {
 	defer b.lk.Unlock()
 
 	maps.DeleteFunc(b.heights, func(_ string, height uint64) bool {
-		return !(from <= height && height < to)
+		return height < from || to <= height
 	})
 
 	b.headers = slices.DeleteFunc(b.headers, func(h H) bool {
 		height := h.Height()
-		return !(from <= height && height < to)
+		return height < from || to <= height
 	})
 }
 

@@ -49,7 +49,9 @@ func (hi *heightIndexer[H]) HashByHeight(ctx context.Context, h uint64) (header.
 }
 
 // DeleteRange of height from index and store.
-func (hi *heightIndexer[H]) deleteRange(ctx context.Context, batch datastore.Batch, from, to uint64) error {
+func (hi *heightIndexer[H]) deleteRange(
+	ctx context.Context, batch datastore.Batch, from, to uint64,
+) error {
 	for h := from; h < to; h++ {
 		if err := batch.Delete(ctx, heightKey(h)); err != nil {
 			return err
