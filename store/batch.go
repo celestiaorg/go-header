@@ -103,7 +103,7 @@ func (b *batch[H]) Has(hash header.Hash) bool {
 	return ok
 }
 
-// DeleteRange checks whether header by the hash is present in the batch.
+// DeleteRange of headers from the batch.
 func (b *batch[H]) DeleteRange(from, to uint64) {
 	b.lk.Lock()
 	defer b.lk.Unlock()

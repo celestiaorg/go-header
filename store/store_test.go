@@ -597,8 +597,9 @@ func TestStore_DeleteRange(t *testing.T) {
 				assert.False(t, store.pending.Has(hash))
 			}
 
-			tailPtr := store.tailHeader.Load()
-			require.EqualValues(t, (*tailPtr).Height(), tt.wantTail)
+			tail, err := store.Tail(ctx)
+			require.NoError(t, err)
+			require.EqualValues(t, tail.Height(), tt.wantTail)
 		})
 	}
 }
