@@ -29,8 +29,6 @@ func TestStore(t *testing.T) {
 
 	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
 
-	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
-
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
@@ -485,6 +483,119 @@ func TestStore_GetRange(t *testing.T) {
 			assert.Len(t, out, int(expectedLenHeaders))
 			assert.Equal(t, firstHeaderInRangeHeight, out[0].Height())
 			assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
+		})
+	}
+}
+
+func TestStore_DeleteRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	const count = 100
+	in := suite.GenDummyHeaders(count)
+	err := store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	hashes := make(map[uint64]header.Hash, count)
+	for _, h := range in {
+		hashes[h.Height()] = h.Hash()
+	}
+
+	// wait until headers are written
+	time.Sleep(100 * time.Millisecond)
+
+	tests := []struct {
+		name      string
+		from      uint64
+		to        uint64
+		wantTail  uint64
+		wantError bool
+	}{
+		{
+			name:      "valid delete request",
+			from:      9,
+			to:        14,
+			wantTail:  1,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      1,
+			to:        5,
+			wantTail:  5,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      40,
+			to:        50,
+			wantTail:  5,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request (overvlaps with deleted)",
+			from:      45,
+			to:        55,
+			wantTail:  5,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			from:      1,
+			to:        50,
+			wantTail:  55,
+			wantError: false,
+		},
+		{
+			name:      "invalid range",
+			from:      50,
+			to:        30,
+			wantTail:  55,
+			wantError: true,
+		},
+		{
+			name:      "valid range but is partially does not exist",
+			from:      87,
+			to:        109,
+			wantTail:  55,
+			wantError: false,
+		},
+		{
+			name:      "valid range out of written headers",
+			from:      177,
+			to:        200,
+			wantTail:  55,
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			err := store.DeleteRange(ctx, tt.from, tt.to)
+			if tt.wantError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// check that cache and pending doesn't contain old headers
+			for h := tt.from; h < tt.to; h++ {
+				hash := hashes[h]
+				assert.False(t, store.cache.Contains(hash.String()))
+				assert.False(t, store.pending.Has(hash))
+			}
+
+			tail, err := store.Tail(ctx)
+			require.NoError(t, err)
+			require.EqualValues(t, tail.Height(), tt.wantTail)
 		})
 	}
 }
