@@ -29,10 +29,6 @@ func TestStore(t *testing.T) {
 
 	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
 
-	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
-
-	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
-
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
