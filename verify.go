@@ -13,7 +13,7 @@ import (
 func VerifyRange[H Header[H]](trstd H, untrstd []H) ([]H, error) {
 	verified := make([]H, 0, len(untrstd))
 	for _, h := range untrstd {
-		err := trstd.Verify(h)
+		err := Verify(trstd, h)
 		if err != nil {
 			return verified, err
 		}
