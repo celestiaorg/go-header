@@ -176,20 +176,23 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	}
 
 	var verErr *header.VerifyError
-	if errors.As(err, &verErr) && !verErr.SoftFailure {
-		logF := log.Warnw
-		if errors.Is(err, header.ErrKnownHeader) {
-			logF = log.Debugw
-		}
-		logF("invalid network header",
-			"height_of_invalid", newHead.Height(),
-			"hash_of_invalid", newHead.Hash(),
-			"height_of_subjective", sbjHead.Height(),
-			"hash_of_subjective", sbjHead.Hash(),
-			"reason", verErr.Reason)
+	if errors.As(err, &verErr) && verErr.SoftFailure {
+		// bifurcate for soft failures only
+		return s.verifyBifurcating(ctx, sbjHead, newHead)
 	}
 
-	return s.verifyBifurcating(ctx, sbjHead, newHead)
+	logF := log.Warnw
+	if errors.Is(err, header.ErrKnownHeader) {
+		logF = log.Debugw
+	}
+	logF("invalid network header",
+		"height_of_invalid", newHead.Height(),
+		"hash_of_invalid", newHead.Hash(),
+		"height_of_subjective", sbjHead.Height(),
+		"hash_of_subjective", sbjHead.Hash(),
+		"reason", verErr.Reason)
+
+	return err
 }
 
 // verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
