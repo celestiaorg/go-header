@@ -31,7 +31,7 @@ func Test_syncHead(t *testing.T) {
 
 	wg.Wait()
 
-	assert.Less(t, int(counter.cntr.Load()), callsN)
+	assert.Less(t, int(counter.cntr.Load()), callsN/100) // <1% of calls should go through
 }
 
 type headCounter struct {

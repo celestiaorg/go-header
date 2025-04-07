@@ -8,7 +8,6 @@ import (
 )
 
 // syncHead is a wrapper around the header.Head that provides single-flight access to the Head.
-// TODO: Should we extract this as public component?
 type syncHead[H header.Header[H]] struct {
 	headMu sync.Mutex
 	headCh chan struct{}
