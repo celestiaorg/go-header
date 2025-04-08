@@ -142,7 +142,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.init(ctx); err != nil {
+	if err := s.loadHeadAndTail(ctx); err != nil {
 		return err
 	}
 
@@ -452,10 +452,17 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	if s.tailHeader.Load() == nil {
-		if err := s.init(ctx); err != nil {
-			return err
+	if s.contiguousHead.Load() == nil || s.tailHeader.Load() == nil {
+		initial := headers[0]
+		if s.contiguousHead.Load() == nil {
+			s.contiguousHead.Store(&initial)
+			s.heightSub.Init(initial.Height())
 		}
+		if s.tailHeader.Load() == nil {
+			s.tailHeader.Store(&initial)
+		}
+
+		// TODO: do something else?
 	}
 
 	// take current contiguous head to verify headers against
@@ -686,16 +693,17 @@ func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
 	return newHead
 }
 
-func (s *Store[H]) init(ctx context.Context) error {
+func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
 	{
 		head, err := s.readByKey(ctx, headKey)
 		if err != nil {
 			if !errors.Is(err, datastore.ErrNotFound) {
 				return fmt.Errorf("header/store: cannot load headKey: %w", err)
 			}
+		} else {
+			s.contiguousHead.Store(&head)
+			s.heightSub.SetHeight(head.Height())
 		}
-		s.contiguousHead.Store(&head)
-		s.heightSub.SetHeight(head.Height())
 	}
 
 	{
@@ -704,8 +712,9 @@ func (s *Store[H]) init(ctx context.Context) error {
 			if !errors.Is(err, datastore.ErrNotFound) {
 				return fmt.Errorf("header/store: cannot load tailKey: %w", err)
 			}
+		} else {
+			s.tailHeader.Store(&tail)
 		}
-		s.tailHeader.Store(&tail)
 	}
 
 	return nil
