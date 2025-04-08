@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/go-header/headertest"
-	"github.com/celestiaorg/go-header/local"
 )
 
 func TestInitStore_NoReinit(t *testing.T) {
@@ -22,12 +21,8 @@ func TestInitStore_NoReinit(t *testing.T) {
 	head := suite.Head()
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	exchange := local.NewExchange(NewTestStore(t, ctx, ds, head))
 	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
-
-	err = Init(ctx, store, exchange, head.Hash())
-	assert.NoError(t, err)
 
 	err = store.Start(ctx)
 	require.NoError(t, err)
