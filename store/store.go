@@ -406,7 +406,7 @@ func (s *Store[H]) prepareDeleteRangeBatch(
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
 			if errors.Is(err, datastore.ErrNotFound) {
-				log.Debugw("removing non-existent header", "height", h)
+				log.Errorw("removing non-existent header", "height", h)
 				continue
 			}
 			return fmt.Errorf("hash by height(%d): %w", h, err)
