@@ -48,7 +48,7 @@ func (hi *heightIndexer[H]) HashByHeight(ctx context.Context, h uint64) (header.
 	return val, nil
 }
 
-// DeleteRange of heights from the index.
+// deleteRange of heights from the index.
 func (hi *heightIndexer[H]) deleteRange(
 	ctx context.Context, batch datastore.Batch, from, to uint64,
 ) error {

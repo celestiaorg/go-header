@@ -361,6 +361,11 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 		}
 	}
 
+	if from >= to {
+		log.Debugw("header/store: attempt to delete empty range(%d,%d)", from, to)
+		return nil
+	}
+
 	if err := s.deleteRange(ctx, from, to); err != nil {
 		return fmt.Errorf("header/store: delete range: %w", err)
 	}
