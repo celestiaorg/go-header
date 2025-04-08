@@ -56,6 +56,9 @@ var (
 	// ErrHeadersLimitExceeded is returned when ExchangeServer receives header request for more
 	// than maxRequestSize headers.
 	ErrHeadersLimitExceeded = errors.New("header/p2p: header limit per 1 request exceeded")
+
+	// ErrRangeMixUp is returned when `from` >= `to`.
+	ErrRangeMixUp = errors.New("header/p2p: `from` must be less than `to`")
 )
 
 // Store encompasses the behavior necessary to store and retrieve Headers

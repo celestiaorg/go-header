@@ -203,6 +203,10 @@ func (serv *ExchangeServer[H]) handleRangeRequest(
 	ctx context.Context,
 	from, to uint64,
 ) ([]H, error) {
+	if from >= to {
+		return nil, header.ErrRangeMixUp
+	}
+
 	if from == uint64(0) {
 		return serv.handleHeadRequest(ctx)
 	}
