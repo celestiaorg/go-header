@@ -291,19 +291,8 @@ func (s *Syncer[H]) processHeaders(
 			}
 		}
 
-		// verify pending heads as they might be invalid
-		// particularly headers that failed verification with soft failure
-		// but were accepted as sync target
-		// TODO(@Wondertan): This repeats verification for valid heads.
-		//   But this is acceptable trade-off for simplicity which is gonna be
-		//   refactored off with backward sync over MMR anyway.
-		verified, err := s.verifyHeaders(ctx, headers)
-		if err != nil {
-			return err
-		}
-
 		// apply cached headers
-		if err := s.store.Append(ctx, verified...); err != nil {
+		if err := s.store.Append(ctx, headers...); err != nil {
 			return err
 		}
 
@@ -346,19 +335,4 @@ func (s *Syncer[H]) requestHeaders(
 		fromHead = headers[len(headers)-1]
 	}
 	return nil
-}
-
-// verifyHeaders verifies given headers against the store's head.
-func (s *Syncer[H]) verifyHeaders(ctx context.Context, headers []H) ([]H, error) {
-	head, err := s.store.Head(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	verified, err := header.VerifyRange(head, headers)
-	if err != nil {
-		return nil, err
-	}
-
-	return verified, nil
 }
