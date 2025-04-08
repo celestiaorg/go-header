@@ -57,7 +57,7 @@ var (
 	// than maxRequestSize headers.
 	ErrHeadersLimitExceeded = errors.New("header/p2p: header limit per 1 request exceeded")
 
-	// ErrRangeMixUp is returned `from` > `to`.
+	// ErrRangeMixUp is returned when `from` >= `to`.
 	ErrRangeMixUp = errors.New("header/p2p: `from` must be less than `to`")
 )
 
