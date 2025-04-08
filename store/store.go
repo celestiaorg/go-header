@@ -142,11 +142,8 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.loadContiguousHead(ctx); err != nil {
-		// we might start on an empty datastore, no key is okay.
-		if !errors.Is(err, datastore.ErrNotFound) {
-			return fmt.Errorf("header/store: cannot load headKey: %w", err)
-		}
+	if err := s.init(ctx); err != nil {
+		return err
 	}
 
 	go s.flushLoop()
@@ -193,7 +190,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	}
 
 	var zero H
-	head, err = s.readHead(ctx)
+	head, err = s.readByKey(ctx, headKey)
 	switch {
 	default:
 		return zero, err
@@ -213,7 +210,7 @@ func (s *Store[H]) Tail(ctx context.Context) (H, error) {
 		return *tailPtr, nil
 	}
 
-	tail, err := s.readTail(ctx)
+	tail, err := s.readByKey(ctx, tailKey)
 	if err != nil {
 		var zero H
 		return zero, err
@@ -455,6 +452,12 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
+	if s.tailHeader.Load() == nil {
+		if err := s.init(ctx); err != nil {
+			return err
+		}
+	}
+
 	// take current contiguous head to verify headers against
 	head, err := s.Head(ctx)
 	if err != nil {
@@ -602,22 +605,9 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	return batch.Commit(ctx)
 }
 
-// loadContiguousHead from the disk and sets contiguousHead and heightSub.
-func (s *Store[H]) loadContiguousHead(ctx context.Context) error {
-	h, err := s.readHead(ctx)
-	if err != nil {
-		return err
-	}
-
-	s.contiguousHead.Store(&h)
-	s.heightSub.SetHeight(h.Height())
-	return nil
-}
-
-// readHead loads the head from the datastore.
-func (s *Store[H]) readHead(ctx context.Context) (H, error) {
+func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) {
 	var zero H
-	b, err := s.ds.Get(ctx, headKey)
+	b, err := s.ds.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, datastore.ErrNotFound) {
 			return zero, header.ErrNotFound
@@ -625,13 +615,12 @@ func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 		return zero, err
 	}
 
-	var head header.Hash
-	err = head.UnmarshalJSON(b)
-	if err != nil {
+	var h header.Hash
+	if err := h.UnmarshalJSON(b); err != nil {
 		return zero, err
 	}
 
-	return s.Get(ctx, head)
+	return s.Get(ctx, h)
 }
 
 // readTail loads the tail from the datastore.
@@ -695,6 +684,31 @@ func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
 		newHead = h
 	}
 	return newHead
+}
+
+func (s *Store[H]) init(ctx context.Context) error {
+	{
+		head, err := s.readByKey(ctx, headKey)
+		if err != nil {
+			if !errors.Is(err, datastore.ErrNotFound) {
+				return fmt.Errorf("header/store: cannot load headKey: %w", err)
+			}
+		}
+		s.contiguousHead.Store(&head)
+		s.heightSub.SetHeight(head.Height())
+	}
+
+	{
+		tail, err := s.readByKey(ctx, tailKey)
+		if err != nil {
+			if !errors.Is(err, datastore.ErrNotFound) {
+				return fmt.Errorf("header/store: cannot load tailKey: %w", err)
+			}
+		}
+		s.tailHeader.Store(&tail)
+	}
+
+	return nil
 }
 
 // indexTo saves mapping between header Height and Hash to the given batch.
