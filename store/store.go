@@ -362,12 +362,12 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	}
 
 	if from >= to {
-		log.Debugw("header/store: attempt to delete empty range(%d,%d)", from, to)
+		log.Debugw("header/store: attempt to delete empty range(%d, %d)", from, to)
 		return nil
 	}
 
 	if err := s.deleteRange(ctx, from, to); err != nil {
-		return fmt.Errorf("header/store: delete range: %w", err)
+		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
 	}
 	return nil
 }
@@ -375,11 +375,11 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 	batch, err := s.ds.Batch(ctx)
 	if err != nil {
-		return fmt.Errorf("delete range batch: %w", err)
+		return fmt.Errorf("delete batch: %w", err)
 	}
 
 	if err := s.prepareDeleteRangeBatch(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("delete range: %w", err)
+		return fmt.Errorf("prepare: %w", err)
 	}
 
 	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
@@ -392,7 +392,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 	}
 
 	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("delete range commit: %w", err)
+		return fmt.Errorf("delete commit: %w", err)
 	}
 
 	s.tailHeader.Store(&newTail)
@@ -409,7 +409,7 @@ func (s *Store[H]) prepareDeleteRangeBatch(
 				log.Debugw("removing non-existent header", "height", h)
 				continue
 			}
-			return fmt.Errorf("hash by height: %w", err)
+			return fmt.Errorf("hash by height(%d): %w", h, err)
 		}
 		s.cache.Remove(hash.String())
 

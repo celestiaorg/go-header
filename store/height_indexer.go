@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/go-datastore"
@@ -54,7 +55,7 @@ func (hi *heightIndexer[H]) deleteRange(
 ) error {
 	for h := from; h < to; h++ {
 		if err := batch.Delete(ctx, heightKey(h)); err != nil {
-			return err
+			return fmt.Errorf("delete height key(%d): %w", h, err)
 		}
 		hi.cache.Remove(h)
 	}
