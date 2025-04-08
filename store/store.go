@@ -183,24 +183,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	if head := s.contiguousHead.Load(); head != nil {
 		return *head, nil
 	}
-
-	head, err := s.GetByHeight(ctx, s.heightSub.Height())
-	if err == nil {
-		return head, nil
-	}
-
-	var zero H
-	head, err = s.readByKey(ctx, headKey)
-	switch {
-	default:
-		return zero, err
-	case errors.Is(err, datastore.ErrNotFound), errors.Is(err, header.ErrNotFound):
-		return zero, header.ErrNoHead
-	case err == nil:
-		s.heightSub.SetHeight(head.Height())
-		log.Infow("loaded head", "height", head.Height(), "hash", head.Hash())
-		return head, nil
-	}
+	return s.GetByHeight(ctx, s.heightSub.Height())
 }
 
 // Tail implements [header.Store] interface.
@@ -358,7 +341,11 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 			s.tailHeader.Store(&initial)
 		}
 
-		// TODO: do something else?
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case s.writes <- []H{initial}:
+		}
 	}
 
 	// take current contiguous head to verify headers against
