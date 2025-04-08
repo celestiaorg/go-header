@@ -122,7 +122,7 @@ LOOP:
 			return nil, ctx.Err()
 		case res := <-result:
 			headers = append(headers, res...)
-			if uint64(len(headers)) == amount {
+			if uint64(len(headers)) >= amount {
 				break LOOP
 			}
 		}
