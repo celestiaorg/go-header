@@ -371,12 +371,17 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("height index: %w", err)
 	}
 
-	if err := s.updateTail(ctx, batch, from, to); err != nil {
+	newTail, err := s.updateTail(ctx, batch, from, to)
+	if err != nil {
 		return fmt.Errorf("update tail: %w", err)
 	}
 
 	if err := batch.Commit(ctx); err != nil {
 		return fmt.Errorf("delete range commit: %w", err)
+	}
+
+	if !newTail.IsZero() {
+		s.tailHeader.Store(&newTail)
 	}
 	return nil
 }
@@ -406,36 +411,35 @@ func (s *Store[H]) deleteRangePrepare(
 
 func (s *Store[H]) updateTail(
 	ctx context.Context, batch datastore.Batch, from, to uint64,
-) error {
+) (H, error) {
+	var zero H
 	tailPtr := s.tailHeader.Load()
 	if tailPtr == nil {
-		return nil
+		return zero, nil
 	}
 
 	tailH := (*tailPtr).Height()
 	// tail is far below from - we will update it in the future
 	// tail is far above to - we are removing irrelevant headers
 	if tailH < from || to < tailH {
-		return nil
+		return zero, nil
 	}
 
 	for h := to; ; h++ {
 		newTail, err := s.getByHeight(ctx, h)
 		if err == nil {
-			s.tailHeader.Store(&newTail)
-
 			b, err := newTail.Hash().MarshalJSON()
 			if err != nil {
-				return err
+				return zero, err
 			}
 			if err := batch.Put(ctx, tailKey, b); err != nil {
-				return err
+				return zero, err
 			}
-			return nil
+			return newTail, nil
 		}
 
 		if !errors.Is(err, header.ErrNotFound) {
-			return fmt.Errorf("cannot fetch next tail: %w", err)
+			return zero, fmt.Errorf("cannot fetch next tail: %w", err)
 		}
 	}
 }

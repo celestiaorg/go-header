@@ -517,21 +517,21 @@ func TestStore_DeleteRange(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name:      "valid delete request",
+			name:      "valid delete request #1",
 			from:      9,
 			to:        14,
 			wantTail:  1,
 			wantError: false,
 		},
 		{
-			name:      "valid delete request",
+			name:      "valid delete request #2",
 			from:      1,
 			to:        5,
 			wantTail:  5,
 			wantError: false,
 		},
 		{
-			name:      "valid delete request",
+			name:      "valid delete request #3",
 			from:      40,
 			to:        50,
 			wantTail:  5,
@@ -545,7 +545,7 @@ func TestStore_DeleteRange(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "valid delete request",
+			name:      "valid delete request #4",
 			from:      1,
 			to:        50,
 			wantTail:  55,
@@ -576,6 +576,12 @@ func TestStore_DeleteRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// manually add something to the pending for assert at the bottom
+			if idx := tt.from; idx < count {
+				store.pending.Append(in[idx])
+				defer store.pending.Reset()
+			}
+
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
