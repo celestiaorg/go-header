@@ -138,52 +138,46 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
 
-	softFailure, err := s.verify(ctx, head)
-	if err != nil && !softFailure {
+	err := s.verify(ctx, head)
+	if err != nil {
 		return err
 	}
 
-	// TODO(@Wondertan):
-	//  Implement setSyncTarget and use it for soft failures
 	s.setSubjectiveHead(ctx, head)
 	return err
 }
 
 // verify verifies given network head candidate.
-// bool reports whether the returned error is a soft error.
-func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
+func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
-		// local error, so soft
-		return true, &header.VerifyError{Reason: err, SoftFailure: true}
+		return err
 	}
 
 	err = header.Verify(sbjHead, newHead)
 	if err == nil {
-		return false, nil
+		return nil
 	}
 
 	var verErr *header.VerifyError
-	if errors.As(err, &verErr) {
-		if verErr.SoftFailure {
-			err := s.verifyBifurcating(ctx, sbjHead, newHead)
-			return err != nil, err
-		}
-
-		logF := log.Warnw
-		if errors.Is(err, header.ErrKnownHeader) {
-			logF = log.Debugw
-		}
-		logF("invalid network header",
-			"height_of_invalid", newHead.Height(),
-			"hash_of_invalid", newHead.Hash(),
-			"height_of_subjective", sbjHead.Height(),
-			"hash_of_subjective", sbjHead.Hash(),
-			"reason", verErr.Reason)
+	if errors.As(err, &verErr) && verErr.SoftFailure {
+		// bifurcate for soft failures only
+		return s.verifyBifurcating(ctx, sbjHead, newHead)
 	}
 
-	return verErr.SoftFailure, err
+	logF := log.Warnw
+	if errors.Is(err, header.ErrKnownHeader) {
+		logF = log.Debugw
+	}
+	logF("invalid network header",
+		"height_of_invalid", newHead.Height(),
+		"hash_of_invalid", newHead.Hash(),
+		"height_of_subjective", sbjHead.Height(),
+		"hash_of_subjective", sbjHead.Hash(),
+		"reason", verErr.Reason)
+
+	return err
 }
 
 // verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
@@ -224,6 +218,7 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 
 		// candidate was validated properly, update subjHead.
 		subjHead = candidateHeader
+		s.setSubjectiveHead(ctx, subjHead)
 
 		if err := header.Verify(subjHead, networkHead); err == nil {
 			// network head validate properly, return success.
