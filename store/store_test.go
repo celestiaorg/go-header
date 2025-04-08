@@ -487,7 +487,7 @@ func TestStore_GetRange(t *testing.T) {
 	}
 }
 
-func TestStore_DeleteRange(t *testing.T) {
+func TestStore_DeleteTo(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -511,73 +511,42 @@ func TestStore_DeleteRange(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		from      uint64
 		to        uint64
 		wantTail  uint64
 		wantError bool
 	}{
 		{
-			name:      "valid delete request #1",
-			from:      9,
+			name:      "initial delete request",
 			to:        14,
-			wantTail:  1,
+			wantTail:  14,
 			wantError: false,
 		},
 		{
-			name:      "valid delete request #2",
-			from:      1,
+			name:      "no-op delete request",
 			to:        5,
-			wantTail:  5,
+			wantTail:  14,
 			wantError: false,
 		},
 		{
-			name:      "valid delete request #3",
-			from:      40,
+			name:      "valid delete request",
 			to:        50,
-			wantTail:  5,
+			wantTail:  50,
 			wantError: false,
 		},
 		{
-			name:      "valid delete request (overvlaps with deleted)",
-			from:      45,
-			to:        55,
-			wantTail:  5,
-			wantError: false,
-		},
-		{
-			name:      "valid delete request #4",
-			from:      1,
-			to:        50,
-			wantTail:  55,
-			wantError: false,
-		},
-		{
-			name:      "invalid range",
-			from:      50,
-			to:        30,
-			wantTail:  55,
+			name:      "higher than head",
+			to:        1055,
+			wantTail:  30,
 			wantError: true,
-		},
-		{
-			name:      "valid range but is partially does not exist",
-			from:      87,
-			to:        109,
-			wantTail:  55,
-			wantError: false,
-		},
-		{
-			name:      "valid range out of written headers",
-			from:      177,
-			to:        200,
-			wantTail:  55,
-			wantError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			from := (*store.tailHeader.Load()).Height()
+
 			// manually add something to the pending for assert at the bottom
-			if idx := tt.from; idx < count {
+			if idx := from - 2; idx < count {
 				store.pending.Append(in[idx])
 				defer store.pending.Reset()
 			}
@@ -585,7 +554,7 @@ func TestStore_DeleteRange(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			err := store.DeleteRange(ctx, tt.from, tt.to)
+			err := store.DeleteTo(ctx, tt.to)
 			if tt.wantError {
 				assert.Error(t, err)
 				return
@@ -593,7 +562,7 @@ func TestStore_DeleteRange(t *testing.T) {
 			require.NoError(t, err)
 
 			// check that cache and pending doesn't contain old headers
-			for h := tt.from; h < tt.to; h++ {
+			for h := from; h < tt.to; h++ {
 				hash := hashes[h]
 				assert.False(t, store.cache.Contains(hash.String()))
 				assert.False(t, store.pending.Has(hash))

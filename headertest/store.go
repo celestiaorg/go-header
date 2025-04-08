@@ -16,6 +16,7 @@ type Generator[H header.Header[H]] interface {
 type Store[H header.Header[H]] struct {
 	Headers    map[uint64]H
 	HeadHeight uint64
+	TailHeight uint64
 }
 
 // NewDummyStore creates a store for DummyHeader.
@@ -52,16 +53,12 @@ func (m *Store[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 }
 
 func (m *Store[H]) Tail(context.Context) (H, error) {
-	err := header.ErrNotFound
-
-	var tail H
-	for _, h := range m.Headers {
-		if tail.IsZero() || h.Height() < tail.Height() {
-			tail = h
-		}
+	tail, ok := m.Headers[m.TailHeight]
+	if !ok {
+		var zero H
+		return zero, header.ErrNotFound
 	}
-
-	return tail, err
+	return tail, nil
 }
 
 func (m *Store[H]) Get(_ context.Context, hash header.Hash) (H, error) {
@@ -82,14 +79,12 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
-func (m *Store[H]) DeleteRange(_ context.Context, from, to uint64) error {
-	if from >= to {
-		return fmt.Errorf("invalid range(%d,%d)", from, to)
-	}
-
-	for h := from; h < to; h++ {
+func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
+	for h := m.TailHeight; h < to; h++ {
 		delete(m.Headers, h)
 	}
+
+	m.TailHeight = to
 	return nil
 }
 
@@ -133,10 +128,13 @@ func (m *Store[H]) HasAt(_ context.Context, height uint64) bool {
 
 func (m *Store[H]) Append(_ context.Context, headers ...H) error {
 	for _, header := range headers {
-		m.Headers[header.Height()] = header
-		// set head
-		if header.Height() > m.HeadHeight {
-			m.HeadHeight = header.Height()
+		height := header.Height()
+		m.Headers[height] = header
+		if height > m.HeadHeight {
+			m.HeadHeight = height
+		}
+		if height < m.TailHeight {
+			m.TailHeight = height
 		}
 	}
 	return nil
