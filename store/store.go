@@ -435,23 +435,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	if s.contiguousHead.Load() == nil || s.tailHeader.Load() == nil {
-		initial := headers[0]
-		if s.contiguousHead.Load() == nil {
-			s.contiguousHead.Store(&initial)
-			s.heightSub.Init(initial.Height())
-		}
-		if s.tailHeader.Load() == nil {
-			s.tailHeader.Store(&initial)
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case s.writes <- []H{initial}:
-		}
-	}
-
 	// take current contiguous head to verify headers against
 	head, err := s.Head(ctx)
 	if err != nil {
@@ -542,6 +525,13 @@ func (s *Store[H]) flushLoop() {
 			time.Sleep(sleep)
 		}
 
+		// this can happen only once
+		// set tail pointer to the lowerst header from batch
+		if s.tailHeader.Load() == nil {
+			tail := toFlush[0]
+			s.tailHeader.Store(&tail)
+		}
+
 		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
 		// reset pending
 		s.pending.Reset()
@@ -585,9 +575,21 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 		return err
 	}
 
-	err = batch.Put(ctx, headKey, b)
-	if err != nil {
+	if err := batch.Put(ctx, headKey, b); err != nil {
 		return err
+	}
+
+	// tail header is not set, still write it to the disk
+	// the pointer will be updated in [flushLoop] after commit.
+	if s.tailHeader.Load() == nil {
+		b, err := headers[0].Hash().MarshalJSON()
+		if err != nil {
+			return err
+		}
+
+		if err := batch.Put(ctx, tailKey, b); err != nil {
+			return err
+		}
 	}
 
 	// write height indexes for headers as well
