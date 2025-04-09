@@ -172,6 +172,8 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	// cleanup caches
 	s.cache.Purge()
 	s.heightIndex.cache.Purge()
+	s.contiguousHead.Store(nil)
+	s.tailHeader.Store(nil)
 	return s.metrics.Close()
 }
 
@@ -183,7 +185,9 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 	if head := s.contiguousHead.Load(); head != nil {
 		return *head, nil
 	}
-	return s.GetByHeight(ctx, s.heightSub.Height())
+
+	var zero H
+	return zero, header.ErrEmptyStore
 }
 
 // Tail implements [header.Store] interface.
@@ -193,14 +197,8 @@ func (s *Store[H]) Tail(ctx context.Context) (H, error) {
 		return *tailPtr, nil
 	}
 
-	tail, err := s.readByKey(ctx, tailKey)
-	if err != nil {
-		var zero H
-		return zero, err
-	}
-
-	s.tailHeader.Store(&tail)
-	return tail, nil
+	var zero H
+	return zero, header.ErrEmptyStore
 }
 
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
@@ -334,7 +332,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	// take current contiguous head to verify headers against
 	head, err := s.Head(ctx)
 	if err != nil {
-		return err
+		if !errors.Is(err, header.ErrEmptyStore) {
+			return err
+		}
+		s.contiguousHead.Store(&headers[0]) // ????
 	}
 
 	// collect valid headers
@@ -393,6 +394,18 @@ func (s *Store[H]) flushLoop() {
 	for headers := range s.writes {
 		// add headers to the pending and ensure they are accessible
 		s.pending.Append(headers...)
+
+		if len(headers) > 0 && s.tailHeader.Load() == nil {
+			firstHeader := headers[0]
+			if err := s.setTailHeader(firstHeader); err != nil {
+				log.Errorw("set tail header",
+					"height_of_header", firstHeader.Height(),
+					"hash_of_header", firstHeader.Hash(),
+					"error", err,
+				)
+			}
+		}
+
 		// always inform heightSub about new headers seen.
 		s.heightSub.Notify(getHeights(headers...)...)
 		// advance contiguousHead if we don't have gaps.
@@ -419,13 +432,6 @@ func (s *Store[H]) flushLoop() {
 			const maxRetrySleep = time.Second
 			sleep := min(10*time.Duration(i+1)*time.Millisecond, maxRetrySleep)
 			time.Sleep(sleep)
-		}
-
-		// this can happen only once
-		// set tail pointer to the lowerst header from batch
-		if s.tailHeader.Load() == nil {
-			tail := toFlush[0]
-			s.tailHeader.Store(&tail)
 		}
 
 		s.metrics.flush(ctx, time.Since(startTime), s.pending.Len(), false)
@@ -475,19 +481,6 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 		return err
 	}
 
-	// tail header is not set, still write it to the disk
-	// the pointer will be updated in [flushLoop] after commit.
-	if s.tailHeader.Load() == nil {
-		b, err := headers[0].Hash().MarshalJSON()
-		if err != nil {
-			return err
-		}
-
-		if err := batch.Put(ctx, tailKey, b); err != nil {
-			return err
-		}
-	}
-
 	// write height indexes for headers as well
 	if err := indexTo(ctx, batch, headers...); err != nil {
 		return err
@@ -497,6 +490,7 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 	return batch.Commit(ctx)
 }
 
+// readByKey the hash under the given key from datastore and fetch the header by hash.
 func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) {
 	var zero H
 	b, err := s.ds.Get(ctx, key)
@@ -509,6 +503,31 @@ func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) 
 		return zero, err
 	}
 	return s.Get(ctx, h)
+}
+
+func (s *Store[H]) setTailHeader(h H) error {
+	b, err := h.Hash().MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return err
+	}
+	if err := batch.Put(ctx, tailKey, b); err != nil {
+		return err
+	}
+	if err := batch.Commit(ctx); err != nil {
+		return err
+	}
+
+	s.tailHeader.Store(&h)
+
+	return nil
 }
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {

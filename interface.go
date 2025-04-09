@@ -50,8 +50,8 @@ var (
 	// ErrNotFound is returned when there is no requested header.
 	ErrNotFound = errors.New("header: not found")
 
-	// ErrNoHead is returned when Store is empty (does not contain any known header).
-	ErrNoHead = errors.New("header/store: no chain head")
+	// ErrEmptyStore is returned when Store is empty (does not contain any known header).
+	ErrEmptyStore = errors.New("header/store: store is empty")
 
 	// ErrHeadersLimitExceeded is returned when ExchangeServer receives header request for more
 	// than maxRequestSize headers.

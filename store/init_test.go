@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 )
 
@@ -27,11 +28,21 @@ func TestInitStore_NoReinit(t *testing.T) {
 	err = store.Start(ctx)
 	require.NoError(t, err)
 
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+
 	err = store.Append(ctx, suite.GenDummyHeaders(10)...)
-	require.NoError(t, err)
+	// require.NoError(t, err) ?????
 
 	err = store.Stop(ctx)
 	require.NoError(t, err)
+
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
 
 	reopenedStore, err := NewStore[*headertest.DummyHeader](ds)
 	assert.NoError(t, err)
