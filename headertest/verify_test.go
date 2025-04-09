@@ -181,7 +181,9 @@ func TestVerifyRange(t *testing.T) {
 			name: "non-adjacent header range ",
 			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
 				trusted := suite.GenDummyHeaders(1)[0]
-				_ = suite.GenDummyHeaders(1) // generate a header to ensure the range can be non-adjacent
+				_ = suite.GenDummyHeaders(
+					1,
+				) // generate a header to ensure the range can be non-adjacent
 				headers := suite.GenDummyHeaders(3)
 				headers = append(headers[0:1], headers[2:]...)
 				return trusted, headers
@@ -201,12 +203,16 @@ func TestVerifyRange(t *testing.T) {
 				var verErr *header.VerifyError
 				assert.ErrorAs(t, err, &verErr)
 				assert.ErrorIs(t, errors.Unwrap(verErr), tt.err)
-				assert.Len(t, verified, tt.verified, "unexpected number of verified headers before error")
+				assert.Len(t, verified, tt.verified)
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, verified, len(untrstd), "all headers should be verified")
+				assert.Len(t, verified, len(untrstd))
 				if len(untrstd) > 0 {
-					assert.Equal(t, untrstd[len(untrstd)-1], verified[len(verified)-1], "last verified header should match last input header")
+					assert.Equal(t,
+						untrstd[len(untrstd)-1],
+						verified[len(verified)-1],
+						"last verified header should match last input header",
+					)
 				}
 			}
 		})
