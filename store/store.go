@@ -329,57 +329,25 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	// take current contiguous head to verify headers against
-	head, err := s.Head(ctx)
-	if err != nil {
-		if !errors.Is(err, header.ErrEmptyStore) {
-			return err
-		}
-
+	if s.contiguousHead.Load() == nil || s.tailHeader.Load() == nil {
 		if err := s.initStore(ctx, headers[0]); err != nil {
-			return fmt.Errorf("header/store: store init: %w", err)
+			return fmt.Errorf("header/store: init store: %w", err)
 		}
-	}
-
-	// collect valid headers
-	verified := make([]H, 0, lh)
-	for i, h := range headers {
-		err = head.Verify(h)
-		if err != nil {
-			var verErr *header.VerifyError
-			if errors.As(err, &verErr) {
-				log.Errorw("invalid header",
-					"height_of_head", head.Height(),
-					"hash_of_head", head.Hash(),
-					"height_of_invalid", h.Height(),
-					"hash_of_invalid", h.Hash(),
-					"reason", verErr.Reason)
-			}
-			// if the first header is invalid, no need to go further
-			if i == 0 {
-				// and simply return
-				return err
-			}
-			// otherwise, stop the loop and apply headers appeared to be valid
-			break
-		}
-		verified = append(verified, h)
-		head = h
 	}
 
 	// queue headers to be written on disk
 	select {
-	case s.writes <- verified:
+	case s.writes <- headers:
 		// we return an error here after writing,
 		// as there might be an invalid header in between of a given range
-		return err
+		return nil
 	default:
 		s.metrics.writesQueueBlocked(ctx)
 	}
 	// if the writes queue is full, we block until it is not
 	select {
-	case s.writes <- verified:
-		return err
+	case s.writes <- headers:
+		return nil
 	case <-s.writesDn:
 		return errStoppedStore
 	case <-ctx.Done():
