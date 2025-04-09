@@ -181,7 +181,7 @@ func (s *Store[H]) Height() uint64 {
 	return s.heightSub.Height()
 }
 
-func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
+func (s *Store[H]) Head(_ context.Context, _ ...header.HeadOption[H]) (H, error) {
 	if head := s.contiguousHead.Load(); head != nil {
 		return *head, nil
 	}
@@ -191,7 +191,7 @@ func (s *Store[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, erro
 }
 
 // Tail implements [header.Store] interface.
-func (s *Store[H]) Tail(ctx context.Context) (H, error) {
+func (s *Store[H]) Tail(_ context.Context) (H, error) {
 	tailPtr := s.tailHeader.Load()
 	if tailPtr != nil {
 		return *tailPtr, nil
