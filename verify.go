@@ -16,14 +16,16 @@ func VerifyRange[H Header[H]](trstd H, untrstdRange []H) ([]H, error) {
 	}
 
 	verified := make([]H, 0, len(untrstdRange))
-	for _, untrstd := range untrstdRange {
+	for i, untrstd := range untrstdRange {
 		err := Verify(trstd, untrstd)
 		if err != nil {
 			return verified, err
 		}
 
 		// ensure range is adjacent, as Verify allows non-adjacency
-		if trstd.Height()+1 != untrstd.Height() {
+		// NOTE: i > 0 because we allow the input trusted header to be non-adjacent
+		// so given trusted header height 100, we can have untrusted 151-155
+		if i > 0 && trstd.Height()+1 != untrstd.Height() {
 			reason := fmt.Errorf(
 				"%w; trusted: %d, expected_untrusted: %d, received_untrusted: %d",
 				ErrNonAdjacentRange,

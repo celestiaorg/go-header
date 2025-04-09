@@ -178,9 +178,10 @@ func TestVerifyRange(t *testing.T) {
 			verified: 2,
 		},
 		{
-			name: "non-adjacent headers",
+			name: "non-adjacent header range ",
 			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
 				trusted := suite.GenDummyHeaders(1)[0]
+				_ = suite.GenDummyHeaders(1) // generate a header to ensure the range can be non-adjacent
 				headers := suite.GenDummyHeaders(3)
 				headers = append(headers[0:1], headers[2:]...)
 				return trusted, headers
