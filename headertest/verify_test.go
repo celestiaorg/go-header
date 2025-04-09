@@ -127,107 +127,87 @@ func TestVerify(t *testing.T) {
 }
 
 func TestVerifyRange(t *testing.T) {
-	suite := NewTestSuite(t)
-	trusted := suite.GenDummyHeaders(1)[0]
-	var zero *DummyHeader
-
 	tests := []struct {
 		name     string
-		trusted  *DummyHeader
-		untrstd  []*DummyHeader
-		wantErr  bool
-		errType  error
+		setup    func(*DummySuite) (*DummyHeader, []*DummyHeader)
+		err      error
 		verified int // number of headers that should be verified before error
 	}{
 		{
-			name:     "successful verification of all headers",
-			trusted:  trusted,
-			untrstd:  suite.GenDummyHeaders(5),
-			wantErr:  false,
+			name: "successful verification of all headers",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				untrstd := suite.GenDummyHeaders(5)
+				return trusted, untrstd
+			},
 			verified: 5,
 		},
 		{
-			name:    "empty untrusted headers",
-			trusted: trusted,
-			untrstd: []*DummyHeader{},
-			wantErr: false,
+			name: "empty untrusted headers range",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				return trusted, []*DummyHeader{}
+			},
+			err: header.ErrEmptyRange,
 		},
 		{
-			name:    "verification fails in middle of range",
-			trusted: trusted,
-			untrstd: modifyHeaders(
-				suite.GenDummyHeaders(5),
-				2,
-				true,
-				false,
-			), // make 3rd header fail verification
-			wantErr:  true,
-			errType:  ErrDummyVerify,
+			name: "zero trusted header",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				var zero *DummyHeader
+				return zero, []*DummyHeader{zero}
+			},
+			err: header.ErrZeroHeader,
+		},
+		{
+			name: "zero untrusted header",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				var zero *DummyHeader
+				return zero, []*DummyHeader{zero}
+			},
+			err: header.ErrZeroHeader,
+		},
+		{
+			name: "verification fails in middle of range",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				headers := suite.GenDummyHeaders(5)
+				headers[2].VerifyFailure = true // make 3rd header fail verification
+				return trusted, headers
+			},
+			err:      ErrDummyVerify,
 			verified: 2,
 		},
 		{
-			name:    "verification fails with soft failure",
-			trusted: trusted,
-			untrstd: modifyHeaders(
-				suite.GenDummyHeaders(5),
-				2,
-				true,
-				true,
-			), // make 3rd header fail with soft failure
-			wantErr:  true,
-			errType:  ErrDummyVerify,
-			verified: 2,
-		},
-		{
-			name:     "zero trusted header",
-			trusted:  zero,                 // use nil pointer
-			untrstd:  []*DummyHeader{zero}, // use nil pointer for untrusted header too
-			wantErr:  true,
-			errType:  header.ErrZeroHeader,
-			verified: 0, // no headers should be verified when trusted header is zero
+			name: "non-adjacent headers",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				headers := suite.GenDummyHeaders(3)
+				headers = append(headers[0:1], headers[2:]...)
+				return trusted, headers
+			},
+			err:      header.ErrNonAdjacentRange,
+			verified: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			verified, err := header.VerifyRange(tt.trusted, tt.untrstd)
+			suite := NewTestSuite(t)
+			trusted, untrstd := tt.setup(suite)
+			verified, err := header.VerifyRange(trusted, untrstd)
 
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errType != nil {
-					var verErr *header.VerifyError
-					assert.ErrorAs(t, err, &verErr)
-					assert.ErrorIs(t, errors.Unwrap(verErr), tt.errType)
-				}
-				assert.Len(
-					t,
-					verified,
-					tt.verified,
-					"unexpected number of verified headers before error",
-				)
+			if tt.err != nil {
+				var verErr *header.VerifyError
+				assert.ErrorAs(t, err, &verErr)
+				assert.ErrorIs(t, errors.Unwrap(verErr), tt.err)
+				assert.Len(t, verified, tt.verified, "unexpected number of verified headers before error")
 			} else {
 				assert.NoError(t, err)
-				assert.Len(t, verified, len(tt.untrstd), "all headers should be verified")
-				if len(tt.untrstd) > 0 {
-					assert.Equal(t,
-						tt.untrstd[len(tt.untrstd)-1], verified[len(verified)-1],
-						"last verified header should match last input header",
-					)
+				assert.Len(t, verified, len(untrstd), "all headers should be verified")
+				if len(untrstd) > 0 {
+					assert.Equal(t, untrstd[len(untrstd)-1], verified[len(verified)-1], "last verified header should match last input header")
 				}
 			}
 		})
 	}
-}
-
-// modifyHeaders is a helper function that modifies a header at the specified index to fail verification
-func modifyHeaders(
-	headers []*DummyHeader,
-	index int,
-	verifyFailure, softFailure bool,
-) []*DummyHeader {
-	if index < len(headers) {
-		headers[index].VerifyFailure = verifyFailure
-		headers[index].SoftFailure = softFailure
-	}
-	return headers
 }
