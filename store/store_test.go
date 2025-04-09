@@ -851,7 +851,8 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		_ = store.Init(ctx, suite.Head())
+		time.Sleep(100 * time.Millisecond)
+		_ = store.Append(ctx, suite.Head())
 	}()
 
 	_, err = store.GetByHeight(ctx, 1)
@@ -869,7 +870,7 @@ func TestStoreInit(t *testing.T) {
 
 	headers := suite.GenDummyHeaders(10)
 	h := headers[len(headers)-1]
-	err = store.Init(ctx, h) // init should work with any height, not only 1
+	err = store.Append(ctx, h) // init should work with any height, not only 1
 	require.NoError(t, err)
 
 	tail, err := store.Tail(ctx)

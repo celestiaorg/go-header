@@ -113,7 +113,7 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 	}, nil
 }
 
-func (s *Store[H]) Init(ctx context.Context, initial H) error {
+func (s *Store[H]) initStore(ctx context.Context, initial H) error {
 	if s.heightSub.Height() != 0 {
 		return errors.New("store already initialized")
 	}
@@ -439,7 +439,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		if !errors.Is(err, header.ErrEmptyStore) {
 			return err
 		}
-		s.contiguousHead.Store(&headers[0]) // ????
+
+		if err := s.initStore(ctx, headers[0]); err != nil {
+			return fmt.Errorf("header/store: store init: %w", err)
+		}
 	}
 
 	// collect valid headers
@@ -685,7 +688,7 @@ func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
 			}
 		} else {
 			s.contiguousHead.Store(&head)
-			s.heightSub.SetHeight(head.Height())
+			s.heightSub.Init(head.Height())
 		}
 	}
 

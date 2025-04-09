@@ -17,10 +17,10 @@ func NewTestStore(tb testing.TB, ctx context.Context, //nolint:revive
 	store, err := NewStore[*headertest.DummyHeader](ds, opts...)
 	require.NoError(tb, err)
 
-	err = store.Init(ctx, head)
+	err = store.Start(ctx)
 	require.NoError(tb, err)
 
-	err = store.Start(ctx)
+	err = store.Append(ctx, head)
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
