@@ -428,6 +428,7 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
+	// TODO(cristaloleg): remove before merge
 	if s.contiguousHead.Load() == nil || s.tailHeader.Load() == nil {
 		if err := s.initStore(ctx, headers[0]); err != nil {
 			return fmt.Errorf("header/store: init store: %w", err)
