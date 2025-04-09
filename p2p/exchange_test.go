@@ -677,5 +677,5 @@ func (t *timedOutStore) Head(
 	...header.HeadOption[*headertest.DummyHeader],
 ) (*headertest.DummyHeader, error) {
 	time.Sleep(t.timeout)
-	return nil, header.ErrNoHead
+	return nil, header.ErrEmptyStore
 }
