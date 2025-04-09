@@ -67,9 +67,6 @@ type Store[H Header[H]] interface {
 	// Getter encompasses all getter methods for headers.
 	Getter[H]
 
-	// Init initializes Store with the given head, meaning it is initialized with the genesis header.
-	Init(context.Context, H) error
-
 	// Tail returns the oldest known header.
 	Tail(context.Context) (H, error)
 
