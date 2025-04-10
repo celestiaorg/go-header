@@ -6,6 +6,45 @@ import (
 	"time"
 )
 
+// VerifyRange verifies a range of adjacent untrusted Headers against trusted following general Header checks and
+// custom user-specific checks defined in [Verify].
+//
+// In case of error, returns verified sub-range of Headers and error.
+func VerifyRange[H Header[H]](trstd H, untrstdRange []H) ([]H, error) {
+	if len(untrstdRange) == 0 {
+		return nil, &VerifyError{Reason: ErrEmptyRange}
+	}
+
+	verified := make([]H, 0, len(untrstdRange))
+	for i, untrstd := range untrstdRange {
+		err := Verify(trstd, untrstd)
+		if err != nil {
+			return verified, err
+		}
+
+		// ensure range is adjacent, as Verify allows non-adjacency
+		// NOTE: i > 0 because we allow the input trusted header to be non-adjacent
+		// so given trusted header height 100, we can have untrusted 151-155
+		if i > 0 && trstd.Height()+1 != untrstd.Height() {
+			reason := fmt.Errorf(
+				"%w; trusted: %d, expected_untrusted: %d, received_untrusted: %d",
+				ErrNonAdjacentRange,
+				trstd.Height(),
+				trstd.Height()+1,
+				untrstd.Height(),
+			)
+			// TODO(@Wondertan): Attach trusted and untrusted headers to the error
+			//  instead of manual error creation
+			return verified, &VerifyError{Reason: reason}
+		}
+
+		verified = append(verified, untrstd)
+		trstd = untrstd
+	}
+
+	return verified, nil
+}
+
 // Verify verifies untrusted Header against trusted following general Header checks and
 // custom user-specific checks defined in Header.Verify.
 //
@@ -87,11 +126,13 @@ func verify[H Header[H]](trstd, untrstd H) error {
 }
 
 var (
-	ErrZeroHeader    = errors.New("zero header")
-	ErrWrongChainID  = errors.New("wrong chain id")
-	ErrUnorderedTime = errors.New("unordered headers")
-	ErrFromFuture    = errors.New("header is from the future")
-	ErrKnownHeader   = errors.New("known header")
+	ErrZeroHeader       = errors.New("zero header")
+	ErrWrongChainID     = errors.New("wrong chain id")
+	ErrUnorderedTime    = errors.New("unordered headers")
+	ErrFromFuture       = errors.New("header is from the future")
+	ErrKnownHeader      = errors.New("known header")
+	ErrEmptyRange       = errors.New("empty header range")
+	ErrNonAdjacentRange = errors.New("non-adjacent headers range")
 )
 
 // VerifyError is thrown if a Header failed verification.

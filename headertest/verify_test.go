@@ -125,3 +125,96 @@ func TestVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyRange(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*DummySuite) (*DummyHeader, []*DummyHeader)
+		err      error
+		verified int // number of headers that should be verified before error
+	}{
+		{
+			name: "successful verification of all headers",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				untrstd := suite.GenDummyHeaders(5)
+				return trusted, untrstd
+			},
+			verified: 5,
+		},
+		{
+			name: "empty untrusted headers range",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				return trusted, []*DummyHeader{}
+			},
+			err: header.ErrEmptyRange,
+		},
+		{
+			name: "zero trusted header",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				var zero *DummyHeader
+				return zero, []*DummyHeader{zero}
+			},
+			err: header.ErrZeroHeader,
+		},
+		{
+			name: "zero untrusted header",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				var zero *DummyHeader
+				return zero, []*DummyHeader{zero}
+			},
+			err: header.ErrZeroHeader,
+		},
+		{
+			name: "verification fails in middle of range",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				headers := suite.GenDummyHeaders(5)
+				headers[2].VerifyFailure = true // make 3rd header fail verification
+				return trusted, headers
+			},
+			err:      ErrDummyVerify,
+			verified: 2,
+		},
+		{
+			name: "non-adjacent header range ",
+			setup: func(suite *DummySuite) (*DummyHeader, []*DummyHeader) {
+				trusted := suite.GenDummyHeaders(1)[0]
+				_ = suite.GenDummyHeaders(
+					1,
+				) // generate a header to ensure the range can be non-adjacent
+				headers := suite.GenDummyHeaders(3)
+				headers = append(headers[0:1], headers[2:]...)
+				return trusted, headers
+			},
+			err:      header.ErrNonAdjacentRange,
+			verified: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			suite := NewTestSuite(t)
+			trusted, untrstd := tt.setup(suite)
+			verified, err := header.VerifyRange(trusted, untrstd)
+
+			if tt.err != nil {
+				var verErr *header.VerifyError
+				assert.ErrorAs(t, err, &verErr)
+				assert.ErrorIs(t, errors.Unwrap(verErr), tt.err)
+				assert.Len(t, verified, tt.verified)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, verified, len(untrstd))
+				if len(untrstd) > 0 {
+					assert.Equal(t,
+						untrstd[len(untrstd)-1],
+						verified[len(verified)-1],
+						"last verified header should match last input header",
+					)
+				}
+			}
+		})
+	}
+}
