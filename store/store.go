@@ -345,6 +345,106 @@ func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
 	return height != uint64(0) && s.Height() >= height
 }
 
+// DeleteTo implements [header.Store] interface.
+func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
+	var from uint64
+
+	if tailPtr := s.tailHeader.Load(); tailPtr != nil {
+		from = (*tailPtr).Height()
+	}
+	if from >= to {
+		return nil
+	}
+	if headPtr := s.contiguousHead.Load(); headPtr != nil {
+		if height := (*headPtr).Height(); to > height {
+			return fmt.Errorf("header/store: higher then head (%d vs %d)", to, height)
+		}
+	}
+
+	if from >= to {
+		log.Debugw("header/store: attempt to delete empty range(%d, %d)", from, to)
+		return nil
+	}
+
+	if err := s.deleteRange(ctx, from, to); err != nil {
+		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
+	}
+	return nil
+}
+
+func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("delete batch: %w", err)
+	}
+
+	if err := s.prepareDeleteRangeBatch(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("prepare: %w", err)
+	}
+
+	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
+		return fmt.Errorf("height index: %w", err)
+	}
+
+	newTail, err := s.updateTail(ctx, batch, to)
+	if err != nil {
+		return fmt.Errorf("update tail: %w", err)
+	}
+
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("delete commit: %w", err)
+	}
+
+	s.tailHeader.Store(&newTail)
+	return nil
+}
+
+func (s *Store[H]) prepareDeleteRangeBatch(
+	ctx context.Context, batch datastore.Batch, from, to uint64,
+) error {
+	for h := from; h < to; h++ {
+		hash, err := s.heightIndex.HashByHeight(ctx, h)
+		if err != nil {
+			if errors.Is(err, datastore.ErrNotFound) {
+				log.Errorw("removing non-existent header", "height", h)
+				continue
+			}
+			return fmt.Errorf("hash by height(%d): %w", h, err)
+		}
+		s.cache.Remove(hash.String())
+
+		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
+			return fmt.Errorf("delete hash key: %w", err)
+		}
+	}
+
+	s.pending.DeleteRange(from, to)
+	return nil
+}
+
+func (s *Store[H]) updateTail(
+	ctx context.Context, batch datastore.Batch, to uint64,
+) (H, error) {
+	var zero H
+
+	newTail, err := s.getByHeight(ctx, to)
+	if err != nil {
+		if !errors.Is(err, header.ErrNotFound) {
+			return zero, fmt.Errorf("cannot fetch next tail: %w", err)
+		}
+		return zero, err
+	}
+
+	b, err := newTail.Hash().MarshalJSON()
+	if err != nil {
+		return zero, err
+	}
+	if err := batch.Put(ctx, tailKey, b); err != nil {
+		return zero, err
+	}
+	return newTail, nil
+}
+
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	lh := len(headers)
 	if lh == 0 {
