@@ -321,12 +321,11 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestSync_InvalidSyncTarget tests the possible case that a sync target
-// passes non-adjacent verification but is actually invalid once it is processed
-// via VerifyAdjacent during sync. The expected behavior is that the syncer would
-// discard the invalid sync target and listen for a new sync target from headersub
-// and sync the valid chain.
-func TestSync_InvalidSyncTarget(t *testing.T) {
+// TestSync_SoftFailureBifurcate asserts that network head soft failure is handled correctly,
+// triggering a bifurcation.
+// The expected behavior is that the syncer discards the invalid sync target if bifurcation confirms
+// its invalidity. Yet it recovers if the new sync target is valid.
+func TestSync_SoftFailureBifurcate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -350,10 +349,10 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	// generate 300 more headers
 	headers := suite.GenDummyHeaders(300)
 	// malform the remote store's head so that it can serve
-	// the syncer a "bad" sync target that passes initial validation,
-	// but not verification.
+	// the syncer a soft failed head
 	maliciousHeader := headers[299]
 	maliciousHeader.VerifyFailure = true
+	maliciousHeader.SoftFailure = true
 	err = remoteStore.Append(ctx, headers...)
 	require.NoError(t, err)
 
@@ -361,21 +360,19 @@ func TestSync_InvalidSyncTarget(t *testing.T) {
 	// sync target from the remote peer via Head request
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
-
-	// give syncer some time to register the sync job before
-	// we wait for it to "finish syncing"
+	// await for sync to finish
 	time.Sleep(time.Millisecond * 100)
+	err = syncer.SyncWait(ctx)
+	require.NoError(t, err)
 
-	// expect syncer to not be able to finish the sync
-	// job as the bad sync target cannot be applied
-	shortCtx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
-	err = syncer.SyncWait(shortCtx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	cancel()
-	// ensure that syncer still expects to sync to the bad sync target's
-	// height
-	require.Equal(t, maliciousHeader.Height(), syncer.State().ToHeight)
-	// ensure syncer could only sync up to one header below the bad sync target
+	// ensure that syncer progressed even with invalid header
+	// yet excluding the invalid header
+	state := syncer.State()
+	assert.Equal(t, maliciousHeader.Height()-1, state.Height)
+	assert.True(t, state.Finished())
+	assert.EqualValues(t, 2, state.FromHeight)
+
+	// ensure syncer could only sync up to one header below the invalid header
 	h, err := localStore.Head(ctx)
 	require.NoError(t, err)
 	require.Equal(t, maliciousHeader.Height()-1, h.Height())

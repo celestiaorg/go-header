@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/celestiaorg/go-header"
@@ -29,18 +30,11 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return sbjHead, nil
 	}
 
-	// single-flight protection ensure only one Head is requested at the time
-	if !s.getter.Lock() {
-		// means that other routine held the lock and set the subjective head
-		return s.subjectiveHead(ctx)
-	}
-	defer s.getter.Unlock()
-
 	s.metrics.outdatedHead(s.ctx)
 
 	reqCtx, cancel := context.WithTimeout(ctx, headRequestTimeout)
 	defer cancel()
-	netHead, err := s.getter.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
+	netHead, err := s.head.Head(reqCtx, header.WithTrustedHead[H](sbjHead))
 	if err != nil {
 		log.Warnw(
 			"failed to get recent head, returning current subjective",
@@ -85,16 +79,8 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// otherwise, request head from a trusted peer
 	log.Infow("stored head header expired", "height", storeHead.Height())
-	// single-flight protection
-	// ensure only one Head is requested at the time
-	if !s.getter.Lock() {
-		// means that other routine held the lock and set the subjective head for us,
-		// so just recursively get it
-		return s.subjectiveHead(ctx)
-	}
-	defer s.getter.Unlock()
 
-	trustHead, err := s.getter.Head(ctx)
+	trustHead, err := s.head.Head(ctx)
 	if err != nil {
 		return trustHead, err
 	}
@@ -152,46 +138,110 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
 
-	softFailure, err := s.verify(ctx, head)
-	if err != nil && !softFailure {
+	err := s.verify(ctx, head)
+	if err != nil {
 		return err
 	}
 
-	// TODO(@Wondertan):
-	//  Implement setSyncTarget and use it for soft failures
 	s.setSubjectiveHead(ctx, head)
 	return err
 }
 
 // verify verifies given network head candidate.
-func (s *Syncer[H]) verify(ctx context.Context, newHead H) (bool, error) {
+func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during validation", "err", err)
-		// local error, so soft
-		return true, &header.VerifyError{Reason: err, SoftFailure: true}
+		return err
 	}
 
 	err = header.Verify(sbjHead, newHead)
 	if err == nil {
-		return false, nil
+		return nil
 	}
 
 	var verErr *header.VerifyError
-	if errors.As(err, &verErr) && !verErr.SoftFailure {
-		logF := log.Warnw
-		if errors.Is(err, header.ErrKnownHeader) {
-			logF = log.Debugw
-		}
-		logF("invalid network header",
-			"height_of_invalid", newHead.Height(),
-			"hash_of_invalid", newHead.Hash(),
-			"height_of_subjective", sbjHead.Height(),
-			"hash_of_subjective", sbjHead.Hash(),
-			"reason", verErr.Reason)
+	if errors.As(err, &verErr) && verErr.SoftFailure {
+		// bifurcate for soft failures only
+		return s.verifyBifurcating(ctx, sbjHead, newHead)
 	}
 
-	return verErr.SoftFailure, err
+	logF := log.Warnw
+	if errors.Is(err, header.ErrKnownHeader) {
+		logF = log.Debugw
+	}
+	logF("invalid network header",
+		"height_of_invalid", newHead.Height(),
+		"hash_of_invalid", newHead.Hash(),
+		"height_of_subjective", sbjHead.Height(),
+		"hash_of_subjective", sbjHead.Hash(),
+		"reason", verErr.Reason)
+
+	return err
+}
+
+// verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
+// verification is impossible.
+// It tries to find a header (or several headers if necessary) between the networkHead and
+// the subjectiveHead such that non-adjacent (or in the worst case adjacent) verification
+// passes and the networkHead can be verified as a valid sync target against the syncer's
+// subjectiveHead.
+// A non-nil error is returned when networkHead can't be verified.
+func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead H) error {
+	log.Warnw("header bifurcation started",
+		"height", networkHead.Height(),
+		"hash", networkHead.Hash().String(),
+	)
+
+	subjHeight := subjHead.Height()
+
+	diff := networkHead.Height() - subjHeight
+
+	for diff > 1 {
+		candidateHeight := subjHeight + diff/2
+
+		candidateHeader, err := s.getter.GetByHeight(ctx, candidateHeight)
+		if err != nil {
+			return err
+		}
+
+		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			var verErr *header.VerifyError
+			if errors.As(err, &verErr) && !verErr.SoftFailure {
+				return err
+			}
+
+			// candidate failed, go deeper in 1st half.
+			diff /= 2
+			continue
+		}
+
+		// candidate was validated properly, update subjHead.
+		subjHead = candidateHeader
+		s.setSubjectiveHead(ctx, subjHead)
+
+		if err := header.Verify(subjHead, networkHead); err == nil {
+			// network head validate properly, return success.
+			return nil
+		}
+
+		// new subjHead failed, go deeper in 2nd half.
+		subjHeight = subjHead.Height()
+		diff = networkHead.Height() - subjHeight
+	}
+
+	s.metrics.failedBifurcation(ctx, networkHead.Height(), networkHead.Hash().String())
+	log.Errorw("header bifurcation failed",
+		"height", networkHead.Height(),
+		"hash", networkHead.Hash().String(),
+	)
+
+	return &header.VerifyError{
+		Reason: fmt.Errorf("sync: header validation against subjHead height:%d hash:%s",
+			networkHead.Height(), networkHead.Hash().String(),
+		),
+		SoftFailure: false,
+	}
 }
 
 // isExpired checks if header is expired against trusting period.

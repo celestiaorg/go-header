@@ -30,6 +30,9 @@ type DummyHeader struct {
 	// SoftFailure allows for testing scenarios where a header would fail
 	// verification with SoftFailure set to true
 	SoftFailure bool
+
+	// VerifyFn can be used to change header.Verify behavior per header.
+	VerifyFn func(hdr *DummyHeader) error `json:"-"`
 }
 
 func RandDummyHeader(t *testing.T) *DummyHeader {
@@ -100,6 +103,9 @@ func (d *DummyHeader) IsExpired(period time.Duration) bool {
 }
 
 func (d *DummyHeader) Verify(hdr *DummyHeader) error {
+	if d.VerifyFn != nil {
+		return d.VerifyFn(hdr)
+	}
 	if hdr.VerifyFailure {
 		return &header.VerifyError{Reason: ErrDummyVerify, SoftFailure: hdr.SoftFailure}
 	}
