@@ -481,14 +481,7 @@ func (s *Store[H]) setTailHeader(h H) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return err
-	}
-	if err := batch.Put(ctx, tailKey, b); err != nil {
-		return err
-	}
-	if err := batch.Commit(ctx); err != nil {
+	if err := s.ds.Put(ctx, tailKey, b); err != nil {
 		return err
 	}
 
