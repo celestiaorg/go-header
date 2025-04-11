@@ -595,6 +595,8 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
+		// sleep a bit before writing a header
+		// so GetByHeight will wait in a given height
 		time.Sleep(100 * time.Millisecond)
 		_ = store.Append(ctx, suite.Head())
 	}()
