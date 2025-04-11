@@ -466,6 +466,94 @@ func TestStore_GetRange(t *testing.T) {
 	}
 }
 
+func TestStore_DeleteTo(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	const count = 100
+	in := suite.GenDummyHeaders(count)
+	err := store.Append(ctx, in...)
+	require.NoError(t, err)
+
+	hashes := make(map[uint64]header.Hash, count)
+	for _, h := range in {
+		hashes[h.Height()] = h.Hash()
+	}
+
+	// wait until headers are written
+	time.Sleep(100 * time.Millisecond)
+
+	tests := []struct {
+		name      string
+		to        uint64
+		wantTail  uint64
+		wantError bool
+	}{
+		{
+			name:      "initial delete request",
+			to:        14,
+			wantTail:  14,
+			wantError: false,
+		},
+		{
+			name:      "no-op delete request",
+			to:        5,
+			wantTail:  14,
+			wantError: false,
+		},
+		{
+			name:      "valid delete request",
+			to:        50,
+			wantTail:  50,
+			wantError: false,
+		},
+		{
+			name:      "higher than head",
+			to:        1055,
+			wantTail:  30,
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			from := (*store.tailHeader.Load()).Height()
+
+			// manually add something to the pending for assert at the bottom
+			if idx := from - 2; idx < count {
+				store.pending.Append(in[idx])
+				defer store.pending.Reset()
+			}
+
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			err := store.DeleteTo(ctx, tt.to)
+			if tt.wantError {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// check that cache and pending doesn't contain old headers
+			for h := from; h < tt.to; h++ {
+				hash := hashes[h]
+				assert.False(t, store.cache.Contains(hash.String()))
+				assert.False(t, store.pending.Has(hash))
+			}
+
+			tail, err := store.Tail(ctx)
+			require.NoError(t, err)
+			require.EqualValues(t, tail.Height(), tt.wantTail)
+		})
+	}
+}
+
 func TestStorePendingCacheMiss(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
