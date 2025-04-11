@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/stretchr/testify/require"
@@ -17,11 +18,12 @@ func NewTestStore(tb testing.TB, ctx context.Context, //nolint:revive
 	store, err := NewStore[*headertest.DummyHeader](ds, opts...)
 	require.NoError(tb, err)
 
-	err = store.Init(ctx, head)
-	require.NoError(tb, err)
-
 	err = store.Start(ctx)
 	require.NoError(tb, err)
+
+	err = store.Append(ctx, head)
+	require.NoError(tb, err)
+	time.Sleep(100 * time.Millisecond)
 
 	tb.Cleanup(func() {
 		err := store.Stop(ctx)

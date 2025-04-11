@@ -27,8 +27,6 @@ func TestStore(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store := NewTestStore(t, ctx, ds, genesis)
 
-	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
-
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
@@ -135,25 +133,6 @@ func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
 	assert.Len(t, out, int(expectedLenHeaders))
 	assert.Equal(t, firstHeaderInRangeHeight, out[0].Height())
 	assert.Equal(t, lastHeaderInRangeHeight, out[len(out)-1].Height())
-}
-
-func TestStore_Append_BadHeader(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head())
-
-	head, err := store.Head(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
-
-	in := suite.GenDummyHeaders(10)
-	in[0].VerifyFailure = true
-	err = store.Append(ctx, in...)
-	require.Error(t, err)
 }
 
 func TestStore_Append(t *testing.T) {
@@ -616,7 +595,10 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		_ = store.Init(ctx, suite.Head())
+		// sleep a bit before writing a header
+		// so GetByHeight will wait in a given height
+		time.Sleep(100 * time.Millisecond)
+		_ = store.Append(ctx, suite.Head())
 	}()
 
 	_, err = store.GetByHeight(ctx, 1)
@@ -632,12 +614,63 @@ func TestStoreInit(t *testing.T) {
 	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
-	headers := suite.GenDummyHeaders(10)
-	h := headers[len(headers)-1]
-	err = store.Init(ctx, h) // init should work with any height, not only 1
+	err = store.Start(ctx)
 	require.NoError(t, err)
 
+	headers := suite.GenDummyHeaders(10)
+	h := headers[len(headers)-1]
+	err = store.Append(ctx, h) // init should work with any height, not only 1
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
 	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
 	assert.Equal(t, tail.Hash(), h.Hash())
+}
+
+func TestInitStore_NoReinit(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(10)...)
+	require.NoError(t, err)
+
+	err = store.Stop(ctx)
+	require.NoError(t, err)
+
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+
+	reopenedStore, err := NewStore[*headertest.DummyHeader](ds)
+	assert.NoError(t, err)
+
+	err = reopenedStore.Start(ctx)
+	require.NoError(t, err)
+
+	reopenedHead, err := reopenedStore.Head(ctx)
+	require.NoError(t, err)
+
+	// check that reopened head changed and the store wasn't reinitialized
+	assert.Equal(t, suite.Head().Height(), reopenedHead.Height())
+	assert.NotEqual(t, head.Height(), reopenedHead.Height())
+
+	err = reopenedStore.Stop(ctx)
 	require.NoError(t, err)
 }
