@@ -113,22 +113,6 @@ func newStore[H header.Header[H]](ds datastore.Batching, opts ...Option) (*Store
 	}, nil
 }
 
-func (s *Store[H]) initStore(ctx context.Context, initial H) error {
-	// initialize with the initial head before first flush.
-	s.contiguousHead.Store(&initial)
-	s.heightSub.Init(initial.Height())
-	s.tailHeader.Store(&initial)
-
-	// trust the given header as the initial head
-	err := s.flush(ctx, initial)
-	if err != nil {
-		return err
-	}
-
-	log.Infow("initialized head", "height", initial.Height(), "hash", initial.Hash())
-	return nil
-}
-
 func (s *Store[H]) Start(ctx context.Context) error {
 	// closed s.writesDn means that store was stopped before, recreate chan.
 	select {
@@ -137,7 +121,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.loadHeadAndTail(ctx); err != nil {
+	if err := s.loadHeadAndTail(ctx); err != nil && !errors.Is(err, header.ErrNotFound) {
 		return err
 	}
 
@@ -177,23 +161,24 @@ func (s *Store[H]) Height() uint64 {
 }
 
 func (s *Store[H]) Head(_ context.Context, _ ...header.HeadOption[H]) (H, error) {
-	if head := s.contiguousHead.Load(); head != nil {
-		return *head, nil
+	head := s.contiguousHead.Load()
+	if head == nil {
+		var zero H
+		return zero, header.ErrEmptyStore
 	}
 
-	var zero H
-	return zero, header.ErrEmptyStore
+	return *head, nil
 }
 
 // Tail implements [header.Store] interface.
 func (s *Store[H]) Tail(_ context.Context) (H, error) {
-	tailPtr := s.tailHeader.Load()
-	if tailPtr != nil {
-		return *tailPtr, nil
+	tail := s.tailHeader.Load()
+	if tail == nil {
+		var zero H
+		return zero, header.ErrEmptyStore
 	}
 
-	var zero H
-	return zero, header.ErrEmptyStore
+	return *tail, nil
 }
 
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
@@ -428,13 +413,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
-	// TODO(cristaloleg): remove before merge
-	if s.contiguousHead.Load() == nil || s.tailHeader.Load() == nil {
-		if err := s.initStore(ctx, headers[0]); err != nil {
-			return fmt.Errorf("header/store: init store: %w", err)
-		}
-	}
-
 	// queue headers to be written on disk
 	select {
 	case s.writes <- headers:
@@ -463,20 +441,9 @@ func (s *Store[H]) flushLoop() {
 	defer close(s.writesDn)
 	ctx := context.Background()
 	for headers := range s.writes {
+		s.ensureInit(headers)
 		// add headers to the pending and ensure they are accessible
 		s.pending.Append(headers...)
-
-		if len(headers) > 0 && s.tailHeader.Load() == nil {
-			firstHeader := headers[0]
-			if err := s.setTailHeader(firstHeader); err != nil {
-				log.Errorw("set tail header",
-					"height_of_header", firstHeader.Height(),
-					"hash_of_header", firstHeader.Hash(),
-					"error", err,
-				)
-			}
-		}
-
 		// always inform heightSub about new headers seen.
 		s.heightSub.Notify(getHeights(headers...)...)
 		// advance contiguousHead if we don't have gaps.
@@ -541,14 +508,13 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 		}
 	}
 
-	// marshal and add to batch reference to the new head
+	// marshal and add to batch reference to the new head and tail
 	head := *s.contiguousHead.Load()
-	b, err := head.Hash().MarshalJSON()
-	if err != nil {
+	if err = writeHeaderHashTo(ctx, batch, head, headKey); err != nil {
 		return err
 	}
-
-	if err := batch.Put(ctx, headKey, b); err != nil {
+	tail := *s.tailHeader.Load()
+	if err = writeHeaderHashTo(ctx, batch, tail, tailKey); err != nil {
 		return err
 	}
 
@@ -578,25 +544,6 @@ func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) 
 	}
 
 	return s.Get(ctx, h)
-}
-
-// readTail loads the tail from the datastore.
-func (s *Store[H]) readTail(ctx context.Context) (H, error) {
-	var zero H
-	b, err := s.ds.Get(ctx, tailKey)
-	if err != nil {
-		if errors.Is(err, datastore.ErrNotFound) {
-			return zero, header.ErrNotFound
-		}
-		return zero, err
-	}
-
-	var tail header.Hash
-	if err := tail.UnmarshalJSON(b); err != nil {
-		return zero, err
-	}
-
-	return s.Get(ctx, tail)
 }
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
@@ -644,27 +591,51 @@ func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
 }
 
 func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
-	{
-		head, err := s.readByKey(ctx, headKey)
-		if err != nil {
-			if !errors.Is(err, datastore.ErrNotFound) {
-				return fmt.Errorf("header/store: cannot load headKey: %w", err)
-			}
-		} else {
-			s.contiguousHead.Store(&head)
-			s.heightSub.Init(head.Height())
-		}
+	head, err := s.readByKey(ctx, headKey)
+	if err != nil {
+		return fmt.Errorf("header/store: cannot load headKey: %w", err)
 	}
 
-	{
-		tail, err := s.readByKey(ctx, tailKey)
-		if err != nil {
-			if !errors.Is(err, datastore.ErrNotFound) {
-				return fmt.Errorf("header/store: cannot load tailKey: %w", err)
-			}
-		} else {
-			s.tailHeader.Store(&tail)
-		}
+	tail, err := s.readByKey(ctx, tailKey)
+	if err != nil {
+		return fmt.Errorf("header/store: cannot load tailKey: %w", err)
+	}
+
+	s.init(tail, head)
+	return nil
+}
+
+func (s *Store[H]) ensureInit(headers []H) {
+	headExist, tailExist := s.contiguousHead.Load() != nil, s.tailHeader.Load() != nil
+	if tailExist && headExist {
+		return
+	} else if tailExist || headExist {
+		panic("header/store: head and tail must be both present or absent")
+	}
+
+	tail, head := headers[0], headers[len(headers)-1]
+	s.init(tail, head)
+}
+
+func (s *Store[H]) init(tail, head H) {
+	s.tailHeader.Store(&tail)
+	s.contiguousHead.Store(&head)
+	s.heightSub.Init(head.Height())
+}
+
+func writeHeaderHashTo[H header.Header[H]](
+	ctx context.Context,
+	batch datastore.Batch,
+	h H,
+	key datastore.Key,
+) error {
+	hashBytes, err := h.Hash().MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	if err := batch.Put(ctx, key, hashBytes); err != nil {
+		return err
 	}
 
 	return nil
