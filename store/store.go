@@ -144,7 +144,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 
 	if err := s.loadContiguousHead(ctx); err != nil {
 		// we might start on an empty datastore, no key is okay.
-		if !errors.Is(err, datastore.ErrNotFound) {
+		if !errors.Is(err, header.ErrNotFound) {
 			return fmt.Errorf("header/store: cannot load headKey: %w", err)
 		}
 	}
@@ -338,7 +338,11 @@ func (s *Store[H]) Has(ctx context.Context, hash header.Hash) (bool, error) {
 		return ok, nil
 	}
 
-	return s.ds.Has(ctx, datastore.NewKey(hash.String()))
+	ok, err := s.ds.Has(ctx, hashKey(hash))
+	if errors.Is(err, datastore.ErrNotFound) {
+		return false, header.ErrNotFound
+	}
+	return ok, err
 }
 
 func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
@@ -615,6 +619,9 @@ func (s *Store[H]) readHead(ctx context.Context) (H, error) {
 	var zero H
 	b, err := s.ds.Get(ctx, headKey)
 	if err != nil {
+		if errors.Is(err, datastore.ErrNotFound) {
+			return zero, header.ErrNotFound
+		}
 		return zero, err
 	}
 
@@ -632,6 +639,9 @@ func (s *Store[H]) readTail(ctx context.Context) (H, error) {
 	var zero H
 	b, err := s.ds.Get(ctx, tailKey)
 	if err != nil {
+		if errors.Is(err, datastore.ErrNotFound) {
+			return zero, header.ErrNotFound
+		}
 		return zero, err
 	}
 
@@ -645,7 +655,7 @@ func (s *Store[H]) readTail(ctx context.Context) (H, error) {
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	startTime := time.Now()
-	data, err := s.ds.Get(ctx, datastore.NewKey(hash.String()))
+	data, err := s.ds.Get(ctx, hashKey(hash))
 	if err != nil {
 		s.metrics.readSingle(ctx, time.Since(startTime), true)
 		if errors.Is(err, datastore.ErrNotFound) {
