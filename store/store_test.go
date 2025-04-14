@@ -630,9 +630,6 @@ func TestStoreInit(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
-	// err = store.Append(ctx, suite.GenDummyHeaders(10)...)
-	// require.NoError(t, err)
-
 	err = store.Stop(ctx)
 	require.NoError(t, err)
 
