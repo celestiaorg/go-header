@@ -197,8 +197,7 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	}
 
 	h := header.New[H]()
-	err = h.UnmarshalBinary(b)
-	if err != nil {
+	if err := h.UnmarshalBinary(b); err != nil {
 		return zero, err
 	}
 
@@ -510,11 +509,11 @@ func (s *Store[H]) flush(ctx context.Context, headers ...H) error {
 
 	// marshal and add to batch reference to the new head and tail
 	head := *s.contiguousHead.Load()
-	if err = writeHeaderHashTo(ctx, batch, head, headKey); err != nil {
+	if err := writeHeaderHashTo(ctx, batch, head, headKey); err != nil {
 		return err
 	}
 	tail := *s.tailHeader.Load()
-	if err = writeHeaderHashTo(ctx, batch, tail, tailKey); err != nil {
+	if err := writeHeaderHashTo(ctx, batch, tail, tailKey); err != nil {
 		return err
 	}
 
@@ -601,7 +600,7 @@ func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
 		return fmt.Errorf("header/store: cannot load tailKey: %w", err)
 	}
 
-	s.init(tail, head)
+	s.init(head, tail)
 	return nil
 }
 
@@ -614,13 +613,13 @@ func (s *Store[H]) ensureInit(headers []H) {
 	}
 
 	tail, head := headers[0], headers[len(headers)-1]
-	s.init(tail, head)
+	s.init(head, tail)
 }
 
-func (s *Store[H]) init(tail, head H) {
-	s.tailHeader.Store(&tail)
+func (s *Store[H]) init(head, tail H) {
 	s.contiguousHead.Store(&head)
 	s.heightSub.Init(head.Height())
+	s.tailHeader.Store(&tail)
 }
 
 func writeHeaderHashTo[H header.Header[H]](
