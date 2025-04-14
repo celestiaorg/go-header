@@ -21,6 +21,7 @@ func TestExchangeServer_handleRequestTimeout(t *testing.T) {
 	head.HeightI %= 1000 // make it a bit lower
 	err = s.Append(context.Background(), head)
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	server, err := NewExchangeServer[*headertest.DummyHeader](
 		peer[0],
 		s,
