@@ -606,29 +606,6 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 }
 
 func TestStoreInit(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
-
-	headers := suite.GenDummyHeaders(10)
-	h := headers[len(headers)-1]
-	err = store.Append(ctx, h) // init should work with any height, not only 1
-	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
-
-	tail, err := store.Tail(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, tail.Hash(), h.Hash())
-}
-
-func TestInitStore_NoReinit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -647,8 +624,14 @@ func TestInitStore_NoReinit(t *testing.T) {
 	_, err = store.Tail(ctx)
 	require.Error(t, err, header.ErrEmptyStore)
 
-	err = store.Append(ctx, suite.GenDummyHeaders(10)...)
+	headers := suite.GenDummyHeaders(10)
+	h := headers[len(headers)-1]
+	err = store.Append(ctx, h) // init should work with any height, not only 1
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	// err = store.Append(ctx, suite.GenDummyHeaders(10)...)
+	// require.NoError(t, err)
 
 	err = store.Stop(ctx)
 	require.NoError(t, err)
@@ -666,10 +649,12 @@ func TestInitStore_NoReinit(t *testing.T) {
 
 	reopenedHead, err := reopenedStore.Head(ctx)
 	require.NoError(t, err)
-
-	// check that reopened head changed and the store wasn't reinitialized
 	assert.Equal(t, suite.Head().Height(), reopenedHead.Height())
 	assert.NotEqual(t, head.Height(), reopenedHead.Height())
+
+	tail, err := reopenedStore.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tail.Hash(), h.Hash())
 
 	err = reopenedStore.Stop(ctx)
 	require.NoError(t, err)

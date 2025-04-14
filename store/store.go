@@ -415,8 +415,6 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 	// queue headers to be written on disk
 	select {
 	case s.writes <- headers:
-		// we return an error here after writing,
-		// as there might be an invalid header in between of a given range
 		return nil
 	default:
 		s.metrics.writesQueueBlocked(ctx)
