@@ -50,8 +50,8 @@ var (
 	// ErrNotFound is returned when there is no requested header.
 	ErrNotFound = errors.New("header: not found")
 
-	// ErrNoHead is returned when Store is empty (does not contain any known header).
-	ErrNoHead = errors.New("header/store: no chain head")
+	// ErrEmptyStore is returned when Store is empty (does not contain any known header).
+	ErrEmptyStore = errors.New("header/store: store is empty")
 
 	// ErrHeadersLimitExceeded is returned when ExchangeServer receives header request for more
 	// than maxRequestSize headers.
@@ -66,9 +66,6 @@ var (
 type Store[H Header[H]] interface {
 	// Getter encompasses all getter methods for headers.
 	Getter[H]
-
-	// Init initializes Store with the given head, meaning it is initialized with the genesis header.
-	Init(context.Context, H) error
 
 	// Tail returns the oldest known header.
 	Tail(context.Context) (H, error)
