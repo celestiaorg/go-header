@@ -27,8 +27,6 @@ func TestStore(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store := NewTestStore(t, ctx, ds, genesis)
 
-	assert.Equal(t, *store.tailHeader.Load(), suite.Head())
-
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, suite.Head().Hash(), head.Hash())
@@ -597,7 +595,10 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		_ = store.Init(ctx, suite.Head())
+		// sleep a bit before writing a header
+		// so GetByHeight will wait in a given height
+		time.Sleep(100 * time.Millisecond)
+		_ = store.Append(ctx, suite.Head())
 	}()
 
 	_, err = store.GetByHeight(ctx, 1)
@@ -605,20 +606,53 @@ func TestBatch_GetByHeightBeforeInit(t *testing.T) {
 }
 
 func TestStoreInit(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
 	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store, err := NewStore[*headertest.DummyHeader](ds)
 	require.NoError(t, err)
 
-	headers := suite.GenDummyHeaders(10)
-	h := headers[len(headers)-1]
-	err = store.Init(ctx, h) // init should work with any height, not only 1
+	err = store.Start(ctx)
 	require.NoError(t, err)
 
-	tail, err := store.Tail(ctx)
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+
+	headers := suite.GenDummyHeaders(10)
+	h := headers[len(headers)-1]
+	err = store.Append(ctx, h) // init should work with any height, not only 1
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	err = store.Stop(ctx)
+	require.NoError(t, err)
+
+	_, err = store.Head(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+	_, err = store.Tail(ctx)
+	require.Error(t, err, header.ErrEmptyStore)
+
+	reopenedStore, err := NewStore[*headertest.DummyHeader](ds)
+	assert.NoError(t, err)
+
+	err = reopenedStore.Start(ctx)
+	require.NoError(t, err)
+
+	reopenedHead, err := reopenedStore.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, suite.Head().Height(), reopenedHead.Height())
+	assert.NotEqual(t, head.Height(), reopenedHead.Height())
+
+	tail, err := reopenedStore.Tail(ctx)
+	require.NoError(t, err)
 	assert.Equal(t, tail.Hash(), h.Hash())
+
+	err = reopenedStore.Stop(ctx)
 	require.NoError(t, err)
 }
