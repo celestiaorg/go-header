@@ -50,7 +50,7 @@ func (rs *ranges[H]) Add(h H) {
 		//    * Even considering the delay(block time) with which new headers are generated
 		//    * But rarely
 		//  Would be still nice to implement
-		log.Warnf("rcvd headers in wrong order")
+		log.Warn("rcvd headers in wrong order")
 		return
 	}
 

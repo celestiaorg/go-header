@@ -83,7 +83,7 @@ func NewSubscriber[H header.Header[H]](
 // Start starts the Subscriber and joins the instance's topic. SetVerifier must
 // be called separately to ensure a validator is mounted on the topic.
 func (s *Subscriber[H]) Start(context.Context) (err error) {
-	log.Debugf("joining topic", "topic ID", s.pubsubTopicID)
+	log.Debugw("joining topic", "topic ID", s.pubsubTopicID)
 	err = s.pubsub.RegisterTopicValidator(s.pubsubTopicID, s.verifyMessage)
 	if err != nil {
 		return err
