@@ -314,17 +314,13 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 		from = (*tailPtr).Height()
 	}
 	if from >= to {
+		log.Debugf("header/store: attempt to delete empty range(%d, %d)", from, to)
 		return nil
 	}
 	if headPtr := s.contiguousHead.Load(); headPtr != nil {
 		if height := (*headPtr).Height(); to > height {
-			return fmt.Errorf("header/store: higher then head (%d vs %d)", to, height)
+			return fmt.Errorf("header/store: 'to' is higher then head (%d vs %d)", to, height)
 		}
-	}
-
-	if from >= to {
-		log.Debugw("header/store: attempt to delete empty range(%d, %d)", from, to)
-		return nil
 	}
 
 	if err := s.deleteRange(ctx, from, to); err != nil {
@@ -396,12 +392,8 @@ func (s *Store[H]) updateTail(
 		return zero, err
 	}
 
-	b, err := newTail.Hash().MarshalJSON()
-	if err != nil {
-		return zero, err
-	}
-	if err := batch.Put(ctx, tailKey, b); err != nil {
-		return zero, err
+	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
+		return zero, fmt.Errorf("put tail in batch: %w", err)
 	}
 	return newTail, nil
 }
