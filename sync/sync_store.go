@@ -48,18 +48,20 @@ func (s *syncStore[H]) Append(ctx context.Context, headers ...H) error {
 	}
 
 	head, err := s.Head(ctx)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		panic(err)
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, header.ErrEmptyStore) {
+		return err
 	}
 
-	for _, h := range headers {
-		if h.Height() != head.Height()+1 {
-			return &errNonAdjacent{
-				Head:      head.Height(),
-				Attempted: h.Height(),
+	if !errors.Is(err, header.ErrEmptyStore) {
+		for _, h := range headers {
+			if h.Height() != head.Height()+1 {
+				return &errNonAdjacent{
+					Head:      head.Height(),
+					Attempted: h.Height(),
+				}
 			}
+			head = h
 		}
-		head = h
 	}
 
 	if err := s.Store.Append(ctx, headers...); err != nil {

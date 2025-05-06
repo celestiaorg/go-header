@@ -23,7 +23,7 @@ func TestSyncer_Tail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	remoteStore := headertest.NewDummyStore(t)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	localStore, err := store.NewStore[*headertest.DummyHeader](ds)
@@ -44,9 +44,17 @@ func TestSyncer_Tail(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, tail)
 
+	err = syncer.Start(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(time.Millisecond * 100)
 	storeTail, err := localStore.Tail(ctx)
 	require.NoError(t, err)
 	assert.EqualValues(t, tail.Height(), storeTail.Height())
+
+	storeHead, err := localStore.Head(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, remoteStore.Height(), storeHead.Height())
 }
 
 func TestSyncer_HeadConcurrencyError(t *testing.T) {
@@ -435,7 +443,7 @@ type errorGetter struct{}
 
 func (e errorGetter) Head(
 	context.Context,
-	...header.HeadOption[*headertest.DummyHeader],
+...header.HeadOption[*headertest.DummyHeader],
 ) (*headertest.DummyHeader, error) {
 	time.Sleep(time.Millisecond * 1)
 	return nil, fmt.Errorf("error")
