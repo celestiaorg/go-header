@@ -61,6 +61,13 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 	tail, err := s.store.Tail(ctx)
 	switch {
 	case errors.Is(err, header.ErrEmptyStore):
+		// TODO(@Wondertan): This is a temporary solution requesting the head directly from the network instead of
+		//  calling general Head path. This is needed to ensure Tail is written to the store first.
+		head, err := s.head.Head(ctx)
+		if err != nil {
+			return head, err
+		}
+
 		switch {
 		case s.Params.SyncFromHash != nil:
 			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
@@ -73,11 +80,6 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 				return tail, fmt.Errorf("getting tail header(%d): %w", s.Params.SyncFromHeight, err)
 			}
 		default:
-			head, err := s.Head(ctx)
-			if err != nil {
-				return head, err
-			}
-
 			tailHeight := estimateTail(head, s.Params.blockTime, s.Params.TrustingPeriod)
 			tail, err = s.getter.GetByHeight(ctx, tailHeight)
 			if err != nil {
@@ -85,9 +87,14 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 			}
 		}
 
-		err = s.store.Store.Append(ctx, tail)
+		err = s.store.Append(ctx, tail)
 		if err != nil {
 			return tail, fmt.Errorf("appending tail header: %w", err)
+		}
+
+		err = s.incomingNetworkHead(ctx, head)
+		if err != nil {
+			return tail, fmt.Errorf("applying head from trusted peers: %w", err)
 		}
 
 	case !s.isTailActual(tail):
