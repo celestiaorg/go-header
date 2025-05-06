@@ -72,7 +72,11 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 		case s.Params.SyncFromHash != nil:
 			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
 			if err != nil {
-				return tail, fmt.Errorf("getting tail header by hash(%s): %w", s.Params.SyncFromHash, err)
+				return tail, fmt.Errorf(
+					"getting tail header by hash(%s): %w",
+					s.Params.SyncFromHash,
+					err,
+				)
 			}
 		case s.Params.SyncFromHeight != 0:
 			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
@@ -101,7 +105,11 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 		if s.Params.SyncFromHash != nil {
 			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
 			if err != nil {
-				return tail, fmt.Errorf("getting tail header by hash(%s): %w", s.Params.SyncFromHash, err)
+				return tail, fmt.Errorf(
+					"getting tail header by hash(%s): %w",
+					s.Params.SyncFromHash,
+					err,
+				)
 			}
 		} else if s.Params.SyncFromHeight != 0 {
 			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
@@ -154,7 +162,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	storeHead, err := s.store.Head(ctx)
 	switch {
 	case errors.Is(err, header.ErrEmptyStore):
-		log.Infow("no stored head, initializing...", "height")
+		log.Info("no stored head, initializing...")
 	case !storeHead.IsZero() && isExpired(storeHead, s.Params.TrustingPeriod):
 		log.Infow("stored head header expired", "height", storeHead.Height())
 	default:
@@ -339,8 +347,11 @@ func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Dur
 	return time.Since(header.Time()) <= recencyThreshold
 }
 
-func estimateTail[H header.Header[H]](head H, blockTime, trustingPeriod time.Duration) (height uint64) {
-	headersToRetain := uint64(trustingPeriod / blockTime)
+func estimateTail[H header.Header[H]](
+	head H,
+	blockTime, trustingPeriod time.Duration,
+) (height uint64) {
+	headersToRetain := uint64(trustingPeriod / blockTime) //nolint:gosec
 
 	if headersToRetain >= head.Height() {
 		return 1

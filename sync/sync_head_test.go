@@ -443,7 +443,7 @@ type errorGetter struct{}
 
 func (e errorGetter) Head(
 	context.Context,
-...header.HeadOption[*headertest.DummyHeader],
+	...header.HeadOption[*headertest.DummyHeader],
 ) (*headertest.DummyHeader, error) {
 	time.Sleep(time.Millisecond * 1)
 	return nil, fmt.Errorf("error")
