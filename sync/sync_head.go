@@ -150,8 +150,13 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 			}
 		}
 
-		if currentTail.Height() > newTail.Height() {
-			log.Infow("tail header changed from %d to %d, syncing the diff...", currentTail, newTail)
+		switch {
+		case currentTail.Height() > newTail.Height():
+			log.Infow(
+				"tail header changed from %d to %d, syncing the diff...",
+				currentTail,
+				newTail,
+			)
 			// TODO(@Wondertan): This works but it assumes this code is only run before syncing routine starts.
 			//  If run after, it may race with other in prog syncs.
 			//  To be reworked by bsync.
@@ -159,13 +164,21 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 			if err != nil {
 				return tail, fmt.Errorf("syncing the diff between old and new Tail: %w", err)
 			}
-		} else if currentTail.Height() < newTail.Height() {
-			log.Infow("Tail header changed from %d to %d, pruning the diff...", currentTail, newTail)
+		case currentTail.Height() < newTail.Height():
+			log.Infow(
+				"Tail header changed from %d to %d, pruning the diff...",
+				currentTail,
+				newTail,
+			)
 			err := s.store.DeleteTo(ctx, newTail.Height())
 			if err != nil {
-				return tail, fmt.Errorf("deleting headers up to newly configured Tail(%d): %w", newTail.Height(), err)
+				return tail, fmt.Errorf(
+					"deleting headers up to newly configured Tail(%d): %w",
+					newTail.Height(),
+					err,
+				)
 			}
-		} else {
+		default:
 			// equals case, must not happen
 			panic("currentTail == newTail")
 		}

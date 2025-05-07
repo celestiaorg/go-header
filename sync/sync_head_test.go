@@ -19,136 +19,78 @@ import (
 	"github.com/celestiaorg/go-header/store"
 )
 
-func TestSyncer_Tail(t *testing.T) {
+func TestSyncer_TailInit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
 	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
-
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	localStore, err := store.NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-	err = localStore.Start(ctx)
-	require.NoError(t, err)
-
-	syncer, err := NewSyncer[*headertest.DummyHeader](
-		remoteStore,
-		localStore,
-		headertest.NewDummySubscriber(),
-		WithBlockTime(time.Second*6),
-	)
-	require.NoError(t, err)
-
-	tail, err := syncer.Tail(ctx)
-	require.NoError(t, err)
-	assert.NotNil(t, tail)
-
-	time.Sleep(time.Millisecond * 10)
-
-	err = syncer.Start(ctx)
-	require.NoError(t, err)
-
-	time.Sleep(time.Millisecond * 10)
-
-	storeTail, err := localStore.Tail(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, tail.Height(), storeTail.Height())
-
-	storeHead, err := localStore.Head(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, remoteStore.Height(), storeHead.Height())
-}
-
-func TestSyncer_TailInitFromHash(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
-
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	localStore, err := store.NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-	err = localStore.Start(ctx)
-	require.NoError(t, err)
 
 	expectedTail, err := remoteStore.GetByHeight(ctx, 69)
 	require.NoError(t, err)
 
-	syncer, err := NewSyncer[*headertest.DummyHeader](
-		remoteStore,
-		localStore,
-		headertest.NewDummySubscriber(),
-		WithRecencyThreshold(time.Nanosecond), // force recent requests
-		WithBlockTime(time.Second*6),
-		WithSyncFromHash(expectedTail.Hash()),
-	)
-	require.NoError(t, err)
+	tests := []struct {
+		name     string
+		option   Option
+		expected func() *headertest.DummyHeader
+	}{
+		{
+			"Estimate",
+			func(p *Parameters) {}, // noop to trigger estimation,
+			func() *headertest.DummyHeader {
+				remoteTail, err := remoteStore.Tail(ctx)
+				require.NoError(t, err)
+				return remoteTail
+			},
+		},
+		{
+			"SyncFromHash",
+			WithSyncFromHash(expectedTail.Hash()),
+			func() *headertest.DummyHeader {
+				return expectedTail
+			},
+		},
+		{
+			"SyncFromHeight",
+			WithSyncFromHeight(expectedTail.Height()),
+			func() *headertest.DummyHeader {
+				return expectedTail
+			},
+		},
+	}
 
-	tail, err := syncer.Tail(ctx)
-	require.NoError(t, err)
-	assert.NotNil(t, tail)
-	assert.EqualValues(t, tail.Height(), expectedTail.Height())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ds := dssync.MutexWrap(datastore.NewMapDatastore())
+			localStore, err := store.NewStore[*headertest.DummyHeader](ds)
+			require.NoError(t, err)
+			err = localStore.Start(ctx)
+			require.NoError(t, err)
 
-	time.Sleep(time.Millisecond * 10)
+			syncer, err := NewSyncer[*headertest.DummyHeader](
+				remoteStore,
+				localStore,
+				headertest.NewDummySubscriber(),
+				WithBlockTime(time.Second*6),
+				test.option,
+			)
+			require.NoError(t, err)
 
-	err = syncer.Start(ctx)
-	require.NoError(t, err)
+			err = syncer.Start(ctx)
+			require.NoError(t, err)
 
-	time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 100)
 
-	storeTail, err := localStore.Tail(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, tail.Height(), storeTail.Height())
+			expectedTail := test.expected()
 
-	storeHead, err := localStore.Head(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, remoteStore.Height(), storeHead.Height())
-}
+			storeTail, err := localStore.Tail(ctx)
+			require.NoError(t, err)
+			assert.EqualValues(t, expectedTail.Height(), storeTail.Height())
 
-func TestSyncer_TailInitFromHeight(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
-
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	localStore, err := store.NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-	err = localStore.Start(ctx)
-	require.NoError(t, err)
-
-	expectedTail, err := remoteStore.GetByHeight(ctx, 69)
-	require.NoError(t, err)
-
-	syncer, err := NewSyncer[*headertest.DummyHeader](
-		remoteStore,
-		localStore,
-		headertest.NewDummySubscriber(),
-		WithRecencyThreshold(time.Nanosecond), // force recent requests
-		WithBlockTime(time.Second*6),
-		WithSyncFromHeight(expectedTail.Height()),
-	)
-	require.NoError(t, err)
-
-	tail, err := syncer.Tail(ctx)
-	require.NoError(t, err)
-	assert.NotNil(t, tail)
-	assert.EqualValues(t, tail.Height(), expectedTail.Height())
-
-	time.Sleep(time.Millisecond * 10)
-
-	err = syncer.Start(ctx)
-	require.NoError(t, err)
-
-	time.Sleep(time.Millisecond * 10)
-
-	storeTail, err := localStore.Tail(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, tail.Height(), storeTail.Height())
-
-	storeHead, err := localStore.Head(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, remoteStore.Height(), storeHead.Height())
+			storeHead, err := localStore.Head(ctx)
+			require.NoError(t, err)
+			assert.EqualValues(t, remoteStore.Height(), storeHead.Height())
+		})
+	}
 }
 
 func TestSyncer_HeadConcurrencyError(t *testing.T) {
@@ -537,7 +479,7 @@ type errorGetter struct{}
 
 func (e errorGetter) Head(
 	context.Context,
-...header.HeadOption[*headertest.DummyHeader],
+	...header.HeadOption[*headertest.DummyHeader],
 ) (*headertest.DummyHeader, error) {
 	time.Sleep(time.Millisecond * 1)
 	return nil, fmt.Errorf("error")
