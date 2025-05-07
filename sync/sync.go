@@ -98,7 +98,11 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// gets the latest head and kicks off syncing if necessary
+	// gets the latest tail and then head, kicking off syncing if necessary
+	_, err = s.Tail(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting tail during Start: %w", err)
+	}
 	_, err = s.Head(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting latest head during Start: %w", err)
