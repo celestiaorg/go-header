@@ -70,13 +70,14 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 	case errors.Is(err, header.ErrEmptyStore):
 		// Store is empty, likely the first start - initialize.
 		log.Info("empty store, initializing...")
-		// TODO(@Wondertan): Requesting the head directly from the network instead of
-		//  calling general Head path. This is a temporary solution needed to ensure Tail is written to the store first
-		//  before Head. To be reworked by bsync.
+		// TODO(@Wondertan): Copying the initialization logic here instead of calling the general Head path.
+		//  This is a temporary solution needed to ensure Tail is written to the store first before Head.
+		//  To be reworked by bsync.
 		head, err := s.head.Head(ctx)
 		if err != nil {
 			return head, fmt.Errorf("requesting network head: %w", err)
 		}
+		s.metrics.subjectiveInitialization(s.ctx)
 
 		switch {
 		case s.Params.SyncFromHash != nil:
@@ -111,9 +112,13 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 			return tail, fmt.Errorf("applying head from trusted peers: %w", err)
 		}
 
-		log.Infof("initialized with Tail %d and Head %d", tail.Height(), head.Height())
-
-		// TODO: Make sure all the metrics for this alternative subjective init path are added
+		log.Infow(
+			"subjective initialization finished",
+			"tail_height",
+			tail.Height(),
+			"head_height",
+			head.Height(),
+		)
 
 	case !tail.IsZero() && !s.isTailActual(tail):
 		// Configured Tail has changed - get a new one and resolve the diff
@@ -152,7 +157,7 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 
 		switch {
 		case currentTail.Height() > newTail.Height():
-			log.Infow(
+			log.Infof(
 				"tail header changed from %d to %d, syncing the diff...",
 				currentTail,
 				newTail,
@@ -165,8 +170,8 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 				return tail, fmt.Errorf("syncing the diff between old and new Tail: %w", err)
 			}
 		case currentTail.Height() < newTail.Height():
-			log.Infow(
-				"Tail header changed from %d to %d, pruning the diff...",
+			log.Infof(
+				"tail header changed from %d to %d, pruning the diff...",
 				currentTail,
 				newTail,
 			)
