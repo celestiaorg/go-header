@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -141,7 +142,7 @@ func (s *Subscriber[H]) Broadcast(ctx context.Context, header H, opts ...pubsub.
 		return err
 	}
 
-	// opts = append(opts, pubsub.WithValidatorData(header))
+	opts = append(opts, pubsub.WithValidatorData(header))
 	return s.topic.Publish(ctx, bin, opts...)
 }
 
@@ -150,12 +151,6 @@ func (s *Subscriber[H]) verifyMessage(
 	p peer.ID,
 	msg *pubsub.Message,
 ) (res pubsub.ValidationResult) {
-	// if msg.ValidatorData != nil {
-	// 	// means the message is local and was already validated
-	// 	// so simply accept it
-	// 	return pubsub.ValidationAccept
-	// }
-
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -164,22 +159,8 @@ func (s *Subscriber[H]) verifyMessage(
 		}
 	}()
 
-	hdr := header.New[H]()
-	err := hdr.UnmarshalBinary(msg.Data)
-	if err != nil {
-		log.Errorw("unmarshalling header",
-			"from", p.ShortString(),
-			"err", err)
-		s.metrics.reject(ctx)
-		return pubsub.ValidationReject
-	}
-	// ensure header validity
-	err = hdr.Validate()
-	if err != nil {
-		log.Errorw("invalid header",
-			"from", p.ShortString(),
-			"err", err)
-		s.metrics.reject(ctx)
+	hdr, ok := s.extractHeader(ctx, p, msg)
+	if !ok {
 		return pubsub.ValidationReject
 	}
 
@@ -197,8 +178,7 @@ func (s *Subscriber[H]) verifyMessage(
 	}
 
 	var verErr *header.VerifyError
-	err = s.verifier(ctx, hdr)
-	switch {
+	switch err := s.verifier(ctx, hdr); {
 	case errors.As(err, &verErr) && verErr.SoftFailure:
 		s.metrics.ignore(ctx)
 		return pubsub.ValidationIgnore
@@ -206,11 +186,37 @@ func (s *Subscriber[H]) verifyMessage(
 		s.metrics.reject(ctx)
 		return pubsub.ValidationReject
 	default:
+		// keep the valid header in the msg so Subscriptions can access it without
+		// additional unmarshalling
+		msg.ValidatorData = hdr
+		s.metrics.accept(ctx, len(msg.Data))
+		return pubsub.ValidationAccept
+	}
+}
+
+func (s *Subscriber[H]) extractHeader(ctx context.Context, p peer.ID, msg *pubsub.Message) (H, bool) {
+	if msg.ValidatorData != nil {
+		hdr, ok := msg.ValidatorData.(H)
+		if !ok {
+			panic(fmt.Sprintf("msg ValidatorData is of type %T", msg.ValidatorData))
+		}
+		return hdr, true
 	}
 
-	// keep the valid header in the msg so Subscriptions can access it without
-	// additional unmarshalling
-	msg.ValidatorData = hdr
-	s.metrics.accept(ctx, len(msg.Data))
-	return pubsub.ValidationAccept
+	hdr := header.New[H]()
+	if err := hdr.UnmarshalBinary(msg.Data); err != nil {
+		log.Errorw("unmarshalling header",
+			"from", p.ShortString(),
+			"err", err)
+		s.metrics.reject(ctx)
+		return hdr, false
+	}
+	if err := hdr.Validate(); err != nil {
+		log.Errorw("invalid header",
+			"from", p.ShortString(),
+			"err", err)
+		s.metrics.reject(ctx)
+		return hdr, false
+	}
+	return hdr, true
 }
