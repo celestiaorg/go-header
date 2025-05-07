@@ -57,15 +57,25 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	return s.subjectiveHead(ctx)
 }
 
+// Tail returns the current Tail header.
+//
+// If the underlying header store is not initialized/empty, it lazily performs subjective initialization
+// based on either estimated or preconfigured Tail.
+//
+// If the preconfigured Tail(SyncFromHash/Header) has changed upon Syncer restarts, it lazily sets the new Tail
+// and resolves the difference.
 func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 	tail, err := s.store.Tail(ctx)
 	switch {
 	case errors.Is(err, header.ErrEmptyStore):
-		// TODO(@Wondertan): This is a temporary solution requesting the head directly from the network instead of
-		//  calling general Head path. This is needed to ensure Tail is written to the store first.
+		// Store is empty, likely the first start - initialize.
+		log.Info("empty store, initializing...")
+		// TODO(@Wondertan): Requesting the head directly from the network instead of
+		//  calling general Head path. This is a temporary solution needed to ensure Tail is written to the store first
+		//  before Head. To be reworked by bsync.
 		head, err := s.head.Head(ctx)
 		if err != nil {
-			return head, err
+			return head, fmt.Errorf("requesting network head: %w", err)
 		}
 
 		switch {
@@ -101,24 +111,64 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 			return tail, fmt.Errorf("applying head from trusted peers: %w", err)
 		}
 
-	case !s.isTailActual(tail):
+		log.Infof("initialized with Tail %d and Head %d", tail.Height(), head.Height())
+
+		// TODO: Make sure all the metrics for this alternative subjective init path are added
+
+	case !tail.IsZero() && !s.isTailActual(tail):
+		// Configured Tail has changed - get a new one and resolve the diff
+
+		currentTail, newTail := tail, tail
+
 		if s.Params.SyncFromHash != nil {
-			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
+			// check first locally if the new Tail exists
+			newTail, err = s.store.Get(ctx, s.Params.SyncFromHash)
 			if err != nil {
-				return tail, fmt.Errorf(
-					"getting tail header by hash(%s): %w",
-					s.Params.SyncFromHash,
-					err,
-				)
+				// if for whatever reason Tail is not available locally, request the new one from the network.
+				newTail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
+				if err != nil {
+					return tail, fmt.Errorf(
+						"getting tail header by hash(%s): %w",
+						s.Params.SyncFromHash,
+						err,
+					)
+				}
 			}
 		} else if s.Params.SyncFromHeight != 0 {
-			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
+			// check first locally if the new Tail exists
+			newTail, err = s.store.GetByHeight(ctx, s.Params.SyncFromHeight)
 			if err != nil {
-				return tail, fmt.Errorf("getting tail header(%d): %w", s.Params.SyncFromHeight, err)
+				// if for whatever reason Tail is not available locally, request the new one from the network.
+				newTail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
+				if err != nil {
+					return tail, fmt.Errorf(
+						"getting tail header by hash(%s): %w",
+						s.Params.SyncFromHash,
+						err,
+					)
+				}
 			}
 		}
 
-		// TODO: Delete or sync up the diff
+		if currentTail.Height() > newTail.Height() {
+			log.Infow("tail header changed from %d to %d, syncing the diff...", currentTail, newTail)
+			// TODO(@Wondertan): This works but it assumes this code is only run before syncing routine starts.
+			//  If run after, it may race with other in prog syncs.
+			//  To be reworked by bsync.
+			err := s.doSync(ctx, newTail, currentTail)
+			if err != nil {
+				return tail, fmt.Errorf("syncing the diff between old and new Tail: %w", err)
+			}
+		} else if currentTail.Height() < newTail.Height() {
+			log.Infow("Tail header changed from %d to %d, pruning the diff...", currentTail, newTail)
+			err := s.store.DeleteTo(ctx, newTail.Height())
+			if err != nil {
+				return tail, fmt.Errorf("deleting headers up to newly configured Tail(%d): %w", newTail.Height(), err)
+			}
+		} else {
+			// equals case, must not happen
+			panic("currentTail == newTail")
+		}
 
 	case err != nil:
 		return tail, err
@@ -129,10 +179,6 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 
 // isTailActual checks if the given tail is actual based on the sync parameters.
 func (s *Syncer[H]) isTailActual(tail H) bool {
-	if tail.IsZero() {
-		return false
-	}
-
 	switch {
 	case s.Params.SyncFromHash == nil && s.Params.SyncFromHeight == 0:
 		// if both overrides are zero value, then we good with whatever tail there is

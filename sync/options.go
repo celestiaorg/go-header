@@ -101,3 +101,19 @@ func WithParams(params Parameters) Option {
 		*old = params
 	}
 }
+
+// WithSyncFromHash sets given header hash a starting point for syncing.
+// See [Parameters.SyncFromHash] for details.
+func WithSyncFromHash(hash header.Hash) Option {
+	return func(p *Parameters) {
+		p.SyncFromHash = hash
+	}
+}
+
+// WithSyncFromHeight sets given height a starting point for syncing.
+// See [Parameters.SyncFromHeight] for details.
+func WithSyncFromHeight(height uint64) Option {
+	return func(p *Parameters) {
+		p.SyncFromHeight = height
+	}
+}
