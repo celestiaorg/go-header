@@ -194,7 +194,8 @@ func (s *Subscriber[H]) verifyMessage(
 	}
 }
 
-func (s *Subscriber[H]) extractHeader(ctx context.Context, p peer.ID, msg *pubsub.Message) (H, bool) {
+func (s *Subscriber[H]) extractHeader(ctx context.Context, p peer.ID, msg *pubsub.Message,
+) (H, bool) {
 	if msg.ValidatorData != nil {
 		hdr, ok := msg.ValidatorData.(H)
 		if !ok {
