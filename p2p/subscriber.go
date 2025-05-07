@@ -159,8 +159,9 @@ func (s *Subscriber[H]) verifyMessage(
 		}
 	}()
 
-	hdr, ok := s.extractHeader(ctx, p, msg)
+	hdr, ok := s.extractHeader(p, msg)
 	if !ok {
+		s.metrics.reject(ctx)
 		return pubsub.ValidationReject
 	}
 
@@ -194,8 +195,7 @@ func (s *Subscriber[H]) verifyMessage(
 	}
 }
 
-func (s *Subscriber[H]) extractHeader(ctx context.Context, p peer.ID, msg *pubsub.Message,
-) (H, bool) {
+func (s *Subscriber[H]) extractHeader(p peer.ID, msg *pubsub.Message) (H, bool) {
 	if msg.ValidatorData != nil {
 		hdr, ok := msg.ValidatorData.(H)
 		if !ok {
@@ -209,14 +209,12 @@ func (s *Subscriber[H]) extractHeader(ctx context.Context, p peer.ID, msg *pubsu
 		log.Errorw("unmarshalling header",
 			"from", p.ShortString(),
 			"err", err)
-		s.metrics.reject(ctx)
 		return hdr, false
 	}
 	if err := hdr.Validate(); err != nil {
 		log.Errorw("invalid header",
 			"from", p.ShortString(),
 			"err", err)
-		s.metrics.reject(ctx)
 		return hdr, false
 	}
 	return hdr, true
