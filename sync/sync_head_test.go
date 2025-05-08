@@ -77,7 +77,10 @@ func TestSyncer_TailInit(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ds := dssync.MutexWrap(datastore.NewMapDatastore())
-			localStore, err := store.NewStore[*headertest.DummyHeader](ds, store.WithWriteBatchSize(1))
+			localStore, err := store.NewStore[*headertest.DummyHeader](
+				ds,
+				store.WithWriteBatchSize(1),
+			)
 			require.NoError(t, err)
 			err = localStore.Start(ctx)
 			require.NoError(t, err)
@@ -112,6 +115,8 @@ func TestSyncer_TailInit(t *testing.T) {
 			syncer.Params.SyncFromHash = expectedTail.Hash()
 			err = syncer.Start(ctx)
 			require.NoError(t, err)
+
+			time.Sleep(time.Millisecond * 10)
 
 			// ensure that the Syncer moved to the new tail after restart
 			storeTail, err = localStore.Tail(ctx)
