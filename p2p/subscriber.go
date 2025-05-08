@@ -159,8 +159,11 @@ func (s *Subscriber[H]) verifyMessage(
 		}
 	}()
 
-	hdr, ok := s.extractHeader(p, msg)
-	if !ok {
+	hdr, err := s.extractHeader(msg)
+	if err != nil {
+		log.Errorw("extracting header",
+			"from", p.ShortString(),
+			"err", err)
 		s.metrics.reject(ctx)
 		return pubsub.ValidationReject
 	}
@@ -195,27 +198,21 @@ func (s *Subscriber[H]) verifyMessage(
 	}
 }
 
-func (s *Subscriber[H]) extractHeader(p peer.ID, msg *pubsub.Message) (H, bool) {
+func (s *Subscriber[H]) extractHeader(msg *pubsub.Message) (H, error) {
 	if msg.ValidatorData != nil {
 		hdr, ok := msg.ValidatorData.(H)
 		if !ok {
 			panic(fmt.Sprintf("msg ValidatorData is of type %T", msg.ValidatorData))
 		}
-		return hdr, true
+		return hdr, nil
 	}
 
 	hdr := header.New[H]()
 	if err := hdr.UnmarshalBinary(msg.Data); err != nil {
-		log.Errorw("unmarshalling header",
-			"from", p.ShortString(),
-			"err", err)
-		return hdr, false
+		return hdr, err
 	}
 	if err := hdr.Validate(); err != nil {
-		log.Errorw("invalid header",
-			"from", p.ShortString(),
-			"err", err)
-		return hdr, false
+		return hdr, err
 	}
-	return hdr, true
+	return hdr, nil
 }
