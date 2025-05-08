@@ -149,10 +149,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	}
 
 	// cleanup caches
-	s.cache.Purge()
-	s.heightIndex.cache.Purge()
-	s.contiguousHead.Store(nil)
-	s.tailHeader.Store(nil)
+	s.deinit()
 	return s.metrics.Close()
 }
 
@@ -308,22 +305,23 @@ func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
 
 // DeleteTo implements [header.Store] interface.
 func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	var from uint64
-
-	if tailPtr := s.tailHeader.Load(); tailPtr != nil {
-		from = (*tailPtr).Height()
+	head, err := s.Head(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading head: %w", err)
 	}
-	if from >= to {
-		log.Debugf("header/store: attempt to delete empty range(%d, %d)", from, to)
-		return nil
-	}
-	if headPtr := s.contiguousHead.Load(); headPtr != nil {
-		if height := (*headPtr).Height(); to > height {
-			return fmt.Errorf("header/store: 'to' is higher then head (%d vs %d)", to, height)
-		}
+	if head.Height()+1 < to {
+		return fmt.Errorf("header/store: delete to %d beyond current head(%d)", to, head.Height())
 	}
 
-	if err := s.deleteRange(ctx, from, to); err != nil {
+	tail, err := s.Tail(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading tail: %w", err)
+	}
+	if tail.Height() >= to {
+		return fmt.Errorf("header/store: delete to %d below current tail(%d)", to, tail.Height())
+	}
+
+	if err := s.deleteRange(ctx, tail.Height(), to); err != nil {
 		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
 	}
 	return nil
@@ -343,7 +341,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("height index: %w", err)
 	}
 
-	newTail, err := s.updateTail(ctx, batch, to)
+	err = s.updateTail(ctx, batch, to)
 	if err != nil {
 		return fmt.Errorf("update tail: %w", err)
 	}
@@ -352,7 +350,6 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("delete commit: %w", err)
 	}
 
-	s.tailHeader.Store(&newTail)
 	return nil
 }
 
@@ -379,23 +376,43 @@ func (s *Store[H]) prepareDeleteRangeBatch(
 	return nil
 }
 
-func (s *Store[H]) updateTail(
-	ctx context.Context, batch datastore.Batch, to uint64,
-) (H, error) {
-	var zero H
-
+func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uint64) error {
 	newTail, err := s.getByHeight(ctx, to)
 	if err != nil {
 		if !errors.Is(err, header.ErrNotFound) {
-			return zero, fmt.Errorf("cannot fetch next tail: %w", err)
+			return fmt.Errorf("cannot fetch next tail: %w", err)
 		}
-		return zero, err
+
+		// TODO(@Wondertan): this is racy, but not critical
+		//  Will be eventually fixed by
+		//  https://github.com/celestiaorg/go-header/issues/263
+		head := *s.contiguousHead.Load()
+		if !head.IsZero() && to > head.Height() {
+			// this is the case where we have deleted all the headers
+			// deinit the store
+			s.deinit()
+
+			err = batch.Delete(ctx, headKey)
+			if err != nil {
+				return fmt.Errorf("deleting head in a batch: %w", err)
+			}
+			err = batch.Delete(ctx, tailKey)
+			if err != nil {
+				return fmt.Errorf("deleting tail in a batch: %w", err)
+			}
+
+			return nil
+		}
+
+		return err
 	}
 
 	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
-		return zero, fmt.Errorf("put tail in batch: %w", err)
+		return fmt.Errorf("put tail in batch: %w", err)
 	}
-	return newTail, nil
+
+	s.tailHeader.Store(&newTail)
+	return nil
 }
 
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
@@ -626,7 +643,7 @@ func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
 
 func (s *Store[H]) ensureInit(headers []H) {
 	headExist, tailExist := s.contiguousHead.Load() != nil, s.tailHeader.Load() != nil
-	if tailExist && headExist {
+	if len(headers) == 0 || (tailExist && headExist) {
 		return
 	} else if tailExist || headExist {
 		panic("header/store: head and tail must be both present or absent")
@@ -640,6 +657,14 @@ func (s *Store[H]) init(head, tail H) {
 	s.contiguousHead.Store(&head)
 	s.heightSub.Init(head.Height())
 	s.tailHeader.Store(&tail)
+}
+
+func (s *Store[H]) deinit() {
+	s.cache.Purge()
+	s.heightIndex.cache.Purge()
+	s.contiguousHead.Store(nil)
+	s.tailHeader.Store(nil)
+	s.heightSub.SetHeight(0)
 }
 
 func writeHeaderHashTo[H header.Header[H]](
