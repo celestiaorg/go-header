@@ -124,8 +124,8 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 		// Configured Tail has changed - get a new one and resolve the diff
 
 		currentTail, newTail := tail, tail
-
-		if s.Params.SyncFromHash != nil {
+		switch {
+		case s.Params.SyncFromHash != nil:
 			// check first locally if the new Tail exists
 			newTail, err = s.store.Get(ctx, s.Params.SyncFromHash)
 			if err != nil {
@@ -138,8 +138,16 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 						err,
 					)
 				}
+				err = s.store.Append(ctx, newTail)
+				if err != nil {
+					return tail, fmt.Errorf(
+						"appending the new tail header(%d): %w",
+						newTail.Height(),
+						err,
+					)
+				}
 			}
-		} else if s.Params.SyncFromHeight != 0 {
+		case s.Params.SyncFromHeight != 0:
 			// check first locally if the new Tail exists
 			newTail, err = s.store.GetByHeight(ctx, s.Params.SyncFromHeight)
 			if err != nil {
@@ -149,6 +157,14 @@ func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
 					return tail, fmt.Errorf(
 						"getting tail header by hash(%s): %w",
 						s.Params.SyncFromHash,
+						err,
+					)
+				}
+				err = s.store.Append(ctx, newTail)
+				if err != nil {
+					return tail, fmt.Errorf(
+						"appending the new tail header(%d): %w",
+						newTail.Height(),
 						err,
 					)
 				}
