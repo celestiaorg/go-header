@@ -7,8 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/celestiaorg/go-header/internal/otelattr"
-
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"go.opentelemetry.io/otel"
@@ -17,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/internal/otelattr"
 	p2p_pb "github.com/celestiaorg/go-header/p2p/pb"
 )
 
