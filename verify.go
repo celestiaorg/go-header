@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// VerifyRange verifies a range of adjacent untrusted Headers against trusted following general Header checks and
-// custom user-specific checks defined in [Verify].
+// VerifyRange verifies a range of adjacent untrusted Headers against trusted following general
+// Header checks and custom user-specific checks defined in [Verify].
 //
 // In case of error, returns verified sub-range of Headers and error.
 func VerifyRange[H Header[H]](trstd H, untrstdRange []H) ([]H, error) {
