@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -57,175 +56,6 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	return s.subjectiveHead(ctx)
 }
 
-// Tail returns the current Tail header.
-//
-// If the underlying header store is not initialized/empty, it lazily performs subjective initialization
-// based on either estimated or preconfigured Tail.
-//
-// If the preconfigured Tail(SyncFromHash/Header) has changed upon Syncer restarts, it lazily sets the new Tail
-// and resolves the difference.
-func (s *Syncer[H]) Tail(ctx context.Context) (H, error) {
-	tail, err := s.store.Tail(ctx)
-	switch {
-	case errors.Is(err, header.ErrEmptyStore):
-		// Store is empty, likely the first start - initialize.
-		log.Info("empty store, initializing...")
-		// TODO(@Wondertan): Copying the initialization logic here instead of calling the general Head path.
-		//  This is a temporary solution needed to ensure Tail is written to the store first before Head.
-		//  To be reworked by bsync.
-		head, err := s.head.Head(ctx)
-		if err != nil {
-			return head, fmt.Errorf("requesting network head: %w", err)
-		}
-		s.metrics.subjectiveInitialization(s.ctx)
-
-		switch {
-		case s.Params.SyncFromHash != nil:
-			tail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
-			if err != nil {
-				return tail, fmt.Errorf(
-					"getting tail header by hash(%s): %w",
-					s.Params.SyncFromHash,
-					err,
-				)
-			}
-		case s.Params.SyncFromHeight != 0:
-			tail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
-			if err != nil {
-				return tail, fmt.Errorf("getting tail header(%d): %w", s.Params.SyncFromHeight, err)
-			}
-		default:
-			tailHeight := estimateTail(head, s.Params.blockTime, s.Params.TrustingPeriod)
-			tail, err = s.getter.GetByHeight(ctx, tailHeight)
-			if err != nil {
-				return tail, fmt.Errorf("getting estimated tail header(%d): %w", tailHeight, err)
-			}
-		}
-
-		err = s.store.Append(ctx, tail)
-		if err != nil {
-			return tail, fmt.Errorf("appending tail header: %w", err)
-		}
-
-		err = s.incomingNetworkHead(ctx, head)
-		if err != nil {
-			return tail, fmt.Errorf("applying head from trusted peers: %w", err)
-		}
-
-		log.Infow(
-			"subjective initialization finished",
-			"tail_height",
-			tail.Height(),
-			"head_height",
-			head.Height(),
-		)
-
-	case !tail.IsZero() && !s.isTailActual(tail):
-		// Configured Tail has changed - get a new one and resolve the diff
-
-		currentTail, newTail := tail, tail
-		switch {
-		case s.Params.SyncFromHash != nil:
-			// check first locally if the new Tail exists
-			newTail, err = s.store.Get(ctx, s.Params.SyncFromHash)
-			if err != nil {
-				// if for whatever reason Tail is not available locally, request the new one from the network.
-				newTail, err = s.getter.Get(ctx, s.Params.SyncFromHash)
-				if err != nil {
-					return tail, fmt.Errorf(
-						"getting tail header by hash(%s): %w",
-						s.Params.SyncFromHash,
-						err,
-					)
-				}
-				err = s.store.Append(ctx, newTail)
-				if err != nil {
-					return tail, fmt.Errorf(
-						"appending the new tail header(%d): %w",
-						newTail.Height(),
-						err,
-					)
-				}
-			}
-		case s.Params.SyncFromHeight != 0:
-			// check first locally if the new Tail exists
-			newTail, err = s.store.GetByHeight(ctx, s.Params.SyncFromHeight)
-			if err != nil {
-				// if for whatever reason Tail is not available locally, request the new one from the network.
-				newTail, err = s.getter.GetByHeight(ctx, s.Params.SyncFromHeight)
-				if err != nil {
-					return tail, fmt.Errorf(
-						"getting tail header by hash(%s): %w",
-						s.Params.SyncFromHash,
-						err,
-					)
-				}
-				err = s.store.Append(ctx, newTail)
-				if err != nil {
-					return tail, fmt.Errorf(
-						"appending the new tail header(%d): %w",
-						newTail.Height(),
-						err,
-					)
-				}
-			}
-		}
-
-		switch {
-		case currentTail.Height() > newTail.Height():
-			log.Infof(
-				"tail header changed from %d to %d, syncing the diff...",
-				currentTail,
-				newTail,
-			)
-			// TODO(@Wondertan): This works but it assumes this code is only run before syncing routine starts.
-			//  If run after, it may race with other in prog syncs.
-			//  To be reworked by bsync.
-			err := s.doSync(ctx, newTail, currentTail)
-			if err != nil {
-				return tail, fmt.Errorf("syncing the diff between old and new Tail: %w", err)
-			}
-		case currentTail.Height() < newTail.Height():
-			log.Infof(
-				"tail header changed from %d to %d, pruning the diff...",
-				currentTail,
-				newTail,
-			)
-			err := s.store.DeleteTo(ctx, newTail.Height())
-			if err != nil {
-				return tail, fmt.Errorf(
-					"deleting headers up to newly configured Tail(%d): %w",
-					newTail.Height(),
-					err,
-				)
-			}
-		default:
-			// equals case, must not happen
-			panic("currentTail == newTail")
-		}
-
-	case err != nil:
-		return tail, err
-	}
-
-	return tail, nil
-}
-
-// isTailActual checks if the given tail is actual based on the sync parameters.
-func (s *Syncer[H]) isTailActual(tail H) bool {
-	switch {
-	case s.Params.SyncFromHash == nil && s.Params.SyncFromHeight == 0:
-		// if both overrides are zero value, then we good with whatever tail there is
-		return true
-	case s.Params.SyncFromHash != nil && bytes.Equal(s.Params.SyncFromHash, tail.Hash()):
-		return true
-	case s.Params.SyncFromHeight != 0 && s.Params.SyncFromHeight == tail.Height():
-		return true
-	default:
-		return false
-	}
-}
-
 // subjectiveHead returns the latest known local header that is not expired(within trusting period).
 // If the header is expired, it is retrieved from a trusted peer without validation;
 // in other words, an automatic subjective initialization is performed.
@@ -242,34 +72,41 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	storeHead, err := s.store.Head(ctx)
 	switch {
 	case errors.Is(err, header.ErrEmptyStore):
-		log.Info("no stored head, initializing...")
+		log.Info("empty store, initializing...")
+		s.metrics.subjectiveInitialization(s.ctx)
 	case !storeHead.IsZero() && isExpired(storeHead, s.Params.TrustingPeriod):
 		log.Infow("stored head header expired", "height", storeHead.Height())
 	default:
 		return storeHead, err
 	}
-
-	trustHead, err := s.head.Head(ctx)
+	// fetch a new head from trusted peers if not available locally
+	newHead, err := s.head.Head(ctx)
 	if err != nil {
-		return trustHead, err
+		return newHead, err
 	}
-	s.metrics.subjectiveInitialization(s.ctx)
-	// and set it as the new subjective head without validation,
-	// or, in other words, do 'automatic subjective initialization'
-	// NOTE: we avoid validation as the head expired to prevent possibility of the Long-Range Attack
-	s.setSubjectiveHead(ctx, trustHead)
 	switch {
-	default:
-		log.Infow("subjective initialization finished", "height", trustHead.Height())
-		return trustHead, nil
-	case isExpired(trustHead, s.Params.TrustingPeriod):
-		log.Warnw("subjective initialization with an expired header", "height", trustHead.Height())
-	case !isRecent(trustHead, s.Params.blockTime, s.Params.recencyThreshold):
-		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
+	case isExpired(newHead, s.Params.TrustingPeriod):
+		// forbid initializing off an expired header
+		err := fmt.Errorf("subjective initialization with an expired header(%d)", newHead.Height())
+		log.Error(err, "\n trusted peers are out of sync")
+		s.metrics.trustedPeersOutOufSync(s.ctx)
+		return newHead, err
+	case !isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold):
+		log.Warnw("subjective initialization with not recent header", "height", newHead.Height())
+		s.metrics.trustedPeersOutOufSync(s.ctx)
 	}
-	log.Warn("trusted peer is out of sync")
-	s.metrics.trustedPeersOutOufSync(s.ctx)
-	return trustHead, nil
+
+	// and set the fetched head as the new subjective head validating it against the tail
+	// or, in other words, do 'automatic subjective initialization'
+	err = s.incomingNetworkHead(ctx, newHead)
+	if err != nil {
+		err = fmt.Errorf("subjective initialization failed for head(%d): %w", newHead.Height(), err)
+		log.Error(err)
+		return newHead, err
+	}
+
+	log.Infow("subjective initialization finished", "head", newHead.Height())
+	return newHead, nil
 }
 
 // setSubjectiveHead takes already validated head and sets it as the new sync target.
@@ -307,7 +144,15 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
 
-	err := s.verify(ctx, head)
+	// TODO(@Wondertan): We need to ensure Tail is available before verification for subj init case and this is fine here
+	//  however, check if that's ok to trigger Tail moves on network header that hasn't been verified yet
+	//  To be reworked by bsync.
+	_, err := s.subjectiveTail(ctx, head)
+	if err != nil {
+		return err
+	}
+
+	err = s.verify(ctx, head)
 	if err != nil {
 		return err
 	}
@@ -425,17 +270,4 @@ func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Dur
 		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
 	}
 	return time.Since(header.Time()) <= recencyThreshold
-}
-
-func estimateTail[H header.Header[H]](
-	head H,
-	blockTime, trustingPeriod time.Duration,
-) (height uint64) {
-	headersToRetain := uint64(trustingPeriod / blockTime) //nolint:gosec
-
-	if headersToRetain >= head.Height() {
-		return 1
-	}
-	tail := head.Height() - headersToRetain
-	return tail
 }
