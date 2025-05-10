@@ -310,7 +310,16 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 		return fmt.Errorf("header/store: reading head: %w", err)
 	}
 	if head.Height()+1 < to {
-		return fmt.Errorf("header/store: delete to %d beyond current head(%d)", to, head.Height())
+		_, err := s.getByHeight(ctx, to)
+		if err != nil {
+			return fmt.Errorf(
+				"header/store: delete to %d beyond current head(%d)",
+				to,
+				head.Height(),
+			)
+		}
+
+		//  if `to` is bigger than current head and is stored - allow delete making `to` a new head
 	}
 
 	tail, err := s.Tail(ctx)
@@ -360,7 +369,7 @@ func (s *Store[H]) prepareDeleteRangeBatch(
 		hash, err := s.heightIndex.HashByHeight(ctx, h)
 		if err != nil {
 			if errors.Is(err, datastore.ErrNotFound) {
-				log.Errorw("removing non-existent header", "height", h)
+				log.Warnw("removing non-existent header", "height", h)
 				continue
 			}
 			return fmt.Errorf("hash by height(%d): %w", h, err)
@@ -377,41 +386,53 @@ func (s *Store[H]) prepareDeleteRangeBatch(
 }
 
 func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+	head, err := s.Head(ctx)
+	if err != nil {
+		return err
+	}
+
 	newTail, err := s.getByHeight(ctx, to)
 	if err != nil {
 		if !errors.Is(err, header.ErrNotFound) {
 			return fmt.Errorf("cannot fetch next tail: %w", err)
 		}
 
+		if to <= head.Height() {
+			return err
+		}
+
 		// TODO(@Wondertan): this is racy, but not critical
 		//  Will be eventually fixed by
 		//  https://github.com/celestiaorg/go-header/issues/263
-		head := *s.contiguousHead.Load()
-		if !head.IsZero() && to > head.Height() {
-			// this is the case where we have deleted all the headers
-			// deinit the store
-			s.deinit()
+		// this is the case where we have deleted all the headers
+		// deinit the store
+		s.deinit()
 
-			err = batch.Delete(ctx, headKey)
-			if err != nil {
-				return fmt.Errorf("deleting head in a batch: %w", err)
-			}
-			err = batch.Delete(ctx, tailKey)
-			if err != nil {
-				return fmt.Errorf("deleting tail in a batch: %w", err)
-			}
-
-			return nil
+		err = batch.Delete(ctx, headKey)
+		if err != nil {
+			return fmt.Errorf("deleting head in a batch: %w", err)
+		}
+		err = batch.Delete(ctx, tailKey)
+		if err != nil {
+			return fmt.Errorf("deleting tail in a batch: %w", err)
 		}
 
-		return err
+		return nil
 	}
 
 	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
 		return fmt.Errorf("put tail in batch: %w", err)
 	}
-
 	s.tailHeader.Store(&newTail)
+
+	// update head as well if head, if delete went over it
+	if to > head.Height() {
+		if err := writeHeaderHashTo(ctx, batch, newTail, headKey); err != nil {
+			return fmt.Errorf("put tail in batch: %w", err)
+		}
+		s.contiguousHead.Store(&newTail)
+		s.advanceContiguousHead(ctx, newTail.Height())
+	}
 	return nil
 }
 
