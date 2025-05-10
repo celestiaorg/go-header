@@ -435,8 +435,8 @@ func (s *Store[H]) flushLoop() {
 		s.pending.Append(headers...)
 		// always inform heightSub about new headers seen.
 		s.heightSub.Notify(getHeights(headers...)...)
-		// advance contiguousHead if we don't have gaps.
-		s.advanceContiguousHead(ctx, s.heightSub.Height())
+		// advance head and tail if we don't have gaps.
+		s.advanceHeadAndTail(ctx)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -550,33 +550,53 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// advanceContiguousHead updates contiguousHead and heightSub if a higher
-// contiguous header exists on a disk.
-func (s *Store[H]) advanceContiguousHead(ctx context.Context, height uint64) {
-	newHead := s.nextContiguousHead(ctx, height)
-	if newHead.IsZero() || newHead.Height() <= height {
-		return
+// advanceHeadAndTail moves contiguous Head and Tail if a new or older exists respectively.
+// It looks throw caches, pending headers and datastore to find the new Head and Tail.
+// TODO(@Wondertan): Beware of the performance penalty of this approach, which always makes a at least one
+// datastore lookup for both Tail and Head.
+func (s *Store[H]) advanceHeadAndTail(ctx context.Context) {
+	newHead, changed := s.nextHead(ctx)
+	if changed {
+		s.contiguousHead.Store(&newHead)
+		s.heightSub.SetHeight(newHead.Height())
+		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
+		s.metrics.newHead(newHead.Height())
 	}
 
-	s.contiguousHead.Store(&newHead)
-	s.heightSub.SetHeight(newHead.Height())
-	log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
-	s.metrics.newHead(newHead.Height())
+	newTail, changed := s.nextTail(ctx)
+	if changed {
+		s.tailHeader.Store(&newTail)
+		log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
+		// TODO(@Wondertan): tail metric?
+	}
 }
 
-// nextContiguousHead iterates up header by header until it finds a gap.
-// if height+1 header not found returns a default header.
-func (s *Store[H]) nextContiguousHead(ctx context.Context, height uint64) H {
-	var newHead H
+// nextHead finds the new contiguous Head by iterating the current Head up until the newer height Head is found.
+// Returns true if the newer one was found.
+func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
+	head = *s.contiguousHead.Load()
 	for {
-		height++
-		h, err := s.getByHeight(ctx, height)
+		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
-			break
+			return head, changed
 		}
-		newHead = h
+		head = h
+		changed = true
 	}
-	return newHead
+}
+
+// nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
+// Returns true if the older one was found.
+func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
+	tail = *s.tailHeader.Load()
+	for {
+		h, err := s.getByHeight(ctx, tail.Height()-1)
+		if err != nil {
+			return tail, changed
+		}
+		tail = h
+		changed = true
+	}
 }
 
 func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {

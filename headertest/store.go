@@ -28,7 +28,8 @@ func NewDummyStore(t *testing.T) *Store[*DummyHeader] {
 func NewStore[H header.Header[H]](_ *testing.T, gen Generator[H], numHeaders int) *Store[H] {
 	store := &Store[H]{
 		Headers:    make(map[uint64]H),
-		HeadHeight: 0,
+		HeadHeight: 1,
+		TailHeight: 1,
 	}
 
 	for i := 0; i < numHeaders; i++ {
