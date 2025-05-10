@@ -192,6 +192,39 @@ func TestStore_Append(t *testing.T) {
 	}, time.Second, time.Millisecond)
 }
 
+func TestStore_Append_advanceTail(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	missing := suite.GenDummyHeaders(10)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(4))
+
+	// assert Tail is beyond missing headers
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tail.Height(), suite.Head().Height())
+
+	// append the first 5 headers creating a gap, and assert Tail is still beyond missing headers
+	err = store.Append(ctx, missing[0:5]...)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+	tail, err = store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tail.Height(), suite.Head().Height())
+
+	// append the remaining 5 headers filling the gap, and assert Tail advanced over the missing headers
+	// until the very first one
+	err = store.Append(ctx, missing[5:10]...)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+	tail, err = store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, tail.Height(), missing[0].Height())
+}
+
 func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
