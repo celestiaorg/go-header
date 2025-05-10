@@ -567,7 +567,7 @@ func (s *Store[H]) advanceHeadAndTail(ctx context.Context) {
 	if changed {
 		s.tailHeader.Store(&newTail)
 		log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
-		// TODO(@Wondertan): tail metric?
+		s.metrics.newTail(newTail.Height())
 	}
 }
 
