@@ -161,7 +161,7 @@ func (s *Subscriber[H]) verifyMessage(
 
 	hdr, err := s.extractHeader(msg)
 	if err != nil {
-		log.Errorw("extracting header",
+		log.Errorw("invalid header",
 			"from", p.ShortString(),
 			"err", err)
 		s.metrics.reject(ctx)
