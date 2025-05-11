@@ -14,7 +14,8 @@ import (
 // * Flush
 
 // subjectiveTail returns the current Tail header.
-// It ensures the Tail is actual and valid according to Parameters.
+// Lazily fetching it if it doesn't exist locally or moving it to a different height.
+// Moving is done if either parameters are changed or tail moved outside a pruning window.
 func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 	tail, err := s.store.Tail(ctx)
 	if err != nil && !errors.Is(err, header.ErrEmptyStore) {
@@ -32,7 +33,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 			fetched = true
 		}
 	} else if tailHeight, outdated := s.isTailHeightOutdated(tail); outdated {
-		// hack for the case with necessary tail in the future avoiding heightSub
+		// hack for the case with tailHeight > store.Height avoiding heightSub
 		storeCtx, cancel := context.WithTimeout(ctx, time.Second)
 		tail, err = s.store.GetByHeight(storeCtx, tailHeight)
 		cancel()
@@ -95,6 +96,9 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 	return tail, nil
 }
 
+// moveTail moves the Tail to be the given header.
+// It will prune the store if the new Tail is higher than the old one or
+// sync up if the new Tail is lower than the old one.
 func (s *Syncer[H]) moveTail(ctx context.Context, new H) error {
 	old, err := s.store.Tail(ctx)
 	if errors.Is(err, header.ErrEmptyStore) {
