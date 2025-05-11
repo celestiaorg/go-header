@@ -211,13 +211,22 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 		return zero, errors.New("header/store: height must be bigger than zero")
 	}
 
-	if h, err := s.getByHeight(ctx, height); err == nil {
+	h, err := s.getByHeight(ctx, height)
+	switch {
+	case err == nil:
 		return h, nil
+	case !errors.Is(err, header.ErrNotFound):
+		return zero, err
+	}
+
+	if tail, _ := s.Tail(ctx); !tail.IsZero() && height < tail.Height() {
+		// avoid heightSub and additional lookup if the requested 'height' is lower than the Tail
+		return zero, err
 	}
 
 	// if the requested 'height' was not yet published
 	// we subscribe to it
-	err := s.heightSub.Wait(ctx, height)
+	err = s.heightSub.Wait(ctx, height)
 	if err != nil && !errors.Is(err, errElapsedHeight) {
 		return zero, err
 	}
