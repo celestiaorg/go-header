@@ -16,8 +16,10 @@ var meter = otel.Meter("header/store")
 
 type metrics struct {
 	headHeight     atomic.Uint64
+	tailHeight     atomic.Uint64
 	headHeightInst metric.Int64ObservableGauge
-	headHeightReg  metric.Registration
+	tailHeightInst metric.Int64ObservableGauge
+	heightReg      metric.Registration
 
 	flushTimeInst metric.Float64Histogram
 	readTimeInst  metric.Float64Histogram
@@ -34,7 +36,14 @@ func newMetrics() (m *metrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.headHeightReg, err = meter.RegisterCallback(m.observeHeight, m.headHeightInst)
+	m.tailHeightInst, err = meter.Int64ObservableGauge(
+		"hdr_store_tail_height_gauge",
+		metric.WithDescription("current header store tail height"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	m.heightReg, err = meter.RegisterCallback(m.observeHeight, m.headHeightInst, m.tailHeightInst)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +79,29 @@ func (m *metrics) newHead(height uint64) {
 	})
 }
 
+func (m *metrics) newTail(height uint64) {
+	m.observe(context.Background(), func(context.Context) {
+		m.headHeight.Store(height)
+	})
+}
+
 func (m *metrics) observeHeight(_ context.Context, obs metric.Observer) error {
-	height := m.headHeight.Load()
-	if height > math.MaxInt64 {
-		return fmt.Errorf("height overflows int64: %d", height)
+	headHeight := m.headHeight.Load()
+	if headHeight > math.MaxInt64 {
+		return fmt.Errorf("height overflows int64: %d", headHeight)
 	}
 
-	obs.ObserveInt64(m.headHeightInst, int64(height))
+	tailHeight := m.tailHeight.Load()
+	if tailHeight > headHeight {
+		return fmt.Errorf(
+			"tail height is bigger then head height: %d vs %d",
+			tailHeight,
+			headHeight,
+		)
+	}
+
+	obs.ObserveInt64(m.headHeightInst, int64(headHeight))
+	obs.ObserveInt64(m.tailHeightInst, int64(tailHeight)) //nolint:gosec
 	return nil
 }
 
@@ -124,5 +149,5 @@ func (m *metrics) Close() error {
 		return nil
 	}
 
-	return m.headHeightReg.Unregister()
+	return m.heightReg.Unregister()
 }
