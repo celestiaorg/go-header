@@ -576,6 +576,7 @@ func (s *Store[H]) advanceHeadAndTail(ctx context.Context) {
 func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 	head, err := s.Head(ctx)
 	if err != nil {
+		log.Errorw("cannot load head", "err", err)
 		return head, false
 	}
 
@@ -594,6 +595,7 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	tail, err := s.Tail(ctx)
 	if err != nil {
+		log.Errorw("cannot load tail", "err", err)
 		return tail, false
 	}
 

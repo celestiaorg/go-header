@@ -37,7 +37,7 @@ func newMetrics() (m *metrics, err error) {
 		return nil, err
 	}
 	m.tailHeightInst, err = meter.Int64ObservableGauge(
-		"tail_store_head_height_gauge",
+		"hdr_store_tail_height_gauge",
 		metric.WithDescription("current header store tail height"),
 	)
 	if err != nil {
