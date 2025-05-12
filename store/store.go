@@ -319,7 +319,7 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 			)
 		}
 
-		//  if `to` is bigger than current head and is stored - allow delete making `to` a new head
+		//  if `to` is bigger than the current head and is stored - allow delete, making `to` a new head
 	}
 
 	tail, err := s.Tail(ctx)
@@ -398,7 +398,7 @@ func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uin
 		}
 
 		if to <= head.Height() {
-			return err
+			return fmt.Errorf("attempt to delete to %d: %w", to, header.ErrNotFound)
 		}
 
 		// TODO(@Wondertan): this is racy, but not critical
