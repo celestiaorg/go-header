@@ -536,8 +536,7 @@ func TestStore_DeleteTo(t *testing.T) {
 		{
 			name:      "no-op delete request",
 			to:        5,
-			wantTail:  14,
-			wantError: false,
+			wantError: true,
 		},
 		{
 			name:      "valid delete request",
@@ -547,8 +546,7 @@ func TestStore_DeleteTo(t *testing.T) {
 		},
 		{
 			name:      "higher than head",
-			to:        1055,
-			wantTail:  30,
+			to:        103,
 			wantError: true,
 		},
 	}
@@ -582,9 +580,99 @@ func TestStore_DeleteTo(t *testing.T) {
 
 			tail, err := store.Tail(ctx)
 			require.NoError(t, err)
-			require.EqualValues(t, tail.Height(), tt.wantTail)
+			require.EqualValues(t, tt.wantTail, tail.Height())
 		})
 	}
+}
+
+func TestStore_DeleteTo_EmptyStore(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(100)...)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+
+	err = store.DeleteTo(ctx, 101)
+	require.NoError(t, err)
+
+	// assert store is empty
+	tail, err := store.Tail(ctx)
+	assert.Nil(t, tail)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
+	head, err := store.Head(ctx)
+	assert.Nil(t, head)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
+
+	// assert that it is still empty even after restart
+	err = store.Stop(ctx)
+	require.NoError(t, err)
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	tail, err = store.Tail(ctx)
+	assert.Nil(t, tail)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
+	head, err = store.Head(ctx)
+	assert.Nil(t, head)
+	assert.ErrorIs(t, err, header.ErrEmptyStore)
+}
+
+func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(100)...)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+
+	gap := suite.GenDummyHeaders(10)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(10)...)
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+
+	err = store.DeleteTo(ctx, 111)
+	require.NoError(t, err)
+
+	// assert store is not empty
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, gap[len(gap)-1].Height()+1, tail.Height())
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, suite.Head().Height(), head.Height())
+
+	// assert that it is still not empty after restart
+	err = store.Stop(ctx)
+	require.NoError(t, err)
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	tail, err = store.Tail(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, gap[len(gap)-1].Height()+1, tail.Height())
+	head, err = store.Head(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, suite.Head().Height(), head.Height())
 }
 
 func TestStorePendingCacheMiss(t *testing.T) {
