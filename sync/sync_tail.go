@@ -10,9 +10,6 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-// TODO:
-// * Flush
-
 // subjectiveTail returns the current Tail header.
 // Lazily fetching it if it doesn't exist locally or moving it to a different height.
 // Moving is done if either parameters are changed or tail moved outside a pruning window.
@@ -84,9 +81,6 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 		if err := s.store.Append(ctx, tail); err != nil {
 			return tail, fmt.Errorf("appending tail header: %w", err)
 		}
-
-		time.Sleep(time.Millisecond * 1000)
-		// TODO: Flush
 	}
 
 	if err := s.moveTail(ctx, tail); err != nil {
@@ -110,7 +104,7 @@ func (s *Syncer[H]) moveTail(ctx context.Context, new H) error {
 
 	switch {
 	case old.Height() < new.Height():
-		log.Infof("move tail up from %d to %d, pruning the diff...", old, new)
+		log.Infof("move tail up from %d to %d, pruning the diff...", old.Height(), new.Height())
 		err := s.store.DeleteTo(ctx, new.Height())
 		if err != nil {
 			return fmt.Errorf(
@@ -120,7 +114,7 @@ func (s *Syncer[H]) moveTail(ctx context.Context, new H) error {
 			)
 		}
 	case old.Height() > new.Height():
-		log.Infof("move tail down from %d to %d, syncing the diff...", old, new)
+		log.Infof("move tail down from %d to %d, syncing the diff...", old.Height(), new.Height())
 
 		// TODO(@Wondertan): This works but it assumes this code is only run before syncing routine starts.
 		//  If run after, it may race with other in prog syncs.

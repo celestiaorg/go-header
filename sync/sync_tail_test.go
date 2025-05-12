@@ -34,6 +34,7 @@ func TestSyncer_TailReconfiguration(t *testing.T) {
 		localStore,
 		headertest.NewDummySubscriber(),
 		WithBlockTime(time.Second*6),
+		WithRecencyThreshold(time.Nanosecond),
 	)
 	require.NoError(t, err)
 
@@ -125,6 +126,7 @@ func TestSyncer_TailInitialization(t *testing.T) {
 				localStore,
 				headertest.NewDummySubscriber(),
 				WithBlockTime(time.Second*6),
+				WithRecencyThreshold(time.Nanosecond),
 				test.option,
 			)
 			require.NoError(t, err)
