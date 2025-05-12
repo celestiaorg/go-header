@@ -424,6 +424,7 @@ func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uin
 		return fmt.Errorf("put tail in batch: %w", err)
 	}
 	s.tailHeader.Store(&newTail)
+	// do not recede tail, it must be equal to `to`
 
 	// update head as well if head, if delete went over it
 	if to > head.Height() {
@@ -431,7 +432,7 @@ func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uin
 			return fmt.Errorf("put tail in batch: %w", err)
 		}
 		s.contiguousHead.Store(&newTail)
-		s.advanceContiguousHead(ctx, newTail.Height())
+		s.advanceHead(ctx)
 	}
 	return nil
 }
@@ -474,7 +475,10 @@ func (s *Store[H]) flushLoop() {
 		// always inform heightSub about new headers seen.
 		s.heightSub.Notify(getHeights(headers...)...)
 		// advance head and tail if we don't have gaps.
-		s.advanceHeadAndTail(ctx)
+		// TODO(@Wondertan): Beware of the performance penalty of this approach, which always makes a at least one
+		// datastore lookup for both Tail and Head.
+		s.advanceHead(ctx)
+		s.recedeTail(ctx)
 		// don't flush and continue if pending batch is not grown enough,
 		// and Store is not stopping(headers == nil)
 		if s.pending.Len() < s.Params.WriteBatchSize && headers != nil {
@@ -588,11 +592,9 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	return data, nil
 }
 
-// advanceHeadAndTail moves contiguous Head and Tail if a new or older exists respectively.
-// It looks throw caches, pending headers and datastore to find the new Head and Tail.
-// TODO(@Wondertan): Beware of the performance penalty of this approach, which always makes a at least one
-// datastore lookup for both Tail and Head.
-func (s *Store[H]) advanceHeadAndTail(ctx context.Context) {
+// advanceHead moves contiguous Head forward if a newer one exists.
+// It looks throw caches, pending headers and datastore
+func (s *Store[H]) advanceHead(ctx context.Context) {
 	newHead, changed := s.nextHead(ctx)
 	if changed {
 		s.contiguousHead.Store(&newHead)
@@ -600,7 +602,11 @@ func (s *Store[H]) advanceHeadAndTail(ctx context.Context) {
 		log.Infow("new head", "height", newHead.Height(), "hash", newHead.Hash())
 		s.metrics.newHead(newHead.Height())
 	}
+}
 
+// recedeTail moves contiguous Tail back if an older one exists.
+// It looks throw caches, pending headers and datastore.
+func (s *Store[H]) recedeTail(ctx context.Context) {
 	newTail, changed := s.nextTail(ctx)
 	if changed {
 		s.tailHeader.Store(&newTail)
