@@ -7,11 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	otelattr "github.com/celestiaorg/go-header/internal/otelattr"
 )
 
 var meter = otel.Meter("header/sync")
