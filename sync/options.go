@@ -120,3 +120,10 @@ func WithSyncFromHeight(height uint64) Option {
 		p.SyncFromHeight = height
 	}
 }
+
+// WithPruningWindow sets the duration within which headers will be retained before being pruned.
+func WithPruningWindow(window time.Duration) Option {
+	return func(p *Parameters) {
+		p.PruningWindow = window
+	}
+}
