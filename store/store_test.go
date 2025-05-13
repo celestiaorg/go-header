@@ -675,6 +675,32 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	assert.Equal(t, suite.Head().Height(), head.Height())
 }
 
+func TestStore_DeleteTo_Synchronized(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	err := store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	err = store.DeleteTo(ctx, 100)
+	require.NoError(t, err)
+
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 100, tail.Height())
+}
+
 func TestStorePendingCacheMiss(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
