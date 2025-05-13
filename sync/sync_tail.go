@@ -10,6 +10,11 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
+// TODO:
+//  * Refactor tests
+//  * Write tests for estimation
+//  * Ensure sync always happen on start
+
 // subjectiveTail returns the current Tail header.
 // Lazily fetching it if it doesn't exist locally or moving it to a different height.
 // Moving is done if either parameters are changed or tail moved outside a pruning window.
@@ -30,11 +35,10 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 			fetched = true
 		}
 	} else if tailHeight, outdated := s.isTailHeightOutdated(tail); outdated {
-		// hack for the case with tailHeight > store.Height avoiding heightSub
-		storeCtx, cancel := context.WithTimeout(ctx, time.Second)
-		tail, err = s.store.GetByHeight(storeCtx, tailHeight)
-		cancel()
-		if err != nil {
+		if tailHeight <= s.store.Height() {
+			tail, err = s.store.GetByHeight(ctx, tailHeight)
+		}
+		if err != nil || tailHeight != tail.Height() {
 			tail, err = s.getter.GetByHeight(ctx, tailHeight)
 			if err != nil {
 				return tail, fmt.Errorf("getting SyncFromHeight tail(%d): %w", tailHeight, err)
@@ -52,7 +56,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 			fetched = true
 		} else {
 			// have a known Tail - estimate basing on it.
-			cutoffTime := head.Time().UTC().Add(-s.Params.TrustingPeriod)
+			cutoffTime := head.Time().UTC().Add(-s.Params.PruningWindow)
 			diff := cutoffTime.Sub(tail.Time().UTC())
 			if diff <= 0 {
 				// current tail is relevant as is

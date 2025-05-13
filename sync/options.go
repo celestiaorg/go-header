@@ -38,6 +38,8 @@ type Parameters struct {
 	//
 	// SyncFromHeight has lower priority than SyncFromHash.
 	SyncFromHeight uint64
+	// PruningWindow defines the duration within which headers will be retained before being pruned.
+	PruningWindow time.Duration
 	// blockTime provides a reference point for the Syncer to determine
 	// whether its subjective head is outdated.
 	// Keeping it private to disable serialization for it.
@@ -54,6 +56,7 @@ type Parameters struct {
 func DefaultParameters() Parameters {
 	return Parameters{
 		TrustingPeriod: 336 * time.Hour, // tendermint's default trusting period
+		PruningWindow:  337 * time.Hour,
 	}
 }
 

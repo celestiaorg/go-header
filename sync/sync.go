@@ -110,7 +110,6 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 // Stop stops Syncer.
 func (s *Syncer[H]) Stop(context.Context) error {
 	s.cancel()
-	s.store.Reset()
 	return s.metrics.Close()
 }
 

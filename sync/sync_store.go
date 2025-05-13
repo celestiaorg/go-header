@@ -28,10 +28,6 @@ type syncStore[H header.Header[H]] struct {
 	head atomic.Pointer[H]
 }
 
-func (s *syncStore[H]) Reset() {
-	s.head.Store(nil)
-}
-
 func (s *syncStore[H]) Head(ctx context.Context) (H, error) {
 	if headPtr := s.head.Load(); headPtr != nil {
 		return *headPtr, nil

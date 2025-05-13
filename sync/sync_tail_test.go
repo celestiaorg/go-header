@@ -40,6 +40,9 @@ func TestSyncer_TailReconfiguration(t *testing.T) {
 
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
+	time.Sleep(time.Millisecond * 10)
+	syncer.SyncWait(ctx)
+
 	err = syncer.Stop(ctx)
 	require.NoError(t, err)
 	time.Sleep(time.Millisecond * 10)
@@ -48,7 +51,6 @@ func TestSyncer_TailReconfiguration(t *testing.T) {
 
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
-	time.Sleep(time.Millisecond * 10)
 
 	storeTail, err := localStore.Tail(ctx)
 	require.NoError(t, err)
