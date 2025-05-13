@@ -66,7 +66,6 @@ func TestSyncerWithSubscriber(t *testing.T) {
 	assert.Equal(t, expectedHeader.Height(), header.Height())
 	assert.Equal(t, expectedHeader.Hash(), header.Hash())
 
-	syncer.sync(ctx)
 	state := syncer.State()
 	require.NoError(t, err)
 	assert.Equal(t, expectedHeader.Height(), state.Height)
