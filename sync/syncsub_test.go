@@ -1,22 +1,17 @@
-package sync_test
+package sync
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 	"github.com/celestiaorg/go-header/p2p"
-	"github.com/celestiaorg/go-header/store"
-	"github.com/celestiaorg/go-header/sync"
 )
 
 func TestSyncerWithSubscriber(t *testing.T) {
@@ -47,13 +42,10 @@ func TestSyncerWithSubscriber(t *testing.T) {
 	require.NoError(t, err)
 
 	head := suite.Head()
-	syncer, err := sync.NewSyncer(
+	syncer, err := NewSyncer(
 		newTestStore(t, ctx, head),
 		newTestStore(t, ctx, head),
 		p2pSub,
-		sync.WithBlockTime(time.Nanosecond),
-		sync.WithRecencyThreshold(time.Nanosecond),
-		sync.WithTrustingPeriod(time.Nanosecond),
 	)
 	require.NoError(t, err)
 	err = syncer.Start(ctx)
@@ -64,8 +56,7 @@ func TestSyncerWithSubscriber(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	skipHeaders := 10
-	expectedHeader := suite.GenDummyHeaders(skipHeaders)[skipHeaders-1]
+	expectedHeader := suite.GenDummyHeaders(1)[0]
 
 	err = p2pSub.Broadcast(ctx, expectedHeader)
 	require.NoError(t, err)
@@ -75,17 +66,8 @@ func TestSyncerWithSubscriber(t *testing.T) {
 	assert.Equal(t, expectedHeader.Height(), header.Height())
 	assert.Equal(t, expectedHeader.Hash(), header.Hash())
 
-	head, err = syncer.Head(ctx)
+	syncer.sync(ctx)
+	state := syncer.State()
 	require.NoError(t, err)
-	assert.Equal(t, expectedHeader.Height(), head.Height())
-	assert.Equal(t, expectedHeader.Hash(), head.Hash())
-}
-
-func newTestStore(
-	tb testing.TB,
-	ctx context.Context,
-	head *headertest.DummyHeader,
-) header.Store[*headertest.DummyHeader] {
-	ds := dssync.MutexWrap(datastore.NewMapDatastore())
-	return store.NewTestStore(tb, ctx, ds, head)
+	assert.Equal(t, expectedHeader.Height(), state.Height)
 }
