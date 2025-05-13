@@ -63,7 +63,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 				return tail, nil
 			}
 
-			toDeleteEstimate := uint64(diff / s.Params.blockTime)
+			toDeleteEstimate := uint64(diff / s.Params.blockTime) //nolint:gosec
 			estimatedNewTail := tail.Height() + toDeleteEstimate
 
 			for {
@@ -97,8 +97,8 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 // moveTail moves the Tail to be the given header.
 // It will prune the store if the new Tail is higher than the old one or
 // sync up if the new Tail is lower than the old one.
-func (s *Syncer[H]) moveTail(ctx context.Context, new H) error {
-	old, err := s.store.Tail(ctx)
+func (s *Syncer[H]) moveTail(ctx context.Context, to H) error {
+	from, err := s.store.Tail(ctx)
 	if errors.Is(err, header.ErrEmptyStore) {
 		return nil
 	}
@@ -107,25 +107,25 @@ func (s *Syncer[H]) moveTail(ctx context.Context, new H) error {
 	}
 
 	switch {
-	case old.Height() < new.Height():
-		log.Infof("move tail up from %d to %d, pruning the diff...", old.Height(), new.Height())
-		err := s.store.DeleteTo(ctx, new.Height())
+	case from.Height() < to.Height():
+		log.Infof("move tail up from %d to %d, pruning the diff...", from.Height(), to.Height())
+		err := s.store.DeleteTo(ctx, to.Height())
 		if err != nil {
 			return fmt.Errorf(
-				"deleting headers up to newly configured Tail(%d): %w",
-				new.Height(),
+				"deleting headers up to newly configured tail(%d): %w",
+				to.Height(),
 				err,
 			)
 		}
-	case old.Height() > new.Height():
-		log.Infof("move tail down from %d to %d, syncing the diff...", old.Height(), new.Height())
+	case from.Height() > to.Height():
+		log.Infof("move tail down from %d to %d, syncing the diff...", from.Height(), to.Height())
 
 		// TODO(@Wondertan): This works but it assumes this code is only run before syncing routine starts.
 		//  If run after, it may race with other in prog syncs.
 		//  To be reworked by bsync.
-		err := s.doSync(ctx, new, old)
+		err := s.doSync(ctx, to, from)
 		if err != nil {
-			return fmt.Errorf("syncing the diff between old and new Tail: %w", err)
+			return fmt.Errorf("syncing the diff between from and new tail: %w", err)
 		}
 	}
 
