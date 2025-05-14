@@ -27,6 +27,17 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	}
 	// if subjective header is recent enough (relative to the network's block time) - just use it
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
+		// TODO(@Wondertan): This is temporary. Subjective tail is always triggered when Syncer is started
+		//  unless we have a very recent head. Generally this is fine and the way it should work, however due to
+		//  the way diff syncing works in moveTail method, we need to ensure that diff syncing happens on Start always
+		//  which is triggered by this call.
+		//  To be removed by bsync.
+		_, err = s.subjectiveTail(ctx, sbjHead)
+		if err != nil {
+			log.Errorw("getting subjective tail", "err", err)
+			return sbjHead, err
+		}
+
 		return sbjHead, nil
 	}
 

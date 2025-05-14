@@ -12,7 +12,6 @@ import (
 
 // TODO:
 //  * Refactor tests
-//  * Ensure sync always happen on start
 
 // subjectiveTail returns the current Tail header.
 // Lazily fetching it if it doesn't exist locally or moving it to a different height.
