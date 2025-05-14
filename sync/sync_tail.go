@@ -18,7 +18,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 		return oldTail, err
 	}
 
-	newTail, err := s.updateTail(ctx, oldTail, head)
+	newTail, err := s.renewTail(ctx, oldTail, head)
 	if err != nil {
 		return oldTail, fmt.Errorf("updating tail: %w", err)
 	}
@@ -35,8 +35,8 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 	return newTail, nil
 }
 
-// updateTail updates the tail header based on the Syncer parameters.
-func (s *Syncer[H]) updateTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
+// renewTail resolves the new actual tail header respecting Syncer parameters.
+func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
 	switch tailHash := s.tailHash(oldTail); tailHash {
 	case nil:
 		tailHeight, err := s.tailHeight(ctx, oldTail, head)
@@ -91,7 +91,7 @@ func (s *Syncer[H]) updateTail(ctx context.Context, oldTail, head H) (newTail H,
 	return newTail, nil
 }
 
-// moveTail moves the Tail to be the given header.
+// moveTail moves the Tail to be the 'to' header.
 // It will prune the store if the new Tail is higher than the old one or
 // sync up the difference if the new Tail is lower than the old one.
 func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
@@ -204,13 +204,13 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 			)
 		}
 		if newTail.Time().UTC().Compare(expectedTailTime) <= 0 {
-			// oldTail before or equal to expectedTailTime
+			// new tail time is before or equal to expectedTailTime
 			break
 		}
 
 		newTailHeight++
 	}
 
-	log.Debugw("estimated new tail", "new_height", oldTail.Height())
+	log.Debugw("found new tail height", "height", newTailHeight)
 	return newTailHeight, nil
 }
