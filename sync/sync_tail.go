@@ -5,111 +5,99 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/celestiaorg/go-header"
 )
 
-// TODO:
-//  * Refactor tests
-
-// subjectiveTail returns the current Tail header.
+// subjectiveTail returns the current actual Tail header.
 // Lazily fetching it if it doesn't exist locally or moving it to a different height.
 // Moving is done if either parameters are changed or tail moved outside a pruning window.
 func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
-	tail, err := s.store.Tail(ctx)
+	oldTail, err := s.store.Tail(ctx)
 	if err != nil && !errors.Is(err, header.ErrEmptyStore) {
-		return tail, err
+		return oldTail, err
 	}
 
-	var fetched bool
-	if tailHash, outdated := s.isTailHashOutdated(tail); outdated {
-		log.Debugw("tail hash updated", "hash", tailHash)
-		tail, err = s.store.Get(ctx, tailHash)
+	newTail, err := s.updateTail(ctx, oldTail, head)
+	if err != nil {
+		return oldTail, fmt.Errorf("updating tail: %w", err)
+	}
+
+	if err := s.moveTail(ctx, oldTail, newTail); err != nil {
+		return oldTail, fmt.Errorf(
+			"moving tail from %d to %d: %w",
+			oldTail.Height(),
+			newTail.Height(),
+			err,
+		)
+	}
+
+	return newTail, nil
+}
+
+// updateTail updates the tail header based on the Syncer parameters.
+func (s *Syncer[H]) updateTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
+	switch tailHash := s.tailHash(oldTail); tailHash {
+	case nil:
+		tailHeight, err := s.tailHeight(ctx, oldTail, head)
 		if err != nil {
-			log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
-			tail, err = s.getter.Get(ctx, tailHash)
-			if err != nil {
-				return tail, fmt.Errorf("getting SyncFromHash tail(%x): %w", tailHash, err)
-			}
-			fetched = true
+			return oldTail, err
 		}
-	} else if tailHeight, outdated := s.isTailHeightOutdated(tail); outdated {
-		log.Debugw("tail height updated", "height", tailHeight)
+
 		if tailHeight <= s.store.Height() {
-			tail, err = s.store.GetByHeight(ctx, tailHeight)
+			// check if the new tail is below the current head to avoid heightSub blocking
+			newTail, err = s.store.GetByHeight(ctx, tailHeight)
+			if err == nil {
+				return newTail, nil
+			}
+			if !errors.Is(err, header.ErrNotFound) {
+				return newTail, fmt.Errorf(
+					"loading SyncFromHeight tail from store(%d): %w",
+					tailHeight,
+					err,
+				)
+			}
 		}
-		if err != nil || tailHeight != tail.Height() {
-			log.Debugw("tail height not available locally, fetching...", "height", tailHeight)
-			tail, err = s.getter.GetByHeight(ctx, tailHeight)
-			if err != nil {
-				return tail, fmt.Errorf("getting SyncFromHeight tail(%d): %w", tailHeight, err)
-			}
-			fetched = true
+
+		log.Debugw("tail height not available locally, fetching...", "height", tailHeight)
+		newTail, err = s.getter.GetByHeight(ctx, tailHeight)
+		if err != nil {
+			return newTail, fmt.Errorf("fetching SyncFromHeight tail(%d): %w", tailHeight, err)
 		}
-	} else if tailHash == nil && tailHeight == 0 {
-		if tail.IsZero() {
-			// no previously known Tail available - estimate solely on Head
-			estimatedHeight := estimateTail(head, s.Params.blockTime, s.Params.TrustingPeriod)
-			tail, err = s.getter.GetByHeight(ctx, estimatedHeight)
-			if err != nil {
-				return tail, fmt.Errorf("getting estimated tail(%d): %w", tailHeight, err)
-			}
-			fetched = true
-		} else {
-			// have a known Tail - estimate basing on it.
-			cutoffTime := head.Time().UTC().Add(-s.Params.PruningWindow)
-			diff := cutoffTime.Sub(tail.Time().UTC())
-			if diff <= 0 {
-				// current tail is relevant as is
-				return tail, nil
-			}
-			log.Debugw("current tail is beyond pruning window", "current_height", tail.Height(), "diff", diff.String())
+	default:
+		newTail, err = s.store.Get(ctx, tailHash)
+		if err == nil {
+			return newTail, nil
+		}
+		if !errors.Is(err, header.ErrNotFound) {
+			return newTail, fmt.Errorf(
+				"loading SyncFromHash tail from store(%x): %w",
+				tailHash,
+				err,
+			)
+		}
 
-			toDeleteEstimate := uint64(diff / s.Params.blockTime) //nolint:gosec
-			estimatedNewTail := tail.Height() + toDeleteEstimate
-
-			for {
-				tail, err = s.store.GetByHeight(ctx, estimatedNewTail)
-				if err != nil {
-					log.Errorw("getting estimated tail from store", "height", estimatedNewTail, "error", err)
-					return tail, err
-				}
-				if tail.Time().UTC().Compare(cutoffTime) <= 0 {
-					// tail before or equal to cutoffTime
-					break
-				}
-
-				estimatedNewTail++
-			}
-
-			log.Debugw("estimated new tail", "new_height", tail.Height())
+		log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
+		newTail, err = s.getter.Get(ctx, tailHash)
+		if err != nil {
+			return newTail, fmt.Errorf("fetching SyncFromHash tail(%x): %w", tailHash, err)
 		}
 	}
 
-	if fetched {
-		if err := s.store.Append(ctx, tail); err != nil {
-			return tail, fmt.Errorf("appending tail header: %w", err)
-		}
+	if err := s.store.Append(ctx, newTail); err != nil {
+		return newTail, fmt.Errorf("appending tail header: %w", err)
 	}
 
-	if err := s.moveTail(ctx, tail); err != nil {
-		return tail, fmt.Errorf("moving tail: %w", err)
-	}
-
-	return tail, nil
+	return newTail, nil
 }
 
 // moveTail moves the Tail to be the given header.
 // It will prune the store if the new Tail is higher than the old one or
-// sync up if the new Tail is lower than the old one.
-func (s *Syncer[H]) moveTail(ctx context.Context, to H) error {
-	from, err := s.store.Tail(ctx)
-	if errors.Is(err, header.ErrEmptyStore) {
+// sync up the difference if the new Tail is lower than the old one.
+func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
+	if from.IsZero() {
+		// no need to move the tail if it was not set previously
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 
 	switch {
@@ -138,27 +126,91 @@ func (s *Syncer[H]) moveTail(ctx context.Context, to H) error {
 	return nil
 }
 
-func estimateTail[H header.Header[H]](
-	head H,
-	blockTime, trustingPeriod time.Duration,
-) (height uint64) {
-	headersToRetain := uint64(trustingPeriod / blockTime) //nolint:gosec
+// tailHash returns the expected tail hash.
+// Does not return if the hash hasn't changed from the current tail hash.
+func (s *Syncer[H]) tailHash(oldTail H) header.Hash {
+	hash := s.Params.SyncFromHash
+	if hash == nil {
+		return nil
+	}
 
+	updated := oldTail.IsZero() || !bytes.Equal(hash, oldTail.Hash())
+	if !updated {
+		return nil
+	}
+
+	log.Debugw("tail hash updated", "hash", hash)
+	return hash
+}
+
+// tailHeight figures the actual tail height based on the Syncer parameters.
+func (s *Syncer[H]) tailHeight(ctx context.Context, oldTail, head H) (uint64, error) {
+	height := s.Params.SyncFromHeight
+	if height > 0 {
+		return height, nil
+	}
+
+	if oldTail.IsZero() {
+		return s.estimateTailHeader(head), nil
+	}
+
+	height, err := s.findTailHeight(ctx, oldTail, head)
+	if err != nil {
+		return 0, fmt.Errorf("estimating oldTail height: %w", err)
+	}
+
+	return height, nil
+}
+
+// estimateTailHeader estimates the tail header based on the current head.
+// It respects the trusting period, ensuring Syncer never initializes off an expired header.
+func (s *Syncer[H]) estimateTailHeader(head H) uint64 {
+	headersToRetain := uint64(s.Params.TrustingPeriod / s.Params.blockTime) //nolint:gosec
 	if headersToRetain >= head.Height() {
+		// means chain is very young so we can keep all headers starting from genesis
 		return 1
 	}
-	tail := head.Height() - headersToRetain
-	return tail
+
+	return head.Height() - headersToRetain
 }
 
-func (s *Syncer[H]) isTailHashOutdated(h H) (header.Hash, bool) {
-	wantHash := s.Params.SyncFromHash
-	outdated := wantHash != nil && (h.IsZero() || !bytes.Equal(wantHash, h.Hash()))
-	return wantHash, outdated
-}
+// findTailHeight find the tail height based on the current head and tail.
+// It respects the pruning window, ensuring Syncer maintains the tail within the window.
+func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64, error) {
+	expectedTailTime := head.Time().UTC().Add(-s.Params.PruningWindow)
+	currentTailTime := oldTail.Time().UTC()
 
-func (s *Syncer[H]) isTailHeightOutdated(h H) (uint64, bool) {
-	wantHeight := s.Params.SyncFromHeight
-	outdated := wantHeight > 0 && (h.IsZero() || h.Height() != wantHeight)
-	return wantHeight, outdated
+	timeDiff := expectedTailTime.Sub(currentTailTime)
+	if timeDiff <= 0 {
+		// current tail is relevant as is
+		return oldTail.Height(), nil
+	}
+	log.Debugw(
+		"current tail is beyond pruning window",
+		"tail_height", oldTail.Height(),
+		"time_diff", timeDiff.String(),
+		"window", s.Params.PruningWindow.String(),
+	)
+
+	heightDiff := uint64(timeDiff / s.Params.blockTime) //nolint:gosec
+	newTailHeight := oldTail.Height() + heightDiff
+	for {
+		newTail, err := s.store.GetByHeight(ctx, newTailHeight)
+		if err != nil {
+			return 0, fmt.Errorf(
+				"getting estimated new tail(%d) from store: %w",
+				newTailHeight,
+				err,
+			)
+		}
+		if newTail.Time().UTC().Compare(expectedTailTime) <= 0 {
+			// oldTail before or equal to expectedTailTime
+			break
+		}
+
+		newTailHeight++
+	}
+
+	log.Debugw("estimated new tail", "new_height", oldTail.Height())
+	return newTailHeight, nil
 }

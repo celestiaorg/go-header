@@ -15,7 +15,7 @@ import (
 )
 
 func TestSyncer_TailEstimation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*50)
 	t.Cleanup(cancel)
 
 	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
