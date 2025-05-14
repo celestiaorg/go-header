@@ -50,13 +50,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	// NOTE: We could trust the netHead like we do during 'automatic subjective initialization'
 	// but in this case our subjective head is not expired, so we should verify netHead
 	// and only if it is valid, set it as new head
-	err = s.incomingNetworkHead(ctx, netHead)
-	if err != nil {
-		log.Errorw("incoming network head failed",
-			"height", netHead.Height(),
-			"hash", netHead.Hash().String(),
-			"err", err)
-	}
+	_ = s.incomingNetworkHead(ctx, netHead)
 	// netHead was either accepted or rejected as the new subjective
 	// anyway return most current known subjective head
 	return s.subjectiveHead(ctx)
@@ -155,6 +149,11 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	//  To be reworked by bsync.
 	_, err := s.subjectiveTail(ctx, head)
 	if err != nil {
+		log.Errorw("subjective tail failed",
+			"new_head", head.Height(),
+			"hash", head.Hash().String(),
+			"err", err,
+		)
 		return err
 	}
 

@@ -12,7 +12,6 @@ import (
 
 // TODO:
 //  * Refactor tests
-//  * Write tests for estimation
 //  * Ensure sync always happen on start
 
 // subjectiveTail returns the current Tail header.
@@ -26,8 +25,10 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 
 	var fetched bool
 	if tailHash, outdated := s.isTailHashOutdated(tail); outdated {
+		log.Debugw("tail hash updated", "hash", tailHash)
 		tail, err = s.store.Get(ctx, tailHash)
 		if err != nil {
+			log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
 			tail, err = s.getter.Get(ctx, tailHash)
 			if err != nil {
 				return tail, fmt.Errorf("getting SyncFromHash tail(%x): %w", tailHash, err)
@@ -35,10 +36,12 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 			fetched = true
 		}
 	} else if tailHeight, outdated := s.isTailHeightOutdated(tail); outdated {
+		log.Debugw("tail height updated", "height", tailHeight)
 		if tailHeight <= s.store.Height() {
 			tail, err = s.store.GetByHeight(ctx, tailHeight)
 		}
 		if err != nil || tailHeight != tail.Height() {
+			log.Debugw("tail height not available locally, fetching...", "height", tailHeight)
 			tail, err = s.getter.GetByHeight(ctx, tailHeight)
 			if err != nil {
 				return tail, fmt.Errorf("getting SyncFromHeight tail(%d): %w", tailHeight, err)
@@ -62,6 +65,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 				// current tail is relevant as is
 				return tail, nil
 			}
+			log.Debugw("current tail is beyond pruning window", "current_height", tail.Height(), "diff", diff.String())
 
 			toDeleteEstimate := uint64(diff / s.Params.blockTime) //nolint:gosec
 			estimatedNewTail := tail.Height() + toDeleteEstimate
@@ -69,15 +73,18 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 			for {
 				tail, err = s.store.GetByHeight(ctx, estimatedNewTail)
 				if err != nil {
-					log.Errorw("getting estimated tail from store ", "error", err)
+					log.Errorw("getting estimated tail from store", "height", estimatedNewTail, "error", err)
 					return tail, err
 				}
-				if tail.Time().UTC().Before(cutoffTime) {
+				if tail.Time().UTC().Compare(cutoffTime) <= 0 {
+					// tail before or equal to cutoffTime
 					break
 				}
 
 				estimatedNewTail++
 			}
+
+			log.Debugw("estimated new tail", "new_height", tail.Height())
 		}
 	}
 

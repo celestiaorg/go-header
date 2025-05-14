@@ -14,6 +14,51 @@ import (
 	"github.com/celestiaorg/go-header/store"
 )
 
+func TestSyncer_TailEstimation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
+
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	localStore, err := store.NewStore[*headertest.DummyHeader](
+		ds,
+		store.WithWriteBatchSize(1),
+	)
+	require.NoError(t, err)
+	err = localStore.Start(ctx)
+	require.NoError(t, err)
+
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		remoteStore,
+		localStore,
+		headertest.NewDummySubscriber(),
+		WithBlockTime(headertest.HeaderTime),
+		WithPruningWindow(time.Nanosecond*50),
+	)
+	require.NoError(t, err)
+
+	err = syncer.Start(ctx)
+	require.NoError(t, err)
+	time.Sleep(time.Millisecond * 10)
+	err = syncer.SyncWait(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 100, syncer.State().Height)
+
+	tail, err := localStore.Tail(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, tail.Height(), 1)
+
+	// simulate new header arrival by triggering recency check
+	head, err := syncer.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, head.Height(), remoteStore.Height())
+
+	tail, err = localStore.Tail(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 50, tail.Height())
+}
+
 func TestSyncer_TailReconfiguration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
