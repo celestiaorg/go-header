@@ -37,6 +37,7 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 
 // renewTail resolves the new actual tail header respecting Syncer parameters.
 func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
+	// prioritizing hash over heights
 	switch tailHash := s.tailHash(oldTail); tailHash {
 	case nil:
 		tailHeight, err := s.tailHeight(ctx, oldTail, head)
@@ -119,7 +120,7 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 		//  To be reworked by bsync.
 		err := s.doSync(ctx, to, from)
 		if err != nil {
-			return fmt.Errorf("syncing the diff between from and new tail: %w", err)
+			return fmt.Errorf("syncing the diff between from(%d) and to tail(%d): %w", from.Height(), to.Height(), err)
 		}
 	}
 
@@ -151,20 +152,20 @@ func (s *Syncer[H]) tailHeight(ctx context.Context, oldTail, head H) (uint64, er
 	}
 
 	if oldTail.IsZero() {
-		return s.estimateTailHeader(head), nil
+		return s.estimateTailHeight(head), nil
 	}
 
 	height, err := s.findTailHeight(ctx, oldTail, head)
 	if err != nil {
-		return 0, fmt.Errorf("estimating oldTail height: %w", err)
+		return 0, fmt.Errorf("finding tail height: %w", err)
 	}
 
 	return height, nil
 }
 
-// estimateTailHeader estimates the tail header based on the current head.
+// estimateTailHeight estimates the tail header based on the current head.
 // It respects the trusting period, ensuring Syncer never initializes off an expired header.
-func (s *Syncer[H]) estimateTailHeader(head H) uint64 {
+func (s *Syncer[H]) estimateTailHeight(head H) uint64 {
 	headersToRetain := uint64(s.Params.TrustingPeriod / s.Params.blockTime) //nolint:gosec
 	if headersToRetain >= head.Height() {
 		// means chain is very young so we can keep all headers starting from genesis
@@ -195,6 +196,8 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 	heightDiff := uint64(timeDiff / s.Params.blockTime) //nolint:gosec
 	newTailHeight := oldTail.Height() + heightDiff
 	for {
+		// store keeps all the headers up to the current head
+		// to iterate over the headers and find the most accurate tail
 		newTail, err := s.store.GetByHeight(ctx, newTailHeight)
 		if err != nil {
 			return 0, fmt.Errorf(
