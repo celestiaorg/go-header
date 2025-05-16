@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const HeaderTime = time.Nanosecond
+
 // DummySuite provides everything you need to test chain of DummyHeaders.
 // If not, please don't hesitate to extend it for your case.
 type DummySuite struct {
@@ -42,7 +44,7 @@ func (s *DummySuite) NextHeader() *DummyHeader {
 	}
 
 	dh := RandDummyHeader(s.t)
-	dh.Timestamp = s.head.Time().Add(time.Nanosecond)
+	dh.Timestamp = s.head.Time().Add(HeaderTime)
 	dh.HeightI = s.head.Height() + 1
 	dh.PreviousHash = s.head.Hash()
 	dh.Chainid = s.head.ChainID()

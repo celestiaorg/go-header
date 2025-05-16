@@ -48,24 +48,41 @@ func (s *syncStore[H]) Append(ctx context.Context, headers ...H) error {
 	}
 
 	head, err := s.Head(ctx)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		panic(err)
+	if errors.Is(err, header.ErrEmptyStore) {
+		// short-circuit for an initialization path
+		if err := s.Store.Append(ctx, headers...); err != nil {
+			return err
+		}
+
+		s.head.Store(&headers[len(headers)-1])
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
-	for _, h := range headers {
-		if h.Height() != head.Height()+1 {
-			return &errNonAdjacent{
-				Head:      head.Height(),
-				Attempted: h.Height(),
+	// TODO(@Wondertan): As store evolved, certain invariants it had were removed.
+	//	However, Syncer has yet to be refactored to not assume those invariants and until then
+	//	this method is a shim that allows using store with old assumptions.
+	//  To be reworked by bsync.
+	if headers[0].Height() >= head.Height() {
+		for _, h := range headers {
+			if h.Height() != head.Height()+1 {
+				return &errNonAdjacent{
+					Head:      head.Height(),
+					Attempted: h.Height(),
+				}
 			}
+
+			head = h
 		}
-		head = h
+
+		s.head.Store(&head)
 	}
 
 	if err := s.Store.Append(ctx, headers...); err != nil {
 		return err
 	}
 
-	s.head.Store(&headers[len(headers)-1])
 	return nil
 }
