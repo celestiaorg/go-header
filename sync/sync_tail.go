@@ -37,9 +37,32 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 
 // renewTail resolves the new actual tail header respecting Syncer parameters.
 func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
-	// prioritizing hash over heights
-	switch tailHash := s.tailHash(oldTail); tailHash {
-	case nil:
+	useHash, tailHash := s.tailHash(oldTail)
+	switch {
+	case useHash:
+		if tailHash == nil {
+			// nothing to renew, stick to the existing old tail hash
+			return oldTail, nil
+		}
+
+		newTail, err = s.store.Get(ctx, tailHash)
+		if err == nil {
+			return newTail, nil
+		}
+		if !errors.Is(err, header.ErrNotFound) {
+			return newTail, fmt.Errorf(
+				"loading SyncFromHash tail from store(%x): %w",
+				tailHash,
+				err,
+			)
+		}
+
+		log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
+		newTail, err = s.getter.Get(ctx, tailHash)
+		if err != nil {
+			return newTail, fmt.Errorf("fetching SyncFromHash tail(%x): %w", tailHash, err)
+		}
+	case !useHash:
 		tailHeight, err := s.tailHeight(ctx, oldTail, head)
 		if err != nil {
 			return oldTail, err
@@ -64,24 +87,6 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 		newTail, err = s.getter.GetByHeight(ctx, tailHeight)
 		if err != nil {
 			return newTail, fmt.Errorf("fetching SyncFromHeight tail(%d): %w", tailHeight, err)
-		}
-	default:
-		newTail, err = s.store.Get(ctx, tailHash)
-		if err == nil {
-			return newTail, nil
-		}
-		if !errors.Is(err, header.ErrNotFound) {
-			return newTail, fmt.Errorf(
-				"loading SyncFromHash tail from store(%x): %w",
-				tailHash,
-				err,
-			)
-		}
-
-		log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
-		newTail, err = s.getter.Get(ctx, tailHash)
-		if err != nil {
-			return newTail, fmt.Errorf("fetching SyncFromHash tail(%x): %w", tailHash, err)
 		}
 	}
 
@@ -120,28 +125,33 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 		//  To be reworked by bsync.
 		err := s.doSync(ctx, to, from)
 		if err != nil {
-			return fmt.Errorf("syncing the diff between from(%d) and to tail(%d): %w", from.Height(), to.Height(), err)
+			return fmt.Errorf(
+				"syncing the diff between from(%d) and to tail(%d): %w",
+				from.Height(),
+				to.Height(),
+				err,
+			)
 		}
 	}
 
 	return nil
 }
 
-// tailHash returns the expected tail hash.
-// Does not return if the hash hasn't changed from the current tail hash.
-func (s *Syncer[H]) tailHash(oldTail H) header.Hash {
+// tailHash reports whether tail hash should be used and returns it.
+// Returns empty hash if it hasn't changed from the old tail hash.
+func (s *Syncer[H]) tailHash(oldTail H) (bool, header.Hash) {
 	hash := s.Params.SyncFromHash
 	if hash == nil {
-		return nil
+		return false, nil
 	}
 
 	updated := oldTail.IsZero() || !bytes.Equal(hash, oldTail.Hash())
 	if !updated {
-		return nil
+		return true, nil
 	}
 
 	log.Debugw("tail hash updated", "hash", hash)
-	return hash
+	return true, hash
 }
 
 // tailHeight figures the actual tail height based on the Syncer parameters.
