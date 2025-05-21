@@ -13,7 +13,8 @@ import (
 // the exchange to request the head of the chain from the network.
 var headRequestTimeout = time.Second * 2
 
-// Head returns the Network Head.
+// Head returns the Network Head or an error. It will try to get the most recent header until it fails entirely.
+// It may return an error with a header which caused it.
 //
 // Known subjective head is considered network head if it is recent enough(now-timestamp<=blocktime)
 // Otherwise, we attempt to request recent network head from a trusted peer and
@@ -25,6 +26,13 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	if err != nil {
 		return sbjHead, err
 	}
+	defer func() {
+		// always ensure tail is up to date
+		_, err = s.subjectiveTail(ctx, sbjHead)
+		if err != nil {
+			log.Errorw("subjective tail", "head_height", sbjHead.Height(), "err", err)
+		}
+	}()
 	// if subjective header is recent enough (relative to the network's block time) - just use it
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) {
 		return sbjHead, nil
@@ -59,7 +67,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 // subjectiveHead returns the latest known local header that is not expired(within trusting period).
 // If the header is expired, it is retrieved from a trusted peer without validation;
 // in other words, an automatic subjective initialization is performed.
-func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
+func (s *Syncer[H]) subjectiveHead(ctx context.Context) (sbjHead H, err error) {
 	// pending head is the latest known subjective head and sync target, so try to get it
 	// NOTES:
 	// * Empty when no sync is in progress
@@ -70,37 +78,53 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, error) {
 	}
 	// if pending is empty - get the latest stored/synced head
 	storeHead, err := s.store.Head(ctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, header.ErrEmptyStore):
+		log.Info("empty store, initializing...")
+		s.metrics.subjectiveInitialization(s.ctx)
+	case !storeHead.IsZero() && isExpired(storeHead, s.Params.TrustingPeriod):
+		log.Infow("stored head header expired", "height", storeHead.Height())
+	default:
 		return storeHead, err
 	}
-	// check if the stored header is not expired and use it
-	if !isExpired(storeHead, s.Params.TrustingPeriod) {
-		return storeHead, nil
-	}
-	// otherwise, request head from a trusted peer
-	log.Infow("stored head header expired", "height", storeHead.Height())
-
-	trustHead, err := s.head.Head(ctx)
+	// fetch a new head from trusted peers if not available locally
+	newHead, err := s.head.Head(ctx)
 	if err != nil {
-		return trustHead, err
+		return newHead, err
 	}
-	s.metrics.subjectiveInitialization(s.ctx)
-	// and set it as the new subjective head without validation,
-	// or, in other words, do 'automatic subjective initialization'
-	// NOTE: we avoid validation as the head expired to prevent possibility of the Long-Range Attack
-	s.setSubjectiveHead(ctx, trustHead)
 	switch {
-	default:
-		log.Infow("subjective initialization finished", "height", trustHead.Height())
-		return trustHead, nil
-	case isExpired(trustHead, s.Params.TrustingPeriod):
-		log.Warnw("subjective initialization with an expired header", "height", trustHead.Height())
-	case !isRecent(trustHead, s.Params.blockTime, s.Params.recencyThreshold):
-		log.Warnw("subjective initialization with an old header", "height", trustHead.Height())
+	case isExpired(newHead, s.Params.TrustingPeriod):
+		// forbid initializing off an expired header
+		err := fmt.Errorf("subjective initialization with an expired header(%d)", newHead.Height())
+		log.Error(err, "\n trusted peers are out of sync")
+		s.metrics.trustedPeersOutOufSync(s.ctx)
+		return newHead, err
+	case !isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold):
+		// it's not the most recent, buts its good enough - allow initialization
+		log.Warnw("subjective initialization with not recent header", "height", newHead.Height())
+		s.metrics.trustedPeersOutOufSync(s.ctx)
 	}
-	log.Warn("trusted peer is out of sync")
-	s.metrics.trustedPeersOutOufSync(s.ctx)
-	return trustHead, nil
+
+	_, err = s.subjectiveTail(ctx, newHead)
+	if err != nil {
+		return newHead, fmt.Errorf(
+			"subjective tail during subjective initialization for head %d: %w",
+			newHead.Height(),
+			err,
+		)
+	}
+
+	// and set the fetched head as the new subjective head validating it against the tail
+	// or, in other words, do 'automatic subjective initialization'
+	err = s.incomingNetworkHead(ctx, newHead)
+	if err != nil {
+		err = fmt.Errorf("subjective initialization failed for head(%d): %w", newHead.Height(), err)
+		log.Error(err)
+		return newHead, err
+	}
+
+	log.Infow("subjective initialization finished", "head", newHead.Height())
+	return newHead, nil
 }
 
 // setSubjectiveHead takes already validated head and sets it as the new sync target.
@@ -138,20 +162,19 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	s.incomingMu.Lock()
 	defer s.incomingMu.Unlock()
 
-	err := s.verify(ctx, head)
-	if err != nil {
+	if err := s.verify(ctx, head); err != nil {
 		return err
 	}
 
 	s.setSubjectiveHead(ctx, head)
-	return err
+	return nil
 }
 
 // verify verifies given network head candidate.
 func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	sbjHead, err := s.subjectiveHead(ctx)
 	if err != nil {
-		log.Errorw("getting subjective head during validation", "err", err)
+		log.Errorw("getting subjective head during new network head verification", "err", err)
 		return err
 	}
 

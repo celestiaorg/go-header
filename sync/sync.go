@@ -94,7 +94,17 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	// register validator for header subscriptions
 	// syncer does not subscribe itself and syncs headers together with validation
-	err := s.sub.SetVerifier(s.incomingNetworkHead)
+	err := s.sub.SetVerifier(func(ctx context.Context, h H) error {
+		if err := s.incomingNetworkHead(ctx, h); err != nil {
+			return err
+		}
+		// lazily trigger pruning by getting subjective tail
+		if _, err := s.subjectiveTail(ctx, h); err != nil {
+			log.Errorw("subjective tail", "head", h.Height(), "err", err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return err
 	}
