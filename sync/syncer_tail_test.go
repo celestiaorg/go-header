@@ -223,8 +223,8 @@ func TestSyncer_TailInitialization(t *testing.T) {
 				remoteStore,
 				localStore,
 				headertest.NewDummySubscriber(),
-				WithBlockTime(time.Second*6),
-				WithRecencyThreshold(time.Nanosecond),
+				WithBlockTime(time.Nanosecond),
+				WithRecencyThreshold(time.Minute),
 				test.option,
 			)
 			require.NoError(t, err)

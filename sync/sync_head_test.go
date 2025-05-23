@@ -196,7 +196,7 @@ func TestSyncer_verifyBifurcatingSuccess(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.networkHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
@@ -272,7 +272,7 @@ func TestSyncer_verifyBifurcatingSuccessWithBadCandidates(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.networkHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
@@ -340,7 +340,7 @@ func TestSyncer_verifyBifurcatingCannotVerify(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.networkHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
