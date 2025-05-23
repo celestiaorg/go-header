@@ -180,32 +180,39 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	return err
 }
 
-// verifyBifurcating verifies networkHead against subjHead via the interim headers when direct
+// verifyBifurcating verifies newHead against subjHead via the interim headers when direct
 // verification is impossible.
-// It tries to find a header (or several headers if necessary) between the networkHead and
+//
+// It tries to find a header (or several headers if necessary) between the newHead and
 // the subjectiveHead such that non-adjacent (or in the worst case adjacent) verification
 // passes and the networkHead can be verified as a valid sync target against the syncer's
 // subjectiveHead.
-// A non-nil error is returned when networkHead can't be verified.
-func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead H) error {
-	log.Warnw("header bifurcation started",
-		"height", networkHead.Height(),
-		"hash", networkHead.Hash().String(),
-	)
+// A non-nil error is returned when newHead can't be verified or is invalid.
+func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, newHead H) error {
+	log.Infow("bifurcation: verifying new head", "height", newHead.Height())
 
 	subjHeight := subjHead.Height()
-
-	diff := networkHead.Height() - subjHeight
-
-	for diff > 1 {
+	diff := newHead.Height() - subjHeight
+	for {
 		candidateHeight := subjHeight + diff/2
 
 		candidateHeader, err := s.getter.GetByHeight(ctx, candidateHeight)
 		if err != nil {
-			return err
+			return fmt.Errorf(
+				"bifurcation: getting candidate subjective head (%d): %w",
+				candidateHeight,
+				err,
+			)
 		}
 
 		if err := header.Verify(subjHead, candidateHeader); err != nil {
+			log.Warnw(
+				"bifurcation: candidate subjective head failed",
+				"candidate_height",
+				candidateHeight,
+				"err",
+				err,
+			)
 			var verErr *header.VerifyError
 			if errors.As(err, &verErr) && !verErr.SoftFailure {
 				return err
@@ -217,30 +224,24 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 		}
 
 		// candidate was validated properly, update subjHead.
+		log.Infow("bifurcation: found new subjective head", "height", candidateHeight)
 		subjHead = candidateHeader
 		s.setSubjectiveHead(ctx, subjHead)
 
-		if err := header.Verify(subjHead, networkHead); err == nil {
-			// network head validate properly, return success.
+		err = header.Verify(subjHead, newHead)
+		if err == nil {
+			log.Infow("bifurcation: confirmed new head", "height", newHead.Height())
 			return nil
 		}
 
 		// new subjHead failed, go deeper in 2nd half.
 		subjHeight = subjHead.Height()
-		diff = networkHead.Height() - subjHeight
-	}
-
-	s.metrics.failedBifurcation(ctx, networkHead.Height(), networkHead.Hash().String())
-	log.Errorw("header bifurcation failed",
-		"height", networkHead.Height(),
-		"hash", networkHead.Hash().String(),
-	)
-
-	return &header.VerifyError{
-		Reason: fmt.Errorf("sync: header validation against subjHead height:%d hash:%s",
-			networkHead.Height(), networkHead.Hash().String(),
-		),
-		SoftFailure: false,
+		diff = newHead.Height() - subjHeight
+		if diff <= 1 {
+			s.metrics.failedBifurcation(ctx, newHead.Height(), newHead.Hash().String())
+			log.Warnw("bifurcation: confirmed new head as invalid", "height", newHead.Height())
+			return fmt.Errorf("bifurcation: new head failed: %w", err)
+		}
 	}
 }
 
