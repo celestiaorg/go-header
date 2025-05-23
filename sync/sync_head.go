@@ -190,6 +190,7 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 // A non-nil error is returned when newHead can't be verified or is invalid.
 func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, newHead H) error {
 	log.Infow("bifurcation: verifying new head", "height", newHead.Height())
+	s.metrics.bifurcation(ctx, newHead.Height(), newHead.Hash().String())
 
 	subjHeight := subjHead.Height()
 	diff := newHead.Height() - subjHeight
