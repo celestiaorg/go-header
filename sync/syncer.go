@@ -203,7 +203,7 @@ func (s *Syncer[H]) syncLoop() {
 
 // sync ensures we are synced from the Store's head up to the new subjective head.
 func (s *Syncer[H]) sync(ctx context.Context) {
-	subjHead, err := s.subjectiveHead(ctx)
+	subjHead, err := s.localHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head", "err", err)
 		return
