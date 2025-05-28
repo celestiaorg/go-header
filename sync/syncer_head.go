@@ -90,7 +90,7 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, error) {
 	}
 	// set the new head as subjective, skipping expensive verification
 	// as it was already verified by the Exchange.
-	s.setSubjectiveHead(ctx, newHead)
+	s.setLocalHead(ctx, newHead)
 
 	log.Infow(
 		"successfully requested a more recent network head",
@@ -151,8 +151,8 @@ func (s *Syncer[H]) localHead(ctx context.Context) (H, error) {
 	return s.store.Head(ctx)
 }
 
-// setSubjectiveHead takes already validated head and sets it as the new sync target.
-func (s *Syncer[H]) setSubjectiveHead(ctx context.Context, netHead H) {
+// setLocalHead takes the already validated head and sets it as the new sync target.
+func (s *Syncer[H]) setLocalHead(ctx context.Context, netHead H) {
 	// TODO(@Wondertan): Right now, we can only store adjacent headers, instead we should:
 	//  * Allow storing any valid header here in Store
 	//  * Remove ErrNonAdjacent
@@ -191,7 +191,7 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 		return err
 	}
 
-	s.setSubjectiveHead(ctx, head)
+	s.setLocalHead(ctx, head)
 	return nil
 }
 
@@ -266,7 +266,7 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, networkHead
 
 		// candidate was validated properly, update subjHead.
 		subjHead = candidateHeader
-		s.setSubjectiveHead(ctx, subjHead)
+		s.setLocalHead(ctx, subjHead)
 
 		if err := header.Verify(subjHead, networkHead); err == nil {
 			// network head validate properly, return success.
