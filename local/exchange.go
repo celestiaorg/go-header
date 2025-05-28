@@ -26,8 +26,24 @@ func (l *Exchange[H]) Stop(context.Context) error {
 	return nil
 }
 
-func (l *Exchange[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
-	return l.store.Head(ctx)
+func (l *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
+	params := &header.HeadParams[H]{}
+	for _, opt := range opts {
+		opt(params)
+	}
+
+	head, err := l.store.Head(ctx)
+	if err != nil {
+		return head, err
+	}
+
+	if !params.TrustedHead.IsZero() {
+		if err := header.Verify(params.TrustedHead, head); err != nil {
+			return head, err
+		}
+	}
+
+	return head, nil
 }
 
 func (l *Exchange[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {

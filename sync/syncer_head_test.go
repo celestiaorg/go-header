@@ -125,7 +125,7 @@ func TestSyncer_HeadWithTrustedHead(t *testing.T) {
 }
 
 // Test will simulate a case with upto `iters` failures before we will get to
-// the header that can be verified against subjectiveHead.
+// the header that can be verified against localHead.
 func TestSyncer_verifyBifurcatingSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -196,7 +196,7 @@ func TestSyncer_verifyBifurcatingSuccess(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.localHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
@@ -204,7 +204,7 @@ func TestSyncer_verifyBifurcatingSuccess(t *testing.T) {
 }
 
 // Test will simulate a case with upto `iters` failures before we will get to
-// the header that can be verified against subjectiveHead.
+// the header that can be verified against localHead.
 func TestSyncer_verifyBifurcatingSuccessWithBadCandidates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -272,14 +272,14 @@ func TestSyncer_verifyBifurcatingSuccessWithBadCandidates(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.localHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])
 	require.NoError(t, err)
 }
 
-// Test will simulate a case when no headers can be verified against subjectiveHead.
+// Test will simulate a case when no headers can be verified against localHead.
 // As a result the [NewValidatorSetCantBeTrustedError] error will be returned.
 func TestSyncer_verifyBifurcatingCannotVerify(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -340,7 +340,7 @@ func TestSyncer_verifyBifurcatingCannotVerify(t *testing.T) {
 	headers[total-1].VerifyFailure = true
 	headers[total-1].SoftFailure = true
 
-	subjHead, err := syncer.subjectiveHead(ctx)
+	subjHead, err := syncer.localHead(ctx)
 	require.NoError(t, err)
 
 	err = syncer.verifyBifurcating(ctx, subjHead, headers[total-1])

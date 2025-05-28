@@ -223,8 +223,10 @@ func TestSyncer_TailInitialization(t *testing.T) {
 				remoteStore,
 				localStore,
 				headertest.NewDummySubscriber(),
-				WithBlockTime(time.Second*6),
-				WithRecencyThreshold(time.Nanosecond),
+				// make sure the blocktime is set for proper tail estimation
+				WithBlockTime(headertest.HeaderTime),
+				// make sure that recency check is not triggered
+				WithRecencyThreshold(time.Minute),
 				test.option,
 			)
 			require.NoError(t, err)
