@@ -13,13 +13,18 @@ import (
 // the exchange to request the head of the chain from the network.
 var NetworkHeadRequestTimeout = time.Second * 2
 
-// Head returns the network head or an error. It will try to get the most recent network head or return the current
+// Head returns the most recent network head header.
+//
+// It will try to get the most recent network head or return the current
 // non-expired subjective head as a fallback.
 // If the head has changed, it will update the tail with the new head.
 func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
-	netHead, err := s.networkHead(ctx)
+	netHead, updated, err := s.networkHead(ctx)
 	if err != nil {
 		return netHead, err
+	}
+	if !updated {
+		return netHead, nil
 	}
 
 	if _, err = s.subjectiveTail(ctx, netHead); err != nil {
@@ -37,17 +42,20 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 	return s.localHead(ctx)
 }
 
-// networkHead returns subjective head ensuring its recency.
-// If the subjective head is not recent, it attempts to request the most recent network head from trusted peers
-// assuming that trusted peers are always fully synced.
+// networkHead returns subjective head lazily ensuring its recency.
+//
+// If the subjective head is not recent, it requests a more recent network head. If the request is successful
+// and the new head is more recent than the current subjective head, it sets the new head as the local subjective head
+// and reports true.
+//
 // The request is limited with [NetworkHeadRequestTimeout], otherwise the unrecent subjective header is returned.
-func (s *Syncer[H]) networkHead(ctx context.Context) (H, error) {
+func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 	sbjHead, initialized, err := s.subjectiveHead(ctx)
 	if err != nil {
-		return sbjHead, err
+		return sbjHead, false, err
 	}
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) || initialized {
-		return sbjHead, nil
+		return sbjHead, initialized, nil
 	}
 
 	s.metrics.outdatedHead(ctx)
@@ -75,7 +83,7 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, error) {
 			sbjHead.Height(),
 		)
 
-		return sbjHead, nil
+		return sbjHead, false, nil
 	}
 	// still check if even the newly requested head is outdated
 	if !isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold) {
@@ -86,7 +94,7 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, error) {
 
 	if newHead.Height() <= sbjHead.Height() {
 		// nothing new, just return what we have already
-		return sbjHead, nil
+		return sbjHead, false, nil
 	}
 	// set the new head as subjective, skipping expensive verification
 	// as it was already verified by the Exchange.
@@ -97,12 +105,13 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, error) {
 		"height",
 		newHead.Height(),
 	)
-	return newHead, nil
+	return newHead, true, nil
 }
 
 // subjectiveHead returns the highest known non-expired subjective Head.
+//
 // If the current subjective head is expired or does not exist,
-// it performs automatic subjective (re) initialization by requesting the most recent head from trusted peers.
+// it lazily performs automatic subjective (re) initialization by requesting the most recent head from trusted peers.
 // Reports true if initialization was performed, false otherwise.
 func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 	sbjHead, err := s.localHead(ctx)
@@ -136,7 +145,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 	}
 
 	log.Infow("subjective initialization finished", "height", newHead.Height())
-	return newHead, false, nil
+	return newHead, true, nil
 }
 
 // localHead reports the current highest locally known head.
