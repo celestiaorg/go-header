@@ -69,7 +69,8 @@ func TestSyncer_TailEstimation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*50)
 	t.Cleanup(cancel)
 
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
+	suite := headertest.NewTestSuite(t)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	localStore, err := store.NewStore[*headertest.DummyHeader](
@@ -100,21 +101,26 @@ func TestSyncer_TailEstimation(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, tail.Height(), 1)
 
-	// simulate new header arrival by triggering recency check
+	// simulate new head
+	err = remoteStore.Append(ctx, suite.NextHeader())
+	require.NoError(t, err)
+
+	// trigger recency check
 	head, err := syncer.Head(ctx)
 	require.NoError(t, err)
 	require.Equal(t, head.Height(), remoteStore.Height())
 
 	tail, err = localStore.Tail(ctx)
 	require.NoError(t, err)
-	require.EqualValues(t, 50, tail.Height())
+	require.EqualValues(t, 51, tail.Height())
 }
 
 func TestSyncer_TailReconfiguration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
+	suite := headertest.NewTestSuite(t)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	localStore, err := store.NewStore[*headertest.DummyHeader](
@@ -145,6 +151,10 @@ func TestSyncer_TailReconfiguration(t *testing.T) {
 
 	syncer.Params.SyncFromHeight = 69
 
+	// simulate new head
+	err = remoteStore.Append(ctx, suite.NextHeader())
+	require.NoError(t, err)
+
 	err = syncer.Start(ctx)
 	require.NoError(t, err)
 
@@ -157,7 +167,8 @@ func TestSyncer_TailInitialization(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
-	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 100)
+	suite := headertest.NewTestSuite(t)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
 
 	expectedTail, err := remoteStore.GetByHeight(ctx, 69)
 	require.NoError(t, err)
@@ -225,8 +236,6 @@ func TestSyncer_TailInitialization(t *testing.T) {
 				headertest.NewDummySubscriber(),
 				// make sure the blocktime is set for proper tail estimation
 				WithBlockTime(headertest.HeaderTime),
-				// make sure that recency check is not triggered
-				WithRecencyThreshold(time.Minute),
 				test.option,
 			)
 			require.NoError(t, err)
@@ -250,6 +259,10 @@ func TestSyncer_TailInitialization(t *testing.T) {
 			expectedTail = test.expectedAfterRestart()
 			syncer.Params.SyncFromHeight = expectedTail.Height()
 			syncer.Params.SyncFromHash = expectedTail.Hash()
+
+			// simulate new head
+			err = remoteStore.Append(ctx, suite.NextHeader())
+			require.NoError(t, err)
 			err = syncer.Start(ctx)
 			require.NoError(t, err)
 
