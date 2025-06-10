@@ -829,3 +829,41 @@ func TestStoreInit(t *testing.T) {
 	err = reopenedStore.Stop(ctx)
 	require.NoError(t, err)
 }
+
+func TestStore_HasAt(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	headers := suite.GenDummyHeaders(100)
+
+	err = store.Append(ctx, headers...)
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	err = store.DeleteTo(ctx, 50)
+	require.NoError(t, err)
+
+	has := store.HasAt(ctx, 100)
+	assert.True(t, has)
+
+	has = store.HasAt(ctx, 50)
+	assert.True(t, has)
+
+	has = store.HasAt(ctx, 49)
+	assert.False(t, has)
+
+	has = store.HasAt(ctx, 10)
+	assert.False(t, has)
+
+	has = store.HasAt(ctx, 0)
+	assert.False(t, has)
+}

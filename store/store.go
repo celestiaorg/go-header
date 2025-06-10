@@ -324,8 +324,22 @@ func (s *Store[H]) Has(ctx context.Context, hash header.Hash) (bool, error) {
 	return ok, err
 }
 
-func (s *Store[H]) HasAt(_ context.Context, height uint64) bool {
-	return height != uint64(0) && s.Height() >= height
+func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
+	if height == uint64(0) {
+		return false
+	}
+
+	head, err := s.Head(ctx)
+	if err != nil {
+		return false
+	}
+
+	tail, err := s.Tail(ctx)
+	if err != nil {
+		return false
+	}
+
+	return head.Height() >= height && height >= tail.Height()
 }
 
 // DeleteTo implements [header.Store] interface.
