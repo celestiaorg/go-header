@@ -394,6 +394,32 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 	}
 }
 
+func TestStoreGetByHeight_intermittentWrites(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head())
+
+	firstChunk := suite.GenDummyHeaders(10)
+	_ = suite.GenDummyHeaders(10)
+	secondChunk := suite.GenDummyHeaders(10)
+	err := store.Append(ctx, firstChunk...)
+	require.NoError(t, err)
+	err = store.Append(ctx, secondChunk...)
+	require.NoError(t, err)
+	// wait for batch to be written
+	time.Sleep(10 * time.Millisecond)
+
+	for _, expect := range firstChunk {
+		have, err := store.GetByHeight(ctx, expect.HeightI)
+		require.NoError(t, err)
+		assert.Equal(t, expect.Height(), have.Height())
+	}
+}
+
 func TestStoreGetByHeight_earlyAvailable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	t.Cleanup(cancel)
