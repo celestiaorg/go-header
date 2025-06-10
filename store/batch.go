@@ -18,14 +18,14 @@ import (
 type batch[H header.Header[H]] struct {
 	lk      sync.RWMutex
 	heights map[string]uint64
-	headers []H
+	headers map[uint64]H
 }
 
 // newBatch creates the batch with the given pre-allocated size.
 func newBatch[H header.Header[H]](size int) *batch[H] {
 	return &batch[H]{
 		heights: make(map[string]uint64, size),
-		headers: make([]H, 0, size),
+		headers: make(map[uint64]H, size),
 	}
 }
 
@@ -40,7 +40,7 @@ func (b *batch[H]) Len() int {
 func (b *batch[H]) GetAll() []H {
 	b.lk.RLock()
 	defer b.lk.RUnlock()
-	return b.headers
+	return slices.Collect(maps.Values(b.headers))
 }
 
 // Get returns a header by its hash.
@@ -53,36 +53,14 @@ func (b *batch[H]) Get(hash header.Hash) H {
 		return zero
 	}
 
-	return b.getByHeight(height)
+	return b.headers[height]
 }
 
 // GetByHeight returns a header by its height.
 func (b *batch[H]) GetByHeight(height uint64) H {
 	b.lk.RLock()
 	defer b.lk.RUnlock()
-	return b.getByHeight(height)
-}
-
-func (b *batch[H]) getByHeight(height uint64) H {
-	var (
-		ln   = uint64(len(b.headers))
-		zero H
-	)
-	if ln == 0 {
-		return zero
-	}
-
-	head := b.headers[ln-1].Height()
-	base := head - ln
-	if height > head || height <= base {
-		return zero
-	}
-
-	h := b.headers[height-base-1]
-	if h.Height() == height {
-		return h
-	}
-	return zero
+	return b.headers[height]
 }
 
 // Append appends new headers to the batch.
@@ -90,7 +68,7 @@ func (b *batch[H]) Append(headers ...H) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
 	for _, h := range headers {
-		b.headers = append(b.headers, h)
+		b.headers[h.Height()] = h
 		b.heights[h.Hash().String()] = h.Height()
 	}
 }
@@ -111,9 +89,7 @@ func (b *batch[H]) DeleteRange(from, to uint64) {
 	maps.DeleteFunc(b.heights, func(_ string, height uint64) bool {
 		return from <= height && height < to
 	})
-
-	b.headers = slices.DeleteFunc(b.headers, func(h H) bool {
-		height := h.Height()
+	maps.DeleteFunc(b.headers, func(height uint64, _ H) bool {
 		return from <= height && height < to
 	})
 }
@@ -122,8 +98,10 @@ func (b *batch[H]) DeleteRange(from, to uint64) {
 func (b *batch[H]) Reset() {
 	b.lk.Lock()
 	defer b.lk.Unlock()
-	b.headers = b.headers[:0]
 	for k := range b.heights {
 		delete(b.heights, k)
+	}
+	for k := range b.headers {
+		delete(b.headers, k)
 	}
 }
