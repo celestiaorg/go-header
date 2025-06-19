@@ -260,7 +260,7 @@ func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 	if err != nil {
 		var zero H
 		if errors.Is(err, datastore.ErrNotFound) {
-			return zero, header.ErrNotFound
+			return zero, fmt.Errorf("height %d: %w", height, header.ErrNotFound)
 		}
 
 		return zero, err
@@ -378,108 +378,126 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	if err := s.deleteRange(ctx, tail.Height(), to); err != nil {
 		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
 	}
+
+	if head.Height()+1 == to {
+		// this is the case where we have deleted all the headers
+		// wipe the store
+		if err := s.wipe(ctx); err != nil {
+			return fmt.Errorf("header/store: wipe: %w", err)
+		}
+	}
+
 	return nil
 }
+
+var maxHeadersLoadedPerDelete uint64 = 512
 
 func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("delete batch: %w", err)
-	}
+	log.Infow("deleting headers", "from_height", from, "to_height", to)
+	for from < to {
+		amount := min(to-from, maxHeadersLoadedPerDelete)
+		toDelete := from + amount
+		headers := make([]H, 0, amount)
 
-	if err := s.prepareDeleteRangeBatch(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("prepare: %w", err)
-	}
-
-	if err := s.heightIndex.deleteRange(ctx, batch, from, to); err != nil {
-		return fmt.Errorf("height index: %w", err)
-	}
-
-	err = s.updateTail(ctx, batch, to)
-	if err != nil {
-		return fmt.Errorf("update tail: %w", err)
-	}
-
-	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("delete commit: %w", err)
-	}
-
-	return nil
-}
-
-func (s *Store[H]) prepareDeleteRangeBatch(
-	ctx context.Context, batch datastore.Batch, from, to uint64,
-) error {
-	for h := from; h < to; h++ {
-		hash, err := s.heightIndex.HashByHeight(ctx, h)
-		if err != nil {
-			if errors.Is(err, datastore.ErrNotFound) {
-				log.Warnw("removing non-existent header", "height", h)
+		for height := from; height < toDelete; height++ {
+			// take headers individually instead of range
+			// as getRangeByHeight can't deal with potentially missing headers
+			h, err := s.getByHeight(ctx, height)
+			if errors.Is(err, header.ErrNotFound) {
+				log.Warnf("header/store: attempt to delete header that's not found", height)
 				continue
 			}
-			return fmt.Errorf("hash by height(%d): %w", h, err)
-		}
-		s.cache.Remove(hash.String())
+			if err != nil {
+				return fmt.Errorf("getting header while deleting: %w", err)
+			}
 
-		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
-			return fmt.Errorf("delete hash key: %w", err)
+			headers = append(headers, h)
 		}
+
+		batch, err := s.ds.Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("new batch: %w", err)
+		}
+
+		for _, h := range headers {
+			if err := batch.Delete(ctx, hashKey(h.Hash())); err != nil {
+				return fmt.Errorf("delete hash key (%X): %w", h.Hash(), err)
+			}
+			if err := batch.Delete(ctx, heightKey(h.Height())); err != nil {
+				return fmt.Errorf("delete height key (%d): %w", h.Height(), err)
+			}
+		}
+
+		err = s.setTail(ctx, batch, toDelete)
+		if err != nil {
+			return fmt.Errorf("setting tail to %d: %w", toDelete, err)
+		}
+
+		if err := batch.Commit(ctx); err != nil {
+			return fmt.Errorf("committing delete batch [%d:%d): %w", from, toDelete, err)
+		}
+
+		// cleanup caches after disk is flushed
+		for _, h := range headers {
+			s.cache.Remove(h.Hash().String())
+			s.heightIndex.cache.Remove(h.Height())
+		}
+		s.pending.DeleteRange(from, toDelete)
+
+		log.Infow("deleted header range", "from_height", from, "to_height", toDelete)
+
+		// move iterator
+		from = toDelete
 	}
 
-	s.pending.DeleteRange(from, to)
 	return nil
 }
 
-func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+	newTail, err := s.getByHeight(ctx, to)
+	if errors.Is(err, header.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("getting tail: %w", err)
+	}
+
+	// set directly to `to`, avoiding iteration in recedeTail
+	s.tailHeader.Store(&newTail)
+	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
+		return fmt.Errorf("writing tailKey in batch: %w", err)
+	}
+
+	// update head as well, if delete went over it
 	head, err := s.Head(ctx)
 	if err != nil {
 		return err
 	}
-
-	newTail, err := s.getByHeight(ctx, to)
-	if err != nil {
-		if !errors.Is(err, header.ErrNotFound) {
-			return fmt.Errorf("cannot fetch next tail: %w", err)
-		}
-
-		if to <= head.Height() {
-			return fmt.Errorf("attempt to delete to %d: %w", to, header.ErrNotFound)
-		}
-
-		// TODO(@Wondertan): this is racy, but not critical
-		//  Will be eventually fixed by
-		//  https://github.com/celestiaorg/go-header/issues/263
-		// this is the case where we have deleted all the headers
-		// deinit the store
-		s.deinit()
-
-		err = batch.Delete(ctx, headKey)
-		if err != nil {
-			return fmt.Errorf("deleting head in a batch: %w", err)
-		}
-		err = batch.Delete(ctx, tailKey)
-		if err != nil {
-			return fmt.Errorf("deleting tail in a batch: %w", err)
-		}
-
-		return nil
-	}
-
-	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
-		return fmt.Errorf("put tail in batch: %w", err)
-	}
-	s.tailHeader.Store(&newTail)
-	// do not recede tail, it must be equal to `to`
-
-	// update head as well if head, if delete went over it
 	if to > head.Height() {
 		if err := writeHeaderHashTo(ctx, batch, newTail, headKey); err != nil {
-			return fmt.Errorf("put tail in batch: %w", err)
+			return fmt.Errorf("writing headKey in batch: %w", err)
 		}
 		s.contiguousHead.Store(&newTail)
 		s.advanceHead(ctx)
 	}
 	return nil
+}
+
+func (s *Store[H]) wipe(ctx context.Context) (rerr error) {
+	// TODO(@Wondertan): calling deinit here is racy, but not critical
+	//  Will be eventually fixed by
+	//  https://github.com/celestiaorg/go-header/issues/263
+	s.deinit()
+
+	if err := s.ds.Delete(ctx, headKey); err != nil {
+		rerr = errors.Join(rerr, fmt.Errorf("deleting headKey DB pointer: %w", err))
+	}
+
+	if err := s.ds.Delete(ctx, tailKey); err != nil {
+		rerr = errors.Join(rerr, fmt.Errorf("deleting tailKey DB pointer: %w", err))
+	}
+
+	return rerr
 }
 
 func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
@@ -651,7 +669,7 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 	if err != nil {
 		s.metrics.readSingle(ctx, time.Since(startTime), true)
 		if errors.Is(err, datastore.ErrNotFound) {
-			return nil, header.ErrNotFound
+			return nil, fmt.Errorf("hash %X: %w", hash, header.ErrNotFound)
 		}
 		return nil, err
 	}
