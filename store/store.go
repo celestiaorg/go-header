@@ -427,9 +427,9 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 			}
 		}
 
-		err = s.updateTail(ctx, batch, toDelete)
+		err = s.setTail(ctx, batch, toDelete)
 		if err != nil {
-			return fmt.Errorf("updating tail to %d: %w", toDelete, err)
+			return fmt.Errorf("setting tail to %d: %w", toDelete, err)
 		}
 
 		if err := batch.Commit(ctx); err != nil {
@@ -450,19 +450,19 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 	return nil
 }
 
-func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64) error {
 	newTail, err := s.getByHeight(ctx, to)
 	if errors.Is(err, header.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("cannot fetch next tail: %w", err)
+		return fmt.Errorf("getting tail: %w", err)
 	}
 
 	// set directly to `to`, avoiding iteration in recedeTail
 	s.tailHeader.Store(&newTail)
 	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
-		return fmt.Errorf("put tail in batch: %w", err)
+		return fmt.Errorf("writing tailKey in batch: %w", err)
 	}
 
 	// update head as well, if delete went over it
@@ -472,7 +472,7 @@ func (s *Store[H]) updateTail(ctx context.Context, batch datastore.Batch, to uin
 	}
 	if to > head.Height() {
 		if err := writeHeaderHashTo(ctx, batch, newTail, headKey); err != nil {
-			return fmt.Errorf("put tail in batch: %w", err)
+			return fmt.Errorf("writing headKey in batch: %w", err)
 		}
 		s.contiguousHead.Store(&newTail)
 		s.advanceHead(ctx)
@@ -487,11 +487,11 @@ func (s *Store[H]) wipe(ctx context.Context) (rerr error) {
 	s.deinit()
 
 	if err := s.ds.Delete(ctx, headKey); err != nil {
-		rerr = errors.Join(rerr, fmt.Errorf("deleting head in a batch: %w", err))
+		rerr = errors.Join(rerr, fmt.Errorf("deleting headKey DB pointer: %w", err))
 	}
 
 	if err := s.ds.Delete(ctx, tailKey); err != nil {
-		rerr = errors.Join(rerr, fmt.Errorf("deleting tail in a batch: %w", err))
+		rerr = errors.Join(rerr, fmt.Errorf("deleting tailKey DB pointer: %w", err))
 	}
 
 	return rerr
