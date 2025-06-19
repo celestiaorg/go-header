@@ -526,6 +526,8 @@ func TestStore_GetRange(t *testing.T) {
 }
 
 func TestStore_DeleteTo(t *testing.T) {
+	maxHeadersLoadedPerDelete = 10
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -601,6 +603,7 @@ func TestStore_DeleteTo(t *testing.T) {
 			for h := from; h < tt.to; h++ {
 				hash := hashes[h]
 				assert.False(t, store.cache.Contains(hash.String()))
+				assert.False(t, store.heightIndex.cache.Contains(h))
 				assert.False(t, store.pending.Has(hash))
 			}
 
@@ -654,6 +657,8 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 }
 
 func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
+	maxHeadersLoadedPerDelete = 1
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -682,7 +687,7 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	// assert store is not empty
 	tail, err := store.Tail(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, gap[len(gap)-1].Height()+1, tail.Height())
+	assert.Equal(t, int(gap[len(gap)-1].Height()+1), int(tail.Height()))
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, suite.Head().Height(), head.Height())
