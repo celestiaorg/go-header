@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/celestiaorg/go-header"
@@ -17,6 +18,9 @@ type Store[H header.Header[H]] struct {
 	Headers    map[uint64]H
 	HeadHeight uint64
 	TailHeight uint64
+
+	onDeleteMu sync.Mutex
+	onDelete   []func(context.Context, []H) error
 }
 
 // NewDummyStore creates a store for DummyHeader.
@@ -87,6 +91,13 @@ func (m *Store[H]) DeleteTo(_ context.Context, to uint64) error {
 
 	m.TailHeight = to
 	return nil
+}
+
+func (m *Store[H]) OnDelete(fn func(context.Context, []H) error) {
+	m.onDeleteMu.Lock()
+	defer m.onDeleteMu.Unlock()
+
+	m.onDelete = append(m.onDelete, fn)
 }
 
 func (m *Store[H]) GetRange(ctx context.Context, from, to uint64) ([]H, error) {

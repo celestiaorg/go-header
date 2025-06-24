@@ -256,12 +256,12 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 }
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
-	head, err := s.Head(ctx)
+	head, _ := s.Head(ctx)
 	if !head.IsZero() && head.Height() == height {
 		return head, nil
 	}
 
-	tail, err := s.Tail(ctx)
+	tail, _ := s.Tail(ctx)
 	if !tail.IsZero() && tail.Height() == height {
 		return tail, nil
 	}
