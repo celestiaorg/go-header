@@ -393,6 +393,7 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 var maxHeadersLoadedPerDelete uint64 = 512
 
 func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
+	log.Infow("deleting headers", "from_height", from, "to_height", to)
 	for from < to {
 		amount := min(to-from, maxHeadersLoadedPerDelete)
 		toDelete := from + amount
@@ -442,6 +443,8 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 			s.heightIndex.cache.Remove(h.Height())
 		}
 		s.pending.DeleteRange(from, toDelete)
+
+		log.Infow("deleted header range", "from_height", from, "to_height", toDelete)
 
 		// move iterator
 		from = toDelete
