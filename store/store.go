@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -57,6 +58,9 @@ type Store[H header.Header[H]] struct {
 	pending *batch[H]
 	// syncCh is a channel used to synchronize writes
 	syncCh chan chan struct{}
+
+	onDeleteMu sync.Mutex
+	onDelete   []func(context.Context, []H) error
 
 	Params Parameters
 }
@@ -252,6 +256,16 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 }
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
+	head, err := s.Head(ctx)
+	if !head.IsZero() && head.Height() == height {
+		return head, nil
+	}
+
+	tail, err := s.Tail(ctx)
+	if !tail.IsZero() && tail.Height() == height {
+		return tail, nil
+	}
+
 	if h := s.pending.GetByHeight(height); !h.IsZero() {
 		return h, nil
 	}
@@ -342,6 +356,21 @@ func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
 	return head.Height() >= height && height >= tail.Height()
 }
 
+func (s *Store[H]) OnDelete(fn func(context.Context, []H) error) {
+	s.onDeleteMu.Lock()
+	defer s.onDeleteMu.Unlock()
+
+	s.onDelete = append(s.onDelete, func(ctx context.Context, h []H) (rerr error) {
+		defer func() {
+			err := recover()
+			if err != nil {
+				rerr = fmt.Errorf("header/store: user provided onDelete paniced with: %s", err)
+			}
+		}()
+		return fn(ctx, h)
+	})
+}
+
 // DeleteTo implements [header.Store] interface.
 func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	// ensure all the pending headers are synchronized
@@ -417,6 +446,12 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		batch, err := s.ds.Batch(ctx)
 		if err != nil {
 			return fmt.Errorf("new batch: %w", err)
+		}
+
+		for _, onDelete := range s.onDelete {
+			if err := onDelete(ctx, headers); err != nil {
+				log.Errorf("on delete handler: %w", err)
+			}
 		}
 
 		for _, h := range headers {
