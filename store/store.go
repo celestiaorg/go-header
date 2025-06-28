@@ -450,7 +450,9 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 
 		for _, onDelete := range s.onDelete {
 			if err := onDelete(ctx, headers); err != nil {
-				log.Errorf("on delete handler: %w", err)
+				// abort deletion if onDelete handler fails
+				// to ensure atomicity between stored headers and user specific data
+				return fmt.Errorf("on delete handler: %w", err)
 			}
 		}
 
