@@ -452,6 +452,10 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 			if err := onDelete(ctx, headers); err != nil {
 				// abort deletion if onDelete handler fails
 				// to ensure atomicity between stored headers and user specific data
+				// TODO(@Wondertan): Batch is not actually atomic and could write some data at this point
+				//  but its fine for now: https://github.com/celestiaorg/go-header/issues/307
+				// TODO2(@Wondertan): Once we move to txn, find a way to pass txn through context,
+				//  so that users can use it in their onDelete handlers to ensure atomicity between deleted headers and user specific data
 				return fmt.Errorf("on delete handler: %w", err)
 			}
 		}
