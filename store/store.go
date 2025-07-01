@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -448,7 +449,10 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 			return fmt.Errorf("new batch: %w", err)
 		}
 
-		for _, onDelete := range s.onDelete {
+		s.onDeleteMu.Lock()
+		onDelete := slices.Clone(s.onDelete)
+		s.onDeleteMu.Unlock()
+		for _, onDelete := range onDelete {
 			if err := onDelete(ctx, headers); err != nil {
 				// abort deletion if onDelete handler fails
 				// to ensure atomicity between stored headers and user specific data
