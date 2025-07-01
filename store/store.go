@@ -364,7 +364,7 @@ func (s *Store[H]) OnDelete(fn func(context.Context, []H) error) {
 		defer func() {
 			err := recover()
 			if err != nil {
-				rerr = fmt.Errorf("header/store: user provided onDelete panicked with: %w", err)
+				rerr = fmt.Errorf("header/store: user provided onDelete panicked with: %s", err)
 			}
 		}()
 		return fn(ctx, h)
