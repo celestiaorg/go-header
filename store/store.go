@@ -404,7 +404,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 			// as getRangeByHeight can't deal with potentially missing headers
 			h, err := s.getByHeight(ctx, height)
 			if errors.Is(err, header.ErrNotFound) {
-				log.Warnf("header/store: deleting header that's not found", height)
+				log.Warnf("header/store: attempt to delete header that's not found", height)
 				continue
 			}
 			if err != nil {
