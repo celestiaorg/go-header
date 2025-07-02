@@ -30,12 +30,8 @@ func NewStore[H header.Header[H]](_ *testing.T, gen Generator[H], numHeaders int
 		Headers: make(map[uint64]H),
 	}
 
-	for i := range numHeaders {
+	for range numHeaders {
 		h := gen.NextHeader()
-		if i == 0 {
-			store.TailHeight = h.Height()
-		}
-
 		_ = store.Append(context.Background(), h)
 	}
 
@@ -133,7 +129,7 @@ func (m *Store[H]) Append(_ context.Context, headers ...H) error {
 		if height > m.HeadHeight {
 			m.HeadHeight = height
 		}
-		if height < m.TailHeight {
+		if height < m.TailHeight || m.TailHeight == 0 {
 			m.TailHeight = height
 		}
 	}
