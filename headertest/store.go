@@ -84,12 +84,23 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
-func (m *Store[H]) DeleteTo(_ context.Context, to uint64) error {
+func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
+	var deleted []H
 	for h := m.TailHeight; h < to; h++ {
-		delete(m.Headers, h)
+		hdr, ok := m.Headers[h]
+		if ok {
+			delete(m.Headers, h)
+			deleted = append(deleted, hdr)
+		}
 	}
 
 	m.TailHeight = to
+	for _, deleteFn := range m.onDelete {
+		err := deleteFn(ctx, deleted)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -452,8 +452,8 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		s.onDeleteMu.Lock()
 		onDelete := slices.Clone(s.onDelete)
 		s.onDeleteMu.Unlock()
-		for _, onDelete := range onDelete {
-			if err := onDelete(ctx, headers); err != nil {
+		for _, deleteFn := range onDelete {
+			if err := deleteFn(ctx, headers); err != nil {
 				// abort deletion if onDelete handler fails
 				// to ensure atomicity between stored headers and user specific data
 				// TODO(@Wondertan): Batch is not actually atomic and could write some data at this point
