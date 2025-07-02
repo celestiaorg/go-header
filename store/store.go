@@ -246,7 +246,7 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 	// we subscribe to it
 	err := s.heightSub.Wait(ctx, height)
 	if err != nil && !errors.Is(err, errElapsedHeight) {
-		return zero, err
+		return zero, fmt.Errorf("awaiting header %d with head %d: %w", height, s.Height(), err)
 	}
 	// otherwise, the errElapsedHeight is thrown,
 	// which means the requested 'height' should be present

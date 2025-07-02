@@ -21,7 +21,7 @@ var NetworkHeadRequestTimeout = time.Second * 2
 func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
 	netHead, updated, err := s.networkHead(ctx)
 	if err != nil {
-		return netHead, err
+		return netHead, fmt.Errorf("network head: %w", err)
 	}
 	if !updated {
 		return netHead, nil
@@ -52,7 +52,7 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 	sbjHead, initialized, err := s.subjectiveHead(ctx)
 	if err != nil {
-		return sbjHead, false, err
+		return sbjHead, false, fmt.Errorf("subjective head: %w", err)
 	}
 	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) || initialized {
 		return sbjHead, initialized, nil
@@ -124,15 +124,16 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 			"expired_height",
 			sbjHead.Height(),
 		)
+	case err != nil:
+		return sbjHead, false, fmt.Errorf("local head: %w", err)
 	default:
-		// success or unknown error case
-		return sbjHead, false, err
+		return sbjHead, false, nil
 	}
 
 	s.metrics.subjectiveInitialization(ctx)
 	newHead, err := s.head.Head(ctx)
 	if err != nil {
-		return newHead, false, err
+		return newHead, false, fmt.Errorf("exchange head: %w", err)
 	}
 	// still check if even the newly requested head is expired
 	if isExpired(newHead, s.Params.TrustingPeriod) {
