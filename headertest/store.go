@@ -31,19 +31,14 @@ func NewDummyStore(t *testing.T) *Store[*DummyHeader] {
 // NewStore creates a generic mock store supporting different type of Headers based on Generator.
 func NewStore[H header.Header[H]](_ *testing.T, gen Generator[H], numHeaders int) *Store[H] {
 	store := &Store[H]{
-		Headers:    make(map[uint64]H),
-		HeadHeight: 1,
-		TailHeight: 1,
+		Headers: make(map[uint64]H),
 	}
 
-	for i := 0; i < numHeaders; i++ {
-		header := gen.NextHeader()
-		store.Headers[header.Height()] = header
-
-		if header.Height() > store.HeadHeight {
-			store.HeadHeight = header.Height()
-		}
+	for range numHeaders {
+		h := gen.NextHeader()
+		_ = store.Append(context.Background(), h)
 	}
+
 	return store
 }
 
@@ -156,7 +151,7 @@ func (m *Store[H]) Append(_ context.Context, headers ...H) error {
 		if height > m.HeadHeight {
 			m.HeadHeight = height
 		}
-		if height < m.TailHeight {
+		if height < m.TailHeight || m.TailHeight == 0 {
 			m.TailHeight = height
 		}
 	}

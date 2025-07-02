@@ -141,7 +141,7 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 // Returns empty hash if it hasn't changed from the old tail hash.
 func (s *Syncer[H]) tailHash(oldTail H) (bool, header.Hash) {
 	hash := s.Params.SyncFromHash
-	if hash == nil {
+	if len(hash) == 0 {
 		return false, nil
 	}
 
