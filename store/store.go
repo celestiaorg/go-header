@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -57,6 +59,9 @@ type Store[H header.Header[H]] struct {
 	pending *batch[H]
 	// syncCh is a channel used to synchronize writes
 	syncCh chan chan struct{}
+
+	onDeleteMu sync.Mutex
+	onDelete   []func(context.Context, []H) error
 
 	Params Parameters
 }
@@ -252,6 +257,16 @@ func (s *Store[H]) GetByHeight(ctx context.Context, height uint64) (H, error) {
 }
 
 func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
+	head, _ := s.Head(ctx)
+	if !head.IsZero() && head.Height() == height {
+		return head, nil
+	}
+
+	tail, _ := s.Tail(ctx)
+	if !tail.IsZero() && tail.Height() == height {
+		return tail, nil
+	}
+
 	if h := s.pending.GetByHeight(height); !h.IsZero() {
 		return h, nil
 	}
@@ -342,6 +357,21 @@ func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
 	return head.Height() >= height && height >= tail.Height()
 }
 
+func (s *Store[H]) OnDelete(fn func(context.Context, []H) error) {
+	s.onDeleteMu.Lock()
+	defer s.onDeleteMu.Unlock()
+
+	s.onDelete = append(s.onDelete, func(ctx context.Context, h []H) (rerr error) {
+		defer func() {
+			err := recover()
+			if err != nil {
+				rerr = fmt.Errorf("header/store: user provided onDelete panicked with: %s", err)
+			}
+		}()
+		return fn(ctx, h)
+	})
+}
+
 // DeleteTo implements [header.Store] interface.
 func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	// ensure all the pending headers are synchronized
@@ -417,6 +447,22 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 		batch, err := s.ds.Batch(ctx)
 		if err != nil {
 			return fmt.Errorf("new batch: %w", err)
+		}
+
+		s.onDeleteMu.Lock()
+		onDelete := slices.Clone(s.onDelete)
+		s.onDeleteMu.Unlock()
+		for _, deleteFn := range onDelete {
+			if err := deleteFn(ctx, headers); err != nil {
+				// abort deletion if onDelete handler fails
+				// to ensure atomicity between stored headers and user specific data
+				// TODO(@Wondertan): Batch is not actually atomic and could write some data at this point
+				//  but its fine for now: https://github.com/celestiaorg/go-header/issues/307
+				// TODO2(@Wondertan): Once we move to txn, find a way to pass txn through context,
+				//  so that users can use it in their onDelete handlers
+				//  to ensure atomicity between deleted headers and user specific data
+				return fmt.Errorf("on delete handler: %w", err)
+			}
 		}
 
 		for _, h := range headers {
