@@ -3,6 +3,7 @@ package sync
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -140,8 +141,12 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 // tailHash reports whether tail hash should be used and returns it.
 // Returns empty hash if it hasn't changed from the old tail hash.
 func (s *Syncer[H]) tailHash(oldTail H) (bool, header.Hash) {
-	hash := s.Params.SyncFromHash
-	if len(hash) == 0 {
+	hashStr := s.Params.SyncFromHash
+	if len(hashStr) == 0 {
+		return false, nil
+	}
+	hash, err := hex.DecodeString(hashStr)
+	if err != nil {
 		return false, nil
 	}
 
