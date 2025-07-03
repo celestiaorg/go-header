@@ -1,10 +1,9 @@
 package sync
 
 import (
+	"encoding/hex"
 	"fmt"
 	"time"
-
-	"github.com/celestiaorg/go-header"
 )
 
 // Option is the functional option that is applied to the Syner instance
@@ -25,13 +24,15 @@ type Parameters struct {
 	// PruningWindow defines the duration within which headers are retained before being pruned.
 	PruningWindow time.Duration
 	// SyncFromHash is the hash of the header from which the syncer should start syncing.
+	// Zero value to disable.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHash overrides this default,
 	// allowing any user to specify a custom starting point.
 	//
 	// SyncFromHash has higher priority than SyncFromHeight.
-	SyncFromHash header.Hash
+	SyncFromHash string
 	// SyncFromHeight is the height of the header from which the syncer should start syncing.
+	// Zero value to disable.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHeight overrides this default,
 	// allowing any user to specify a custom starting point.
@@ -60,7 +61,16 @@ func DefaultParameters() Parameters {
 
 func (p *Parameters) Validate() error {
 	if p.TrustingPeriod == 0 {
-		return fmt.Errorf("invalid trusting period duration: %v", p.TrustingPeriod)
+		return fmt.Errorf("invalid TrustingPeriod duration: %v", p.TrustingPeriod)
+	}
+	if p.PruningWindow == 0 {
+		return fmt.Errorf("invalid PruningWindow duration: %v", p.PruningWindow)
+	}
+	if len(p.SyncFromHash) > 0 {
+		_, err := hex.DecodeString(p.SyncFromHash)
+		if err != nil {
+			return fmt.Errorf("invalid SyncFromHash: %w", err)
+		}
 	}
 	return nil
 }
@@ -105,7 +115,7 @@ func WithParams(params Parameters) Option {
 
 // WithSyncFromHash sets given header hash a starting point for syncing.
 // See [Parameters.SyncFromHash] for details.
-func WithSyncFromHash(hash header.Hash) Option {
+func WithSyncFromHash(hash string) Option {
 	return func(p *Parameters) {
 		p.SyncFromHash = hash
 	}

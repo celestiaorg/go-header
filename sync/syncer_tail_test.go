@@ -37,7 +37,7 @@ func TestSyncer_TailHashOverHeight(t *testing.T) {
 		localStore,
 		headertest.NewDummySubscriber(),
 		WithBlockTime(headertest.HeaderTime),
-		WithSyncFromHash(startFrom.Hash()),
+		WithSyncFromHash(startFrom.Hash().String()),
 	)
 	require.NoError(t, err)
 
@@ -195,7 +195,7 @@ func TestSyncer_TailInitialization(t *testing.T) {
 		},
 		{
 			"SyncFromHash",
-			WithSyncFromHash(expectedTail.Hash()),
+			WithSyncFromHash(expectedTail.Hash().String()),
 			func() *headertest.DummyHeader {
 				return expectedTail
 			},
@@ -258,7 +258,7 @@ func TestSyncer_TailInitialization(t *testing.T) {
 			require.NoError(t, err)
 			expectedTail = test.expectedAfterRestart()
 			syncer.Params.SyncFromHeight = expectedTail.Height()
-			syncer.Params.SyncFromHash = expectedTail.Hash()
+			syncer.Params.SyncFromHash = expectedTail.Hash().String()
 
 			// simulate new head
 			err = remoteStore.Append(ctx, suite.NextHeader())
