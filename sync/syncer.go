@@ -47,6 +47,8 @@ type Syncer[H header.Header[H]] struct {
 	pending ranges[H]
 	// incomingMu ensures only one incoming network head candidate is processed at the time
 	incomingMu sync.Mutex
+	// tailMu prevents concurrent tail movements
+	tailMu sync.Mutex
 
 	// controls lifecycle for syncLoop
 	ctx    context.Context
