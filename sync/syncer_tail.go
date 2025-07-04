@@ -18,6 +18,16 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 		return oldTail, err
 	}
 
+	if !s.tailMu.TryLock() {
+		// prevents concurrent tail estimation and moving
+		//
+		// If a new head arrives, while tail for the previous head is still in progress
+		// it is valid to skip tail renewal for the new one. It will be resolved with a more recent head
+		// once in progress tail finishes.
+		return oldTail, nil
+	}
+	defer s.tailMu.Unlock()
+
 	newTail, err := s.renewTail(ctx, oldTail, head)
 	if err != nil {
 		return oldTail, fmt.Errorf("updating tail: %w", err)
