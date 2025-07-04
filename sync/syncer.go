@@ -53,6 +53,11 @@ type Syncer[H header.Header[H]] struct {
 	cancel context.CancelFunc
 
 	Params *Parameters
+
+	// a hack to prevent headersub interfering subjective init
+	// TODO(@Wondertan): Remove after bsync.
+	sbjInitWait bool
+	sbjInitSema chan struct{}
 }
 
 // NewSyncer creates a new instance of Syncer.
@@ -86,15 +91,42 @@ func NewSyncer[H header.Header[H]](
 		metrics:     metrics,
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
+		sbjInitSema: make(chan struct{}),
 	}, nil
 }
 
 // Start starts the syncing routine.
 func (s *Syncer[H]) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+
+	// HACK(@Wondertan):
+	head, err := s.store.Head(ctx)
+	if errors.Is(err, header.ErrEmptyStore) || isExpired(head, s.Params.TrustingPeriod) {
+		s.sbjInitWait = true
+	}
+
 	// register validator for header subscriptions
 	// syncer does not subscribe itself and syncs headers together with validation
-	err := s.sub.SetVerifier(func(ctx context.Context, h H) error {
+	err = s.sub.SetVerifier(func(ctx context.Context, h H) error {
+		// HACK(@Wondertan):
+		//  During subjective init we request the Head and then the Tail.
+		//  However, we store them in the opposite order, s.t before Tail arrives
+		//  there is a window where Head awaits Tail without being stored.
+		//  During this window, headersub may deliver new network head. As it can't
+		//  see the awaiting Head, it triggers duplicate subjective initialization
+		//  which may frontrun Tail, violating the storing order and corrupting the store.
+		//  This hack basically pauses headersub until subjective init is done.
+		//
+		//  This will be fixed with bsync as Syncer will learn how to verify Tail from Head backwards,
+		//  allowing Head to be stored first and then the Tail.
+		if s.sbjInitWait {
+			select {
+			case <-s.sbjInitSema:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
 		if err := s.incomingNetworkHead(ctx, h); err != nil {
 			return err
 		}
