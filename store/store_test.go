@@ -387,7 +387,7 @@ func TestStoreGetByHeight_whenGaps(t *testing.T) {
 
 			head, err := store.GetByHeight(ctx, wantLastHead.Height())
 			require.NoError(t, err)
-			require.Equal(t, head, wantLastHead)
+			require.Equal(t, head.Hash(), wantLastHead.Hash())
 		default:
 			t.Fatal("store.GetByHeight on last height MUST NOT be blocked")
 		}
