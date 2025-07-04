@@ -53,6 +53,11 @@ type Syncer[H header.Header[H]] struct {
 	cancel context.CancelFunc
 
 	Params *Parameters
+
+	// a hack to temporary keep sbjHead around during subjective init
+	// TODO(@Wondertan): Remove after bsync.
+	sbjHeadMu sync.Mutex
+	sbjHead   H
 }
 
 // NewSyncer creates a new instance of Syncer.

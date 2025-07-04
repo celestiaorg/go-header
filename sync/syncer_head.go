@@ -130,6 +130,25 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 		return sbjHead, false, nil
 	}
 
+	// HACK(@Wondertan):
+	//  Subjective Head gets stored only after the Tail is requested,
+	//  so in between the moment Tail delivers, there is a window of time,
+	//  during which headersub may call subjectiveHead, causing it to redo
+	//  subjective initialization.
+	//  This hack keeps sbjHead around preventing duplicate requests. Retained
+	//  until its used or forever if the case is not triggered
+	//
+	//  This will be fixed with bsync as Store will learn how to verify Tail from Head backwards,
+	//  allowing Head to be stored first and then the Tail.
+	s.sbjHeadMu.Lock()
+	defer s.sbjHeadMu.Unlock()
+	if !s.sbjHead.IsZero() {
+		sbjHead := s.sbjHead
+		var zero H
+		s.sbjHead = zero
+		return sbjHead, false, nil
+	}
+
 	s.metrics.subjectiveInitialization(ctx)
 	newHead, err := s.head.Head(ctx)
 	if err != nil {
@@ -146,6 +165,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 	}
 
 	log.Infow("subjective initialization finished", "height", newHead.Height())
+	s.sbjHead = newHead
 	return newHead, true, nil
 }
 
