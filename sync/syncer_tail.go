@@ -237,7 +237,7 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 	for {
 		// store keeps all the headers up to the current head
 		// to iterate over the headers and find the most accurate tail
-		newTail, err := s.store.GetByHeight(ctx, estimatedTailHeight)
+		newTail, err := s.store.GetByHeight(ctx, newTailHeight)
 		if err != nil {
 			return 0, fmt.Errorf(
 				"getting estimated new tail(%d) from store: %w",
