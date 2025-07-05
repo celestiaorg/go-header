@@ -203,20 +203,31 @@ func (s *Syncer[H]) estimateTailHeight(head H) uint64 {
 // findTailHeight find the tail height based on the current head and tail.
 // It respects the pruning window, ensuring Syncer maintains the tail within the window.
 func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64, error) {
-	expectedTailTime := head.Time().UTC().Add(-s.Params.PruningWindow)
+	window := s.Params.PruningWindow
+	expectedTailTime := head.Time().UTC().Add(-window)
 	currentTailTime := oldTail.Time().UTC()
+	tailTimeDiff := expectedTailTime.Sub(currentTailTime)
 
-	timeDiff := expectedTailTime.Sub(currentTailTime)
-	if timeDiff <= 0 {
+	var estimatedTailHeight uint64
+	switch {
+	case tailTimeDiff <= 0:
 		// current tail is relevant as is
 		return oldTail.Height(), nil
+	case tailTimeDiff >= window:
+		// current and expected tails are far from each other
+		// estimate with head for higher accuracy
+		headersToStore := uint64(window / s.Params.blockTime) //nolint:gosec
+		estimatedTailHeight = head.Height() - headersToStore
+	case tailTimeDiff < window:
+		// tails are close
+		// estimate with tail for higher accuracy
+		headersToStore := uint64(tailTimeDiff / s.Params.blockTime) //nolint:gosec
+		estimatedTailHeight = oldTail.Height() + headersToStore
 	}
 
-	heightDiff := uint64(timeDiff / s.Params.blockTime) //nolint:gosec
-	estimatedTailHeight := oldTail.Height() + heightDiff
 	log.Debugw(
 		"current tail is beyond pruning window",
-		"time_diff", timeDiff.String(),
+		"time_diff", tailTimeDiff.String(),
 		"window", s.Params.PruningWindow.String(),
 		"curr_tail", oldTail.Height(),
 		"new_estimated_tail", estimatedTailHeight,
