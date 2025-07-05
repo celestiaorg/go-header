@@ -212,6 +212,15 @@ func (s *Syncer[H]) setLocalHead(ctx context.Context, netHead H) {
 // incomingNetworkHead processes new potential network heads.
 // If the header is valid, sets as the new subjective header.
 func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
+	// HACK(@Wondertan):
+	if s.sbjInitWait {
+		select {
+		case <-s.sbjInitSema:
+		default:
+			close(s.sbjInitSema)
+		}
+	}
+
 	// ensure there is no racing between network head candidates
 	// additionally ensures there is only one bifurcation attempt at a time
 	s.incomingMu.Lock()
