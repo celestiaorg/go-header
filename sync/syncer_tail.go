@@ -245,8 +245,8 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 				err,
 			)
 		}
-		if newTail.Time().UTC().Compare(expectedTailTime) <= 0 {
-			// new tail time is before or equal to expectedTailTime
+
+		if expectedTailTime.Compare(newTail.Time().UTC()) <= 0 {
 			break
 		}
 
