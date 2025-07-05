@@ -67,11 +67,11 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 			)
 		}
 
-		log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
 		newTail, err = s.getter.Get(ctx, tailHash)
 		if err != nil {
 			return newTail, fmt.Errorf("fetching SyncFromHash tail(%x): %w", tailHash, err)
 		}
+		log.Debugw("fetched tail header by hash", "hash", tailHash)
 	case !useHash:
 		tailHeight, err := s.tailHeight(ctx, oldTail, head)
 		if err != nil {
@@ -93,11 +93,11 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 			}
 		}
 
-		log.Debugw("tail height not available locally, fetching...", "height", tailHeight)
 		newTail, err = s.getter.GetByHeight(ctx, tailHeight)
 		if err != nil {
 			return newTail, fmt.Errorf("fetching SyncFromHeight tail(%d): %w", tailHeight, err)
 		}
+		log.Debugw("fetched tail header by height", "height", tailHeight)
 	}
 
 	if err := s.store.Append(ctx, newTail); err != nil {
@@ -206,23 +206,26 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 		// current tail is relevant as is
 		return oldTail.Height(), nil
 	}
-	log.Debugw(
-		"current tail is beyond pruning window",
-		"tail_height", oldTail.Height(),
-		"time_diff", timeDiff.String(),
-		"window", s.Params.PruningWindow.String(),
-	)
 
 	heightDiff := uint64(timeDiff / s.Params.blockTime) //nolint:gosec
-	newTailHeight := oldTail.Height() + heightDiff
+	estimatedTailHeight := oldTail.Height() + heightDiff
+	log.Debugw(
+		"current tail is beyond pruning window",
+		"time_diff", timeDiff.String(),
+		"window", s.Params.PruningWindow.String(),
+		"curr_tail", oldTail.Height(),
+		"new_estimated_tail", estimatedTailHeight,
+	)
+
+	newTailHeight := estimatedTailHeight
 	for {
 		// store keeps all the headers up to the current head
 		// to iterate over the headers and find the most accurate tail
-		newTail, err := s.store.GetByHeight(ctx, newTailHeight)
+		newTail, err := s.store.GetByHeight(ctx, estimatedTailHeight)
 		if err != nil {
 			return 0, fmt.Errorf(
 				"getting estimated new tail(%d) from store: %w",
-				newTailHeight,
+				estimatedTailHeight,
 				err,
 			)
 		}
@@ -234,6 +237,12 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 		newTailHeight++
 	}
 
-	log.Debugw("found new tail height", "height", newTailHeight)
+	log.Debugw(
+		"new tail height",
+		"new_confirmed_tail",
+		newTailHeight,
+		"estimation_error",
+		newTailHeight-estimatedTailHeight,
+	)
 	return newTailHeight, nil
 }
