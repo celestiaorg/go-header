@@ -526,8 +526,6 @@ func TestStore_GetRange(t *testing.T) {
 }
 
 func TestStore_DeleteTo(t *testing.T) {
-	maxHeadersLoadedPerDelete = 10
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -657,8 +655,6 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 }
 
 func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
-	maxHeadersLoadedPerDelete = 1
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
