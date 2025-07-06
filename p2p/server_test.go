@@ -197,4 +197,4 @@ func (timeoutStore[H]) DeleteTo(ctx context.Context, _ uint64) error {
 	return ctx.Err()
 }
 
-func (timeoutStore[H]) OnDelete(fn func(context.Context, []H) error) {}
+func (timeoutStore[H]) OnDelete(fn func(context.Context, uint64) error) {}

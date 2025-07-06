@@ -20,7 +20,7 @@ type Store[H header.Header[H]] struct {
 	TailHeight uint64
 
 	onDeleteMu sync.Mutex
-	onDelete   []func(context.Context, []H) error
+	onDelete   []func(context.Context, uint64) error
 }
 
 // NewDummyStore creates a store for DummyHeader.
@@ -80,26 +80,26 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 }
 
 func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	var deleted []H
 	for h := m.TailHeight; h < to; h++ {
-		hdr, ok := m.Headers[h]
-		if ok {
-			delete(m.Headers, h)
-			deleted = append(deleted, hdr)
+		_, ok := m.Headers[h]
+		if !ok {
+			continue
 		}
+
+		for _, deleteFn := range m.onDelete {
+			err := deleteFn(ctx, h)
+			if err != nil {
+				return err
+			}
+		}
+		delete(m.Headers, h) // must be after deleteFn
 	}
 
 	m.TailHeight = to
-	for _, deleteFn := range m.onDelete {
-		err := deleteFn(ctx, deleted)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
-func (m *Store[H]) OnDelete(fn func(context.Context, []H) error) {
+func (m *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 	m.onDeleteMu.Lock()
 	defer m.onDeleteMu.Unlock()
 

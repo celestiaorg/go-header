@@ -526,8 +526,6 @@ func TestStore_GetRange(t *testing.T) {
 }
 
 func TestStore_DeleteTo(t *testing.T) {
-	maxHeadersLoadedPerDelete = 10
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -657,8 +655,6 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 }
 
 func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
-	maxHeadersLoadedPerDelete = 1
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -730,6 +726,45 @@ func TestStore_DeleteTo_Synchronized(t *testing.T) {
 	tail, err := store.Tail(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 100, tail.Height())
+}
+
+func TestStore_OnDelete(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+
+	err = store.Start(ctx)
+	require.NoError(t, err)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+	// artificial gap
+	_ = suite.GenDummyHeaders(50)
+
+	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	deleted := 0
+	store.OnDelete(func(ctx context.Context, height uint64) error {
+		hdr, err := store.GetByHeight(ctx, height)
+		assert.NoError(t, err, "must be accessible")
+		require.NotNil(t, hdr)
+		deleted++
+		return nil
+	})
+
+	err = store.DeleteTo(ctx, 101)
+	require.NoError(t, err)
+	assert.Equal(t, 50, deleted)
+
+	hdr, err := store.GetByHeight(ctx, 50)
+	assert.Error(t, err)
+	assert.Nil(t, hdr)
 }
 
 func TestStorePendingCacheMiss(t *testing.T) {
