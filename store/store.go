@@ -437,8 +437,11 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 	defer func() {
 		// make new context to always save progress
 		ctx := context.Background()
+
+		log.Infow("deleted headers", "from_height", from, "to_height", to)
 		newTailHeight := to
 		if rerr != nil {
+			log.Warnw("partial delete with error", "expected_to_height", newTailHeight, "actual_to_height", height, "err", err)
 			newTailHeight = height
 		}
 
@@ -480,7 +483,6 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 		s.pending.DeleteRange(height, height+1)
 	}
 
-	log.Infow("deleted headers", "from_height", from, "to_height", to)
 	return nil
 }
 
@@ -498,7 +500,8 @@ func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64
 	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
 		return fmt.Errorf("writing tailKey in batch: %w", err)
 	}
-	log.Debug("set tail", "height", to)
+	log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
+	s.metrics.newTail(newTail.Height())
 
 	// update head as well, if delete went over it
 	head, err := s.Head(ctx)
