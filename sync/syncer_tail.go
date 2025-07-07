@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -213,6 +214,7 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 	switch {
 	case tailTimeDiff <= 0:
 		// current tail is relevant as is
+		log.Debugw("relevant old tail", "expected_tail_time", expectedTailTime.Format(time.DateTime), "current_tail_time", currentTailTime.Format(time.DateTime))
 		return oldTail.Height(), nil
 	case tailTimeDiff >= window:
 		// current and expected tails are far from each other
