@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -425,22 +423,6 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	return nil
 }
 
-var maxHeadersLoadedPerDelete uint64 = 1024
-
-func init() {
-	v, ok := os.LookupEnv("HEADER_MAX_LOAD_PER_DELETE")
-	if !ok {
-		return
-	}
-
-	max, err := strconv.Atoi(v)
-	if err != nil {
-		panic(err)
-	}
-
-	maxHeadersLoadedPerDelete = uint64(max)
-}
-
 func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error) {
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
@@ -455,8 +437,11 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 	defer func() {
 		// make new context to always save progress
 		ctx := context.Background()
+
+		log.Infow("deleted headers", "from_height", from, "to_height", to)
 		newTailHeight := to
 		if rerr != nil {
+			log.Warnw("partial delete with error", "expected_to_height", newTailHeight, "actual_to_height", height, "err", err)
 			newTailHeight = height
 		}
 
@@ -470,7 +455,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 		}
 	}()
 
-	for ; height < to; height++ {
+	for i := 0; height < to; height++ {
 		hash, err := s.heightIndex.HashByHeight(ctx, height, false)
 		if errors.Is(err, datastore.ErrNotFound) {
 			log.Warnf("attempt to delete header that's not found", "height", height)
@@ -496,9 +481,14 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 		s.cache.Remove(hash.String())
 		s.heightIndex.cache.Remove(height)
 		s.pending.DeleteRange(height, height+1)
+
+		if i%100000 == 0 {
+			log.Debug("deleted %d headers", i)
+		}
+
+		i++
 	}
 
-	log.Infow("deleted headers", "from_height", from, "to_height", to)
 	return nil
 }
 
@@ -516,6 +506,8 @@ func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64
 	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
 		return fmt.Errorf("writing tailKey in batch: %w", err)
 	}
+	log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
+	s.metrics.newTail(newTail.Height())
 
 	// update head as well, if delete went over it
 	head, err := s.Head(ctx)
