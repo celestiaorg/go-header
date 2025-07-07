@@ -188,23 +188,37 @@ func (s *Syncer[H]) estimateTailHeight(head H) uint64 {
 // findTailHeight find the tail height based on the current head and tail.
 // It respects the pruning window, ensuring Syncer maintains the tail within the window.
 func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64, error) {
-	expectedTailTime := head.Time().UTC().Add(-s.Params.PruningWindow)
+	window := s.Params.PruningWindow
+	expectedTailTime := head.Time().UTC().Add(-window)
 	currentTailTime := oldTail.Time().UTC()
+	tailTimeDiff := expectedTailTime.Sub(currentTailTime)
 
-	timeDiff := expectedTailTime.Sub(currentTailTime)
-	if timeDiff <= 0 {
+	var estimatedTailHeight uint64
+	switch {
+	case tailTimeDiff <= 0:
 		// current tail is relevant as is
 		return oldTail.Height(), nil
+	case tailTimeDiff >= window:
+		// current and expected tails are far from each other
+		// estimate with head for higher accuracy
+		headersToStore := uint64(window / s.Params.blockTime) //nolint:gosec
+		estimatedTailHeight = head.Height() - headersToStore
+	case tailTimeDiff < window:
+		// tails are close
+		// estimate with tail for higher accuracy
+		headersToStore := uint64(tailTimeDiff / s.Params.blockTime) //nolint:gosec
+		estimatedTailHeight = oldTail.Height() + headersToStore
 	}
+
 	log.Debugw(
 		"current tail is beyond pruning window",
-		"tail_height", oldTail.Height(),
-		"time_diff", timeDiff.String(),
+		"time_diff", tailTimeDiff.String(),
 		"window", s.Params.PruningWindow.String(),
+		"curr_tail", oldTail.Height(),
+		"new_estimated_tail", estimatedTailHeight,
 	)
 
-	heightDiff := uint64(timeDiff / s.Params.blockTime) //nolint:gosec
-	newTailHeight := oldTail.Height() + heightDiff
+	newTailHeight := estimatedTailHeight
 	for {
 		// store keeps all the headers up to the current head
 		// to iterate over the headers and find the most accurate tail
@@ -212,18 +226,24 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 		if err != nil {
 			return 0, fmt.Errorf(
 				"getting estimated new tail(%d) from store: %w",
-				newTailHeight,
+				estimatedTailHeight,
 				err,
 			)
 		}
-		if newTail.Time().UTC().Compare(expectedTailTime) <= 0 {
-			// new tail time is before or equal to expectedTailTime
+
+		if expectedTailTime.Compare(newTail.Time().UTC()) <= 0 {
 			break
 		}
 
 		newTailHeight++
 	}
 
-	log.Debugw("found new tail height", "height", newTailHeight)
+	log.Debugw(
+		"new tail height",
+		"new_confirmed_tail",
+		newTailHeight,
+		"estimation_error",
+		newTailHeight-estimatedTailHeight,
+	)
 	return newTailHeight, nil
 }
