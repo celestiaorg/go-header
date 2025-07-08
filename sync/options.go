@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/celestiaorg/go-header"
 )
 
 // Option is the functional option that is applied to the Syner instance
@@ -23,16 +25,16 @@ type Parameters struct {
 	TrustingPeriod time.Duration
 	// PruningWindow defines the duration within which headers are retained before being pruned.
 	PruningWindow time.Duration
-	// SyncFromHash is the hash of the header from which the syncer should start syncing.
-	// Zero value to disable.
+	// SyncFromHash is the hash of the header from which Syncer should start syncing.
+	// Zero value to disable. Value updates up and down the chain are gracefully handled by Syncer.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHash overrides this default,
 	// allowing any user to specify a custom starting point.
 	//
 	// SyncFromHash has higher priority than SyncFromHeight.
 	SyncFromHash string
-	// SyncFromHeight is the height of the header from which the syncer should start syncing.
-	// Zero value to disable.
+	// SyncFromHeight is the height of the header from which Syncer should start syncing.
+	// Zero value to disable. Value updates up and down the chain are gracefully handled by Syncer.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHeight overrides this default,
 	// allowing any user to specify a custom starting point.
@@ -49,6 +51,8 @@ type Parameters struct {
 	recencyThreshold time.Duration
 	// metrics is a flag that enables metrics collection.
 	metrics bool
+	// hash cache
+	hash header.Hash
 }
 
 // DefaultParameters returns the default params to configure the syncer.
@@ -63,16 +67,26 @@ func (p *Parameters) Validate() error {
 	if p.TrustingPeriod == 0 {
 		return fmt.Errorf("invalid TrustingPeriod duration: %v", p.TrustingPeriod)
 	}
-	if p.PruningWindow == 0 {
-		return fmt.Errorf("invalid PruningWindow duration: %v", p.PruningWindow)
+	if (p.SyncFromHeight == 0 || p.SyncFromHash == "") && p.PruningWindow == 0 {
+		return fmt.Errorf("PruningWindow duration can't be zero when either of SyncFromHeight or SyncFromHash are not set")
 	}
-	if len(p.SyncFromHash) > 0 {
-		_, err := hex.DecodeString(p.SyncFromHash)
-		if err != nil {
-			return fmt.Errorf("invalid SyncFromHash: %w", err)
-		}
+	_, err := p.Hash()
+	if err != nil {
+		return err
 	}
 	return nil
+}
+
+func (p *Parameters) Hash() (header.Hash, error) {
+	if p.hash == nil && len(p.SyncFromHash) > 0 {
+		hash, err := hex.DecodeString(p.SyncFromHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SyncFromHash: %w", err)
+		}
+
+		p.hash = hash
+	}
+	return p.hash, nil
 }
 
 // WithMetrics enables Metrics on Syncer.
