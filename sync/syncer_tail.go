@@ -95,6 +95,7 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 					err,
 				)
 			}
+			log.Debugw("new tail not found in store", "height", tailHeight)
 		}
 
 		newTail, err = s.getter.GetByHeight(ctx, tailHeight)
@@ -199,7 +200,9 @@ func (s *Syncer[H]) estimateTailHeight(head H) uint64 {
 		return 1
 	}
 
-	return head.Height() - headersToRetain
+	estimatedHeight := head.Height() - headersToRetain
+	log.Debugw("estimated tail height", "height", estimatedHeight)
+	return estimatedHeight
 }
 
 // findTailHeight find the tail height based on the current head and tail.

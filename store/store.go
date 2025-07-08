@@ -423,7 +423,12 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	return nil
 }
 
-func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error) {
+var deleteTimeoutError = errors.New("delete timeout")
+
+// deleteRange deletes range of headers defined by from and to
+// it gracefully handles context and errors
+// attempting to save interrupted progress.
+func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error) {
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
 	s.onDeleteMu.Unlock()
@@ -433,62 +438,98 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (rerr error
 		return fmt.Errorf("new batch: %w", err)
 	}
 
+	startTime := time.Now()
+	deleteCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		// allocate 95% of caller's set deadline for deletion
+		// and give leftover to save progress
+		// this prevents store's state corruption from partial deletion
+		sub := deadline.Sub(startTime) / 100 * 95
+		var cancel context.CancelFunc
+		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), deleteTimeoutError)
+		defer cancel()
+	}
+
+	log.Debugw("starting delete range", "from_height", from, "to_height", to)
+
 	height := from
 	defer func() {
-		// make new context to always save progress
-		ctx := context.Background()
-
-		log.Infow("deleted headers", "from_height", from, "to_height", to)
 		newTailHeight := to
-		if rerr != nil {
-			log.Warnw("partial delete with error", "expected_to_height", newTailHeight, "actual_to_height", height, "err", err)
-			newTailHeight = height
-		}
-
-		err = s.setTail(ctx, batch, newTailHeight)
 		if err != nil {
-			rerr = errors.Join(rerr, fmt.Errorf("setting tail to %d: %w", newTailHeight, err))
+			if errors.Is(err, deleteTimeoutError) {
+				log.Warnw("partial delete",
+					"from_height", from,
+					"expected_to_height", newTailHeight,
+					"actual_to_height", height,
+					"took", time.Since(startTime),
+				)
+			} else {
+				log.Errorw("partial delete with error",
+					"from_height", from,
+					"expected_to_height", newTailHeight,
+					"actual_to_height", height,
+					"took", time.Since(startTime),
+					"err", err,
+				)
+			}
+
+			newTailHeight = height
+		} else if to-from > 1 {
+			log.Infow("deleted headers", "from_height", from, "to_height", to, "took", time.Since(startTime))
 		}
 
-		if err := batch.Commit(ctx); err != nil {
-			rerr = errors.Join(rerr, fmt.Errorf("committing delete batch [%d:%d): %w", from, newTailHeight, err))
+		derr := s.setTail(ctx, batch, newTailHeight)
+		if derr != nil {
+			err = errors.Join(err, fmt.Errorf("setting tail to %d: %w", newTailHeight, derr))
+		}
+
+		if derr := batch.Commit(ctx); derr != nil {
+			err = errors.Join(err, fmt.Errorf("committing delete batch [%d:%d): %w", from, newTailHeight, derr))
 		}
 	}()
 
 	for i := 0; height < to; height++ {
-		hash, err := s.heightIndex.HashByHeight(ctx, height, false)
-		if errors.Is(err, datastore.ErrNotFound) {
-			log.Warnf("attempt to delete header that's not found", "height", height)
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("hash by height %d: %w", height, err)
+		if err := s.delete(deleteCtx, height, batch, onDelete); err != nil {
+			return fmt.Errorf("delete header %d: %w", height, err)
 		}
 
-		for _, deleteFn := range onDelete {
-			if err := deleteFn(ctx, height); err != nil {
-				return fmt.Errorf("on delete handler for %d: %w", height, err)
-			}
-		}
-
-		if err := batch.Delete(ctx, hashKey(hash)); err != nil {
-			return fmt.Errorf("delete hash key (%X): %w", hash, err)
-		}
-		if err := batch.Delete(ctx, heightKey(height)); err != nil {
-			return fmt.Errorf("delete height key (%d): %w", height, err)
-		}
-
-		s.cache.Remove(hash.String())
-		s.heightIndex.cache.Remove(height)
-		s.pending.DeleteRange(height, height+1)
-
-		if i%100000 == 0 {
-			log.Debug("deleted %d headers", i)
+		if i != 0 && i%100000 == 0 {
+			log.Debugf("deleted %d headers", i)
 		}
 
 		i++
 	}
 
+	return nil
+}
+
+// delete deletes a single header from the store, its caches and indexies, notifying any registered onDelete handlers.
+func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Batch, onDelete []func(ctx context.Context, height uint64) error) error {
+	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
+	if errors.Is(err, datastore.ErrNotFound) {
+		log.Warnf("attempt to delete header that's not found", "height", height)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("hash by height %d: %w", height, err)
+	}
+
+	for _, deleteFn := range onDelete {
+		if err := deleteFn(ctx, height); err != nil {
+			return fmt.Errorf("on delete handler for %d: %w", height, err)
+		}
+	}
+
+	if err := batch.Delete(ctx, hashKey(hash)); err != nil {
+		return fmt.Errorf("delete hash key (%X): %w", hash, err)
+	}
+	if err := batch.Delete(ctx, heightKey(height)); err != nil {
+		return fmt.Errorf("delete height key (%d): %w", height, err)
+	}
+
+	s.cache.Remove(hash.String())
+	s.heightIndex.cache.Remove(height)
+	s.pending.DeleteRange(height, height+1)
 	return nil
 }
 
