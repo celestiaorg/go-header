@@ -257,6 +257,8 @@ func TestSyncer_TailInitialization(t *testing.T) {
 			err = syncer.Stop(ctx)
 			require.NoError(t, err)
 			expectedTail = test.expectedAfterRestart()
+			params := DefaultParameters()
+			syncer.Params = &params
 			syncer.Params.SyncFromHeight = expectedTail.Height()
 			syncer.Params.SyncFromHash = expectedTail.Hash().String()
 
@@ -271,7 +273,9 @@ func TestSyncer_TailInitialization(t *testing.T) {
 			// ensure that the Syncer moved to the new tail after restart
 			storeTail, err = localStore.Tail(ctx)
 			require.NoError(t, err)
-			assert.EqualValues(t, expectedTail.Height(), storeTail.Height())
+			assert.EqualValues(t, int(expectedTail.Height()), int(storeTail.Height()))
+			t.Log(expectedTail.Hash().String())
+			t.Log(storeTail.Hash().String())
 		})
 	}
 }
