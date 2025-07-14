@@ -54,12 +54,19 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 	if err != nil {
 		return sbjHead, false, fmt.Errorf("subjective head: %w", err)
 	}
-	if isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold) || initialized {
+	recent, timeDiff := isRecent(sbjHead, s.Params.blockTime, s.Params.recencyThreshold)
+	if recent || initialized {
 		return sbjHead, initialized, nil
 	}
 
 	s.metrics.outdatedHead(ctx)
-	log.Warnw("outdated subjective head", "outdated_height", sbjHead.Height())
+	log.Warnw(
+		"non recent subjective head",
+		"height",
+		sbjHead.Height(),
+		"non_recent_for",
+		timeDiff.String(),
+	)
 	log.Warnw("attempting to request the most recent network head...")
 
 	// cap the max blocking time for the request call
@@ -85,9 +92,15 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 
 		return sbjHead, false, nil
 	}
-	// still check if even the newly requested head is outdated
-	if !isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold) {
-		log.Warnw("non recent head from trusted peers", "height", newHead.Height())
+	// still check if even the newly requested head is not recent
+	if recent, timeDiff = isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold); !recent {
+		log.Warnw(
+			"non recent head from trusted peers",
+			"height",
+			newHead.Height(),
+			"non_recent_for",
+			timeDiff.String(),
+		)
 		log.Error("trusted peers are out of sync")
 		s.metrics.trustedPeersOutOufSync(ctx)
 	}
@@ -115,15 +128,18 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 // Reports true if initialization was performed, false otherwise.
 func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 	sbjHead, err := s.localHead(ctx)
-	switch {
-	case errors.Is(err, header.ErrEmptyStore):
-		log.Info("empty store, initializing...")
-	case !sbjHead.IsZero() && isExpired(sbjHead, s.Params.TrustingPeriod):
+
+	switch expired, expiredFor := isExpired(sbjHead, s.Params.TrustingPeriod); {
+	case expired:
 		log.Infow(
 			"subjective head expired, reinitializing...",
 			"expired_height",
 			sbjHead.Height(),
+			"expired_for",
+			expiredFor.String(),
 		)
+	case errors.Is(err, header.ErrEmptyStore):
+		log.Info("empty store, initializing...")
 	case err != nil:
 		return sbjHead, false, fmt.Errorf("local head: %w", err)
 	default:
@@ -136,9 +152,13 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 		return newHead, false, fmt.Errorf("exchange head: %w", err)
 	}
 	// still check if even the newly requested head is expired
-	if isExpired(newHead, s.Params.TrustingPeriod) {
+	if expired, expiredFor := isExpired(newHead, s.Params.TrustingPeriod); expired {
 		// forbid initializing off an expired header
-		err := fmt.Errorf("subjective initialization with an expired header(%d)", newHead.Height())
+		err := fmt.Errorf(
+			"subjective initialization with header(%d) expired for %s",
+			newHead.Height(),
+			expiredFor.String(),
+		)
 		log.Error(err)
 		log.Error("trusted peers are out of sync")
 		s.metrics.trustedPeersOutOufSync(ctx)
@@ -304,16 +324,29 @@ func (s *Syncer[H]) verifyBifurcating(ctx context.Context, subjHead, newHead H) 
 	}
 }
 
-// isExpired checks if header is expired against trusting period.
-func isExpired[H header.Header[H]](header H, period time.Duration) bool {
+// isExpired checks if header is expired against trusting period and reports duration it is
+// expired for.
+func isExpired[H header.Header[H]](header H, period time.Duration) (bool, time.Duration) {
+	if header.IsZero() {
+		return false, 0
+	}
+
 	expirationTime := header.Time().Add(period)
-	return expirationTime.Before(time.Now())
+	diff := time.Since(expirationTime)
+	return diff > 0, diff
 }
 
-// isRecent checks if header is recent against the given recency threshold.
-func isRecent[H header.Header[H]](header H, blockTime, recencyThreshold time.Duration) bool {
+// isRecent checks if the given header is close to the tip against the given recency threshold and reports duration
+// it is outdated for.
+func isRecent[H header.Header[H]](
+	header H,
+	blockTime, recencyThreshold time.Duration,
+) (bool, time.Duration) {
 	if recencyThreshold == 0 {
 		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
 	}
-	return time.Since(header.Time()) <= recencyThreshold
+
+	recencyTime := header.Time().Add(recencyThreshold)
+	diff := time.Since(recencyTime)
+	return diff <= 0, diff
 }
