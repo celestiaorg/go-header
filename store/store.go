@@ -612,7 +612,7 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
 			return head, changed
@@ -620,6 +620,8 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		head = h
 		changed = true
 	}
+
+	return head, changed
 }
 
 // nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
@@ -631,7 +633,7 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		return tail, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
 		if err != nil {
 			return tail, changed
@@ -639,6 +641,8 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		tail = h
 		changed = true
 	}
+
+	return tail, changed
 }
 
 func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
