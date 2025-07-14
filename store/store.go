@@ -555,12 +555,9 @@ func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64
 	log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
 	s.metrics.newTail(newTail.Height())
 
-	// update head as well, if delete went over it
-	head, err := s.Head(ctx)
-	if err != nil {
-		return err
-	}
-	if to > head.Height() {
+	// update head as well, if delete went over it or head doesn't exist
+	head, _ := s.Head(ctx)
+	if head.IsZero() || to > head.Height() {
 		if err := writeHeaderHashTo(ctx, batch, newTail, headKey); err != nil {
 			return fmt.Errorf("writing headKey in batch: %w", err)
 		}
@@ -797,7 +794,7 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
 			return head, changed
@@ -805,6 +802,8 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		head = h
 		changed = true
 	}
+
+	return head, changed
 }
 
 // nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
@@ -816,7 +815,7 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		return tail, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
 		if err != nil {
 			return tail, changed
@@ -824,6 +823,8 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		tail = h
 		changed = true
 	}
+
+	return tail, changed
 }
 
 func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
