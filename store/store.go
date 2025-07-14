@@ -505,6 +505,11 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error)
 
 // delete deletes a single header from the store, its caches and indexies, notifying any registered onDelete handlers.
 func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Batch, onDelete []func(ctx context.Context, height uint64) error) error {
+	// some of the methods may not handle context cancellation properly
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
 	if errors.Is(err, datastore.ErrNotFound) {
 		log.Warnf("attempt to delete header that's not found", "height", height)
