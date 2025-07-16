@@ -15,6 +15,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/celestiaorg/go-header"
+	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
 var log = logging.Logger("header/store")
@@ -437,6 +438,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error)
 	if err != nil {
 		return fmt.Errorf("new batch: %w", err)
 	}
+	ctx = badger4.WithBatch(ctx, batch)
 
 	startTime := time.Now()
 	deleteCtx := ctx
