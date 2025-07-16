@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,7 +14,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/celestiaorg/go-header"
-	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
 var log = logging.Logger("header/store")
@@ -358,193 +356,8 @@ func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
 	return head.Height() >= height && height >= tail.Height()
 }
 
-func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
-	s.onDeleteMu.Lock()
-	defer s.onDeleteMu.Unlock()
-
-	s.onDelete = append(s.onDelete, func(ctx context.Context, height uint64) (rerr error) {
-		defer func() {
-			err := recover()
-			if err != nil {
-				rerr = fmt.Errorf("header/store: user provided onDelete panicked on %d with: %s", height, err)
-			}
-		}()
-		return fn(ctx, height)
-	})
-}
-
-// DeleteTo implements [header.Store] interface.
-func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	// ensure all the pending headers are synchronized
-	err := s.Sync(ctx)
-	if err != nil {
-		return err
-	}
-
-	head, err := s.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading head: %w", err)
-	}
-	if head.Height()+1 < to {
-		_, err := s.getByHeight(ctx, to)
-		if errors.Is(err, header.ErrNotFound) {
-			return fmt.Errorf(
-				"header/store: delete to %d beyond current head(%d)",
-				to,
-				head.Height(),
-			)
-		}
-		if err != nil {
-			return fmt.Errorf("delete to potential new head: %w", err)
-		}
-
-		//  if `to` is bigger than the current head and is stored - allow delete, making `to` a new head
-	}
-
-	tail, err := s.Tail(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading tail: %w", err)
-	}
-	if tail.Height() >= to {
-		return fmt.Errorf("header/store: delete to %d below current tail(%d)", to, tail.Height())
-	}
-
-	if err := s.deleteRange(ctx, tail.Height(), to); err != nil {
-		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
-	}
-
-	if head.Height()+1 == to {
-		// this is the case where we have deleted all the headers
-		// wipe the store
-		if err := s.wipe(ctx); err != nil {
-			return fmt.Errorf("header/store: wipe: %w", err)
-		}
-	}
-
-	return nil
-}
-
-var deleteTimeoutError = errors.New("delete timeout")
-
-// deleteRange deletes range of headers defined by from and to
-// it gracefully handles context and errors
-// attempting to save interrupted progress.
-func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error) {
-	s.onDeleteMu.Lock()
-	onDelete := slices.Clone(s.onDelete)
-	s.onDeleteMu.Unlock()
-
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("new batch: %w", err)
-	}
-	ctx = badger4.WithBatch(ctx, batch)
-
-	startTime := time.Now()
-	deleteCtx := ctx
-	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 95% of caller's set deadline for deletion
-		// and give leftover to save progress
-		// this prevents store's state corruption from partial deletion
-		sub := deadline.Sub(startTime) / 100 * 95
-		var cancel context.CancelFunc
-		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), deleteTimeoutError)
-		defer cancel()
-	}
-
-	log.Debugw("starting delete range", "from_height", from, "to_height", to)
-
-	height := from
-	defer func() {
-		newTailHeight := to
-		if err != nil {
-			if errors.Is(err, deleteTimeoutError) {
-				log.Warnw("partial delete",
-					"from_height", from,
-					"expected_to_height", newTailHeight,
-					"actual_to_height", height,
-					"took", time.Since(startTime),
-				)
-			} else {
-				log.Errorw("partial delete with error",
-					"from_height", from,
-					"expected_to_height", newTailHeight,
-					"actual_to_height", height,
-					"took", time.Since(startTime),
-					"err", err,
-				)
-			}
-
-			newTailHeight = height
-		} else if to-from > 1 {
-			log.Infow("deleted headers", "from_height", from, "to_height", to, "took", time.Since(startTime))
-		}
-
-		derr := s.setTail(ctx, batch, newTailHeight)
-		if derr != nil {
-			err = errors.Join(err, fmt.Errorf("setting tail to %d: %w", newTailHeight, derr))
-		}
-
-		if derr := batch.Commit(ctx); derr != nil {
-			err = errors.Join(err, fmt.Errorf("committing delete batch [%d:%d): %w", from, newTailHeight, derr))
-		}
-	}()
-
-	for i := 0; height < to; height++ {
-		if err := s.delete(deleteCtx, height, batch, onDelete); err != nil {
-			return fmt.Errorf("delete header %d: %w", height, err)
-		}
-
-		if i != 0 && i%100000 == 0 {
-			log.Debugf("deleted %d headers", i)
-		}
-
-		i++
-	}
-
-	return nil
-}
-
-// delete deletes a single header from the store, its caches and indexies, notifying any registered onDelete handlers.
-func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Batch, onDelete []func(ctx context.Context, height uint64) error) error {
-	// some of the methods may not handle context cancellation properly
-	if ctx.Err() != nil {
-		return context.Cause(ctx)
-	}
-
-	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
-	if errors.Is(err, datastore.ErrNotFound) {
-		log.Warnf("attempt to delete header that's not found", "height", height)
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("hash by height %d: %w", height, err)
-	}
-
-	for _, deleteFn := range onDelete {
-		if err := deleteFn(ctx, height); err != nil {
-			return fmt.Errorf("on delete handler for %d: %w", height, err)
-		}
-	}
-
-	if err := batch.Delete(ctx, hashKey(hash)); err != nil {
-		return fmt.Errorf("delete hash key (%X): %w", hash, err)
-	}
-	if err := batch.Delete(ctx, heightKey(height)); err != nil {
-		return fmt.Errorf("delete height key (%d): %w", height, err)
-	}
-
-	s.cache.Remove(hash.String())
-	s.heightIndex.cache.Remove(height)
-	s.pending.DeleteRange(height, height+1)
-	return nil
-}
-
-func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+func (s *Store[H]) setTail(ctx context.Context, batch datastore.Write, to uint64) error {
 	newTail, err := s.getByHeight(ctx, to)
-	if errors.Is(err, header.ErrNotFound) {
-		return nil
-	}
 	if err != nil {
 		return fmt.Errorf("getting tail: %w", err)
 	}
@@ -872,7 +685,7 @@ func (s *Store[H]) deinit() {
 
 func writeHeaderHashTo[H header.Header[H]](
 	ctx context.Context,
-	batch datastore.Batch,
+	batch datastore.Write,
 	h H,
 	key datastore.Key,
 ) error {
