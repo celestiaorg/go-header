@@ -584,14 +584,6 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 // advanceHead moves contiguous Head forward if a newer one exists.
 // It looks throw caches, pending headers and datastore
 func (s *Store[H]) advanceHead(ctx context.Context) {
-	if log.Level() == zapcore.DebugLevel {
-		now := time.Now()
-		log.Debug("advancing head")
-		defer func() {
-			log.Debugw("finished advancing head", "took(s)", time.Since(now))
-		}()
-	}
-
 	newHead, changed := s.nextHead(ctx)
 	if changed {
 		s.contiguousHead.Store(&newHead)

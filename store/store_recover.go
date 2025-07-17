@@ -10,20 +10,10 @@ import (
 // The new tail must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
 func ResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
-	batch, err := store.ds.Batch(ctx)
-	if err != nil {
+	if err := store.setTail(ctx, store.ds, height); err != nil {
 		return err
 	}
 
-	err = store.setTail(ctx, batch, height)
-	if err != nil {
-		return err
-	}
-
-	err = batch.Commit(ctx)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -31,25 +21,16 @@ func ResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height 
 // The new head must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
 func ResetHead[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
-	batch, err := store.ds.Batch(ctx)
-	if err != nil {
-		return err
-	}
-
 	newHead, err := store.getByHeight(ctx, height)
 	if err != nil {
 		return err
 	}
 
-	if err := writeHeaderHashTo(ctx, batch, newHead, headKey); err != nil {
+	if err := writeHeaderHashTo(ctx, store.ds, newHead, headKey); err != nil {
 		return err
 	}
-	store.contiguousHead.Store(&newHead)
 
-	err = batch.Commit(ctx)
-	if err != nil {
-		return err
-	}
+	store.contiguousHead.Store(&newHead)
 	return nil
 }
 
