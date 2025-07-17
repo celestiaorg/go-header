@@ -205,7 +205,7 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	onDelete := slices.Clone(s.onDelete)
 	s.onDeleteMu.Unlock()
 
-	workerNum := runtime.NumCPU() * 8
+	workerNum := runtime.NumCPU() * 4
 	jobCh := make(chan uint64, workerNum)
 	errCh := make(chan error, 1)
 
