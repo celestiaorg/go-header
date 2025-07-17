@@ -59,6 +59,7 @@ type Store[H header.Header[H]] struct {
 	pending *batch[H]
 	// syncCh is a channel used to synchronize writes
 	syncCh chan chan struct{}
+	cancel context.CancelFunc
 
 	onDeleteMu sync.Mutex
 	onDelete   []func(context.Context, uint64) error
@@ -133,7 +134,10 @@ func (s *Store[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("header/store: initializing: %w", err)
 	}
 
-	go s.flushLoop()
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+
+	go s.flushLoop(ctx)
 	return nil
 }
 
@@ -146,6 +150,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	// signal to prevent further writes to Store
 	select {
 	case s.writes <- nil:
+		s.cancel()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -431,12 +436,10 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 // This way writes are controlled and manageable from one place allowing
 // (1) Appends not to be blocked on long disk IO writes and underlying DB compactions
 // (2) Batching header writes
-func (s *Store[H]) flushLoop() {
+func (s *Store[H]) flushLoop(ctx context.Context) {
 	defer close(s.writesDn)
-	ctx := context.Background()
 
 	flush := func(headers []H) {
-		log.Debug("flush request", len(headers))
 		s.ensureInit(headers)
 		// add headers to the pending and ensure they are accessible
 		s.pending.Append(headers...)
