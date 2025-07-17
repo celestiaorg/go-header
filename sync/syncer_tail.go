@@ -61,6 +61,13 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 
 		newTail, err = s.store.Get(ctx, tailHash)
 		if err == nil {
+			if oldTail.IsZero() {
+				// old tail is zero while the requested tail was found locally?
+				// something may go wrong with store, try to recover it with an append
+				if err := s.store.Append(ctx, newTail); err != nil {
+					return newTail, fmt.Errorf("appending tail header %d: %w", newTail.Height(), err)
+				}
+			}
 			return newTail, nil
 		}
 		if !errors.Is(err, header.ErrNotFound) {
@@ -86,6 +93,13 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 			// check if the new tail is below the current head to avoid heightSub blocking
 			newTail, err = s.store.GetByHeight(ctx, tailHeight)
 			if err == nil {
+				if oldTail.IsZero() {
+					// old tail is zero while the requested tail was found locally?
+					// something may go wrong with store, try to recover it with an append
+					if err := s.store.Append(ctx, newTail); err != nil {
+						return newTail, fmt.Errorf("appending tail header %d: %w", newTail.Height(), err)
+					}
+				}
 				return newTail, nil
 			}
 			if !errors.Is(err, header.ErrNotFound) {
