@@ -96,7 +96,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
 }
 
 // deleteSequential deletes [from:to) header range from the store sequentially.
-func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) error {
+func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) (err error) {
 	log.Debugw("starting delete range sequential", "from_height", from, "to_height", to)
 
 	batch, err := s.ds.Batch(ctx)
@@ -104,6 +104,11 @@ func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) error 
 		return fmt.Errorf("new batch: %w", err)
 	}
 	ctx = badger4.WithBatch(ctx, batch)
+	defer func() {
+		if derr := batch.Commit(ctx); derr != nil {
+			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
+		}
+	}()
 
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
@@ -113,10 +118,6 @@ func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) error 
 		if err := s.delete(ctx, height, batch, onDelete); err != nil {
 			return err
 		}
-	}
-
-	if err := batch.Commit(ctx); err != nil {
-		return fmt.Errorf("committing batch: %w", err)
 	}
 
 	return nil
