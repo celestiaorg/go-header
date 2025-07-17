@@ -15,6 +15,7 @@ import (
 	badger4 "github.com/ipfs/go-ds-badger4"
 )
 
+// OnDelete implements [header.Store] interface.
 func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 	s.onDeleteMu.Lock()
 	defer s.onDeleteMu.Unlock()
@@ -81,15 +82,20 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	return nil
 }
 
-// deleteRange deletes range of headers defined by from and to
+// deleteRangeParallelThreshold defines the threshold for parallel deletion.
+// If range is smaller than this threshold, deletion will be performed sequentially.
+var deleteRangeParallelThreshold uint64 = 10000
+
+// deleteRange deletes [from:to) header range from the store.
 func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
-	if to-from < 1000 {
+	if to-from < deleteRangeParallelThreshold {
 		return s.deleteSequential(ctx, from, to)
 	}
 
 	return s.deleteParallel(ctx, from, to)
 }
 
+// deleteSequential deletes [from:to) header range from the store sequentially.
 func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) error {
 	log.Debugw("starting delete range sequential", "from_height", from, "to_height", to)
 
@@ -153,7 +159,7 @@ func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Ba
 
 // workerNum defines how many parallel delete workers to run
 // Scales of number of CPUs configred for the process.
-var workerNum = runtime.GOMAXPROCS(-1) * 4
+var workerNum = runtime.GOMAXPROCS(-1) * 2
 
 // deleteParallel deletes [from:to) header range from the store in parallel.
 // It gracefully handles context and errors attempting to save interrupted progress.
