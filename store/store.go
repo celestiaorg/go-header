@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -583,6 +584,14 @@ func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
 // advanceHead moves contiguous Head forward if a newer one exists.
 // It looks throw caches, pending headers and datastore
 func (s *Store[H]) advanceHead(ctx context.Context) {
+	if log.Level() == zapcore.DebugLevel {
+		now := time.Now()
+		log.Debug("advancing head")
+		defer func() {
+			log.Debugw("finished advancing head", "took(s)", time.Since(now))
+		}()
+	}
+
 	newHead, changed := s.nextHead(ctx)
 	if changed {
 		s.contiguousHead.Store(&newHead)
@@ -617,6 +626,15 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		if err != nil {
 			return head, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("advancing head", "start_height", head.Height())
+			defer func() {
+				log.Debugw("finished advancing head", "end_height", head.Height(), "took(s)", time.Since(now))
+			}()
+		}
+
 		head = h
 		changed = true
 	}
@@ -638,6 +656,15 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		if err != nil {
 			return tail, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("receding tail", "start_height", tail.Height())
+			defer func() {
+				log.Debugw("finished receding tail", "end_height", tail.Height(), "took(s)", time.Since(now))
+			}()
+		}
+
 		tail = h
 		changed = true
 	}
