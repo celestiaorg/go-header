@@ -151,10 +151,12 @@ func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Ba
 	return nil
 }
 
-var deleteTimeoutError = errors.New("delete timeout")
+// workerNum defines how many parallel delete workers to run
+// Scales of number of CPUs configred for the process.
+var workerNum = runtime.GOMAXPROCS(-1) * 4
 
-// it gracefully handles context and errors
-// attempting to save interrupted progress.
+// deleteParallel deletes [from:to) header range from the store in parallel.
+// It gracefully handles context and errors attempting to save interrupted progress.
 func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err error) {
 	log.Debugw("starting delete range parallel", "from_height", from, "to_height", to)
 
@@ -181,14 +183,14 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 					"from_height", from,
 					"expected_to_height", to,
 					"actual_to_height", newTailHeight,
-					"took", time.Since(startTime),
+					"took(s)", time.Since(startTime),
 				)
 			} else {
 				log.Errorw("partial delete with error",
 					"from_height", from,
 					"expected_to_height", to,
 					"actual_to_height", newTailHeight,
-					"took", time.Since(startTime),
+					"took(s)", time.Since(startTime),
 					"err", err,
 				)
 			}
@@ -205,7 +207,6 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	onDelete := slices.Clone(s.onDelete)
 	s.onDeleteMu.Unlock()
 
-	workerNum := runtime.NumCPU() * 4
 	jobCh := make(chan uint64, workerNum)
 	errCh := make(chan error, 1)
 
@@ -277,3 +278,5 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	close(jobCh)
 	return err
 }
+
+var deleteTimeoutError = errors.New("delete timeout")
