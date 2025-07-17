@@ -109,6 +109,10 @@ func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) error 
 		}
 	}
 
+	if err := batch.Commit(ctx); err != nil {
+		return fmt.Errorf("committing batch: %w", err)
+	}
+
 	return nil
 }
 
@@ -121,7 +125,7 @@ func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Ba
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
 	if errors.Is(err, datastore.ErrNotFound) {
-		log.Warnf("attempt to delete header that's not found", "height", height)
+		log.Warnw("attempt to delete header that's not found", "height", height)
 		return nil
 	}
 	if err != nil {
