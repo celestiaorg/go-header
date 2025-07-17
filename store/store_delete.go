@@ -159,7 +159,7 @@ func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Ba
 
 // workerNum defines how many parallel delete workers to run
 // Scales of number of CPUs configred for the process.
-var workerNum = runtime.GOMAXPROCS(-1) * 2
+var workerNum = runtime.GOMAXPROCS(-1) * 3
 
 // deleteParallel deletes [from:to) header range from the store in parallel.
 // It gracefully handles context and errors attempting to save interrupted progress.
