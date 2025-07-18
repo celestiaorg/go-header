@@ -134,7 +134,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("header/store: initializing: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 
 	go s.flushLoop(ctx)
@@ -628,6 +628,7 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
+			log.Debug("next head error", "current", head.Height(), "err", err)
 			return head, changed
 		}
 
@@ -658,6 +659,7 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
 		if err != nil {
+			log.Debugw("next tail error", "current", tail.Height(), "err", err)
 			return tail, changed
 		}
 
@@ -673,6 +675,7 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		changed = true
 	}
 
+	log.Debugw("just left next tail", "current", tail.Height(), "err", ctx.Err())
 	return tail, changed
 }
 
