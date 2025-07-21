@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ func TestExchangeServer_Timeout(t *testing.T) {
 		{
 			name: "handleHeadRequest",
 			fn: func() error {
-				ctx, cancel := context.WithTimeout(context.Background(), testRequestTimeout)
+				ctx, cancel := context.WithTimeoutCause(context.Background(), testRequestTimeout, errors.New(" test: server request timeout"))
 				defer cancel()
 
 				_, err := server.handleHeadRequest(ctx)

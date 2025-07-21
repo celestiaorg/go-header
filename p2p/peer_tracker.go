@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -268,7 +269,7 @@ func (p *peerTracker) dumpPeers(ctx context.Context) {
 	}
 	p.peerLk.RUnlock()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+	ctx, cancel := context.WithTimeoutCause(ctx, time.Second*5, errors.New("dumping peers timeout "))
 	defer cancel()
 
 	err := p.pidstore.Put(ctx, peers)

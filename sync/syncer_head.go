@@ -63,7 +63,7 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 	log.Warnw("attempting to request the most recent network head...")
 
 	// cap the max blocking time for the request call
-	ctx, cancel := context.WithTimeout(ctx, NetworkHeadRequestTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, NetworkHeadRequestTimeout, errors.New("network head request time out "))
 	defer cancel()
 
 	newHead, err := s.head.Head(ctx, header.WithTrustedHead[H](sbjHead))
