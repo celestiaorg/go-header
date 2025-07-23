@@ -10,8 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/ipfs/go-datastore"
+
+	"github.com/celestiaorg/go-header"
 )
 
 // OnDelete implements [header.Store] interface.
@@ -23,7 +24,11 @@ func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 		defer func() {
 			err := recover()
 			if err != nil {
-				rerr = fmt.Errorf("header/store: user provided onDelete panicked on %d with: %s", height, err)
+				rerr = fmt.Errorf(
+					"header/store: user provided onDelete panicked on %d with: %s",
+					height,
+					err,
+				)
 			}
 		}()
 		return fn(ctx, height)
@@ -129,7 +134,12 @@ func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) (err e
 }
 
 // delete deletes a single header from the store, its caches and indexies, notifying any registered onDelete handlers.
-func (s *Store[H]) delete(ctx context.Context, height uint64, batch datastore.Batch, onDelete []func(ctx context.Context, height uint64) error) error {
+func (s *Store[H]) delete(
+	ctx context.Context,
+	height uint64,
+	batch datastore.Batch,
+	onDelete []func(ctx context.Context, height uint64) error,
+) error {
 	// some of the methods may not handle context cancellation properly
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
@@ -182,7 +192,7 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 		// this prevents store's state corruption from partial deletion
 		sub := deadline.Sub(startTime) / 100 * 95
 		var cancel context.CancelFunc
-		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), deleteTimeoutError)
+		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
 		defer cancel()
 	}
 
@@ -190,7 +200,7 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	defer func() {
 		newTailHeight := highestDeleted.Load() + 1
 		if err != nil {
-			if errors.Is(err, deleteTimeoutError) {
+			if errors.Is(err, errDeleteTimeout) {
 				log.Warnw("partial delete",
 					"from_height", from,
 					"expected_to_height", to,
@@ -244,29 +254,22 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 			}
 		}()
 
-		for {
-			select {
-			case height, ok := <-jobCh:
-				if !ok {
-					return
+		for height := range jobCh {
+			if err := s.delete(deleteCtx, height, batch, onDelete); err != nil {
+				select {
+				case errCh <- fmt.Errorf("delete header %d: %w", height, err):
+				default:
 				}
-
-				if err := s.delete(deleteCtx, height, batch, onDelete); err != nil {
-					select {
-					case errCh <- fmt.Errorf("delete header %d: %w", height, err):
-					default:
-					}
-					return
-				}
-
-				lastHeight = height
+				return
 			}
+
+			lastHeight = height
 		}
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < workerNum; i++ {
-		wg.Add(1)
+	wg.Add(workerNum)
+	for range workerNum {
 		go func() {
 			defer wg.Done()
 			worker()
@@ -278,8 +281,8 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 		select {
 		case jobCh <- height:
 			i++
-			if i%100000 == 0 {
-				log.Debugf("deleting %d header", i)
+			if uint64(1)%deleteRangeParallelThreshold == 0 {
+				log.Debugf("deleting %dth header height %d", deleteRangeParallelThreshold, height)
 			}
 		case err = <-errCh:
 			close(jobCh)
@@ -291,4 +294,4 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	return err
 }
 
-var deleteTimeoutError = errors.New("delete timeout")
+var errDeleteTimeout = errors.New("delete timeout")

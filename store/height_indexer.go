@@ -34,7 +34,11 @@ func newHeightIndexer[H header.Header[H]](
 }
 
 // HashByHeight loads a header hash corresponding to the given height.
-func (hi *heightIndexer[H]) HashByHeight(ctx context.Context, h uint64, cache bool) (header.Hash, error) {
+func (hi *heightIndexer[H]) HashByHeight(
+	ctx context.Context,
+	h uint64,
+	cache bool,
+) (header.Hash, error) {
 	if v, ok := hi.cache.Get(h); ok {
 		return v, nil
 	}
