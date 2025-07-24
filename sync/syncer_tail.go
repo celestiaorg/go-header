@@ -70,11 +70,11 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 			)
 		}
 
-		log.Debugw("tail hash not available locally, fetching...", "hash", tailHash)
 		newTail, err = s.getter.Get(ctx, tailHash)
 		if err != nil {
 			return newTail, fmt.Errorf("fetching SyncFromHash tail(%x): %w", tailHash, err)
 		}
+		log.Debugw("fetched tail header by hash", "hash", tailHash)
 	case !useHash:
 		tailHeight, err := s.tailHeight(ctx, oldTail, head)
 		if err != nil {
@@ -96,11 +96,11 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 			}
 		}
 
-		log.Debugw("tail height not available locally, fetching...", "height", tailHeight)
 		newTail, err = s.getter.GetByHeight(ctx, tailHeight)
 		if err != nil {
 			return newTail, fmt.Errorf("fetching SyncFromHeight tail(%d): %w", tailHeight, err)
 		}
+		log.Debugw("fetched tail header by height", "height", tailHeight)
 	}
 
 	if err := s.store.Append(ctx, newTail); err != nil {
