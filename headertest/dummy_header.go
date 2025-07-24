@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,7 +23,8 @@ type DummyHeader struct {
 	HeightI      uint64
 	Timestamp    time.Time
 
-	hash header.Hash
+	hashMu sync.Mutex
+	hash   header.Hash
 
 	// VerifyFailure allows for testing scenarios where a header would fail
 	// verification. When set to true, it forces a failure.
@@ -63,6 +65,8 @@ func (d *DummyHeader) ChainID() string {
 }
 
 func (d *DummyHeader) Hash() header.Hash {
+	d.hashMu.Lock()
+	defer d.hashMu.Unlock()
 	if len(d.hash) == 0 {
 		if err := d.rehash(); err != nil {
 			panic(err)

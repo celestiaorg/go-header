@@ -47,12 +47,18 @@ type Syncer[H header.Header[H]] struct {
 	pending ranges[H]
 	// incomingMu ensures only one incoming network head candidate is processed at the time
 	incomingMu sync.Mutex
+	// tailMu prevents concurrent tail movements
+	tailMu sync.Mutex
 
 	// controls lifecycle for syncLoop
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	Params *Parameters
+
+	// a hack to prevent headersub interfering during start
+	// TODO(@Wondertan): Remove after bsync.
+	started chan struct{}
 }
 
 // NewSyncer creates a new instance of Syncer.
@@ -86,15 +92,35 @@ func NewSyncer[H header.Header[H]](
 		metrics:     metrics,
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
+		started:     make(chan struct{}),
 	}, nil
 }
 
 // Start starts the syncing routine.
 func (s *Syncer[H]) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+
 	// register validator for header subscriptions
 	// syncer does not subscribe itself and syncs headers together with validation
 	err := s.sub.SetVerifier(func(ctx context.Context, h H) error {
+		// HACK(@Wondertan):
+		//  During subjective init we request the Head and then the Tail.
+		//  However, we store them in the opposite order, s.t before Tail arrives
+		//  there is a window where Head awaits Tail without being stored.
+		//  During this window, headersub may deliver new network head. As it can't
+		//  see the awaiting Head, it triggers duplicate subjective initialization
+		//  which may frontrun Tail, violating the storing order and corrupting the store.
+		//  This hack basically stalls headersub until Syncer has fully started, but it should
+		//  not be this way.
+		//
+		//  This will be fixed with bsync as Syncer will learn how to verify Tail from Head backwards,
+		//  allowing Head to be stored first and then the Tail.
+		select {
+		case <-s.started:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
 		if err := s.incomingNetworkHead(ctx, h); err != nil {
 			return err
 		}
@@ -115,6 +141,11 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 	}
 	// start syncLoop only if Start is errorless
 	go s.syncLoop()
+	select {
+	case <-s.started:
+	default:
+		close(s.started)
+	}
 	return nil
 }
 
