@@ -47,7 +47,10 @@ func (s *Syncer[H]) subjectiveTail(ctx context.Context, head H) (H, error) {
 
 // renewTail resolves the new actual tail header respecting Syncer parameters.
 func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, err error) {
-	useHash, tailHash := s.tailHash(oldTail)
+	useHash, tailHash, err := s.tailHash(oldTail)
+	if err != nil {
+		return oldTail, err
+	}
 	switch {
 	case useHash:
 		if tailHash == nil {
@@ -101,7 +104,7 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 	}
 
 	if err := s.store.Append(ctx, newTail); err != nil {
-		return newTail, fmt.Errorf("appending tail header: %w", err)
+		return newTail, fmt.Errorf("appending tail header %d: %w", newTail.Height(), err)
 	}
 
 	return newTail, nil
@@ -149,19 +152,22 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 
 // tailHash reports whether tail hash should be used and returns it.
 // Returns empty hash if it hasn't changed from the old tail hash.
-func (s *Syncer[H]) tailHash(oldTail H) (bool, header.Hash) {
-	hash := s.Params.SyncFromHash
+func (s *Syncer[H]) tailHash(oldTail H) (bool, header.Hash, error) {
+	hash, err := s.Params.Hash()
+	if err != nil {
+		return false, nil, err
+	}
 	if len(hash) == 0 {
-		return false, nil
+		return false, nil, nil
 	}
 
 	updated := oldTail.IsZero() || !bytes.Equal(hash, oldTail.Hash())
 	if !updated {
-		return true, nil
+		return true, nil, nil
 	}
 
 	log.Debugw("tail hash updated", "hash", hash)
-	return true, hash
+	return true, hash, nil
 }
 
 // tailHeight figures the actual tail height based on the Syncer parameters.

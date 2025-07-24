@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -24,14 +25,16 @@ type Parameters struct {
 	TrustingPeriod time.Duration
 	// PruningWindow defines the duration within which headers are retained before being pruned.
 	PruningWindow time.Duration
-	// SyncFromHash is the hash of the header from which the syncer should start syncing.
+	// SyncFromHash is the hash of the header from which Syncer should start syncing.
+	// Zero value to disable. Value updates up and down the chain are gracefully handled by Syncer.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHash overrides this default,
 	// allowing any user to specify a custom starting point.
 	//
 	// SyncFromHash has higher priority than SyncFromHeight.
-	SyncFromHash header.Hash
-	// SyncFromHeight is the height of the header from which the syncer should start syncing.
+	SyncFromHash string
+	// SyncFromHeight is the height of the header from which Syncer should start syncing.
+	// Zero value to disable. Value updates up and down the chain are gracefully handled by Syncer.
 	//
 	// By default, Syncer maintains PruningWindow number of headers. SyncFromHeight overrides this default,
 	// allowing any user to specify a custom starting point.
@@ -48,6 +51,8 @@ type Parameters struct {
 	recencyThreshold time.Duration
 	// metrics is a flag that enables metrics collection.
 	metrics bool
+	// hash cache
+	hash header.Hash
 }
 
 // DefaultParameters returns the default params to configure the syncer.
@@ -60,9 +65,30 @@ func DefaultParameters() Parameters {
 
 func (p *Parameters) Validate() error {
 	if p.TrustingPeriod == 0 {
-		return fmt.Errorf("invalid trusting period duration: %v", p.TrustingPeriod)
+		return fmt.Errorf("invalid TrustingPeriod duration: %v", p.TrustingPeriod)
+	}
+	if (p.SyncFromHeight == 0 || p.SyncFromHash == "") && p.PruningWindow == 0 {
+		return fmt.Errorf(
+			"PruningWindow duration can't be zero when either of SyncFromHeight or SyncFromHash are not set",
+		)
+	}
+	_, err := p.Hash()
+	if err != nil {
+		return err
 	}
 	return nil
+}
+
+func (p *Parameters) Hash() (header.Hash, error) {
+	if p.hash == nil && len(p.SyncFromHash) > 0 {
+		hash, err := hex.DecodeString(p.SyncFromHash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SyncFromHash: %w", err)
+		}
+
+		p.hash = hash
+	}
+	return p.hash, nil
 }
 
 // WithMetrics enables Metrics on Syncer.
@@ -105,7 +131,7 @@ func WithParams(params Parameters) Option {
 
 // WithSyncFromHash sets given header hash a starting point for syncing.
 // See [Parameters.SyncFromHash] for details.
-func WithSyncFromHash(hash header.Hash) Option {
+func WithSyncFromHash(hash string) Option {
 	return func(p *Parameters) {
 		p.SyncFromHash = hash
 	}
