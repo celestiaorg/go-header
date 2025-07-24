@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -59,9 +59,10 @@ type Store[H header.Header[H]] struct {
 	pending *batch[H]
 	// syncCh is a channel used to synchronize writes
 	syncCh chan chan struct{}
+	cancel context.CancelFunc
 
 	onDeleteMu sync.Mutex
-	onDelete   []func(context.Context, []H) error
+	onDelete   []func(context.Context, uint64) error
 
 	Params Parameters
 }
@@ -129,11 +130,14 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.loadHeadAndTail(ctx); err != nil && !errors.Is(err, header.ErrNotFound) {
-		return err
+	if err := s.init(ctx); err != nil {
+		return fmt.Errorf("header/store: initializing: %w", err)
 	}
 
-	go s.flushLoop()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+
+	go s.flushLoop(ctx)
 	return nil
 }
 
@@ -146,6 +150,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	// signal to prevent further writes to Store
 	select {
 	case s.writes <- nil:
+		s.cancel()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -271,7 +276,7 @@ func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
-	hash, err := s.heightIndex.HashByHeight(ctx, height)
+	hash, err := s.heightIndex.HashByHeight(ctx, height, true)
 	if err != nil {
 		var zero H
 		if errors.Is(err, datastore.ErrNotFound) {
@@ -357,149 +362,7 @@ func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
 	return head.Height() >= height && height >= tail.Height()
 }
 
-func (s *Store[H]) OnDelete(fn func(context.Context, []H) error) {
-	s.onDeleteMu.Lock()
-	defer s.onDeleteMu.Unlock()
-
-	s.onDelete = append(s.onDelete, func(ctx context.Context, h []H) (rerr error) {
-		defer func() {
-			err := recover()
-			if err != nil {
-				rerr = fmt.Errorf("header/store: user provided onDelete panicked with: %s", err)
-			}
-		}()
-		return fn(ctx, h)
-	})
-}
-
-// DeleteTo implements [header.Store] interface.
-func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	// ensure all the pending headers are synchronized
-	err := s.Sync(ctx)
-	if err != nil {
-		return err
-	}
-
-	head, err := s.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading head: %w", err)
-	}
-	if head.Height()+1 < to {
-		_, err := s.getByHeight(ctx, to)
-		if err != nil {
-			return fmt.Errorf(
-				"header/store: delete to %d beyond current head(%d)",
-				to,
-				head.Height(),
-			)
-		}
-
-		//  if `to` is bigger than the current head and is stored - allow delete, making `to` a new head
-	}
-
-	tail, err := s.Tail(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading tail: %w", err)
-	}
-	if tail.Height() >= to {
-		return fmt.Errorf("header/store: delete to %d below current tail(%d)", to, tail.Height())
-	}
-
-	if err := s.deleteRange(ctx, tail.Height(), to); err != nil {
-		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
-	}
-
-	if head.Height()+1 == to {
-		// this is the case where we have deleted all the headers
-		// wipe the store
-		if err := s.wipe(ctx); err != nil {
-			return fmt.Errorf("header/store: wipe: %w", err)
-		}
-	}
-
-	return nil
-}
-
-var maxHeadersLoadedPerDelete uint64 = 512
-
-func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
-	log.Infow("deleting headers", "from_height", from, "to_height", to)
-	for from < to {
-		amount := min(to-from, maxHeadersLoadedPerDelete)
-		toDelete := from + amount
-		headers := make([]H, 0, amount)
-
-		for height := from; height < toDelete; height++ {
-			// take headers individually instead of range
-			// as getRangeByHeight can't deal with potentially missing headers
-			h, err := s.getByHeight(ctx, height)
-			if errors.Is(err, header.ErrNotFound) {
-				log.Warnf("header/store: attempt to delete header that's not found", height)
-				continue
-			}
-			if err != nil {
-				return fmt.Errorf("getting header while deleting: %w", err)
-			}
-
-			headers = append(headers, h)
-		}
-
-		batch, err := s.ds.Batch(ctx)
-		if err != nil {
-			return fmt.Errorf("new batch: %w", err)
-		}
-
-		s.onDeleteMu.Lock()
-		onDelete := slices.Clone(s.onDelete)
-		s.onDeleteMu.Unlock()
-		for _, deleteFn := range onDelete {
-			if err := deleteFn(ctx, headers); err != nil {
-				// abort deletion if onDelete handler fails
-				// to ensure atomicity between stored headers and user specific data
-				// TODO(@Wondertan): Batch is not actually atomic and could write some data at this point
-				//  but its fine for now: https://github.com/celestiaorg/go-header/issues/307
-				// TODO2(@Wondertan): Once we move to txn, find a way to pass txn through context,
-				//  so that users can use it in their onDelete handlers
-				//  to ensure atomicity between deleted headers and user specific data
-				return fmt.Errorf("on delete handler: %w", err)
-			}
-		}
-
-		for _, h := range headers {
-			if err := batch.Delete(ctx, hashKey(h.Hash())); err != nil {
-				return fmt.Errorf("delete hash key (%X): %w", h.Hash(), err)
-			}
-			if err := batch.Delete(ctx, heightKey(h.Height())); err != nil {
-				return fmt.Errorf("delete height key (%d): %w", h.Height(), err)
-			}
-		}
-
-		err = s.setTail(ctx, batch, toDelete)
-		if err != nil {
-			return fmt.Errorf("setting tail to %d: %w", toDelete, err)
-		}
-
-		if err := batch.Commit(ctx); err != nil {
-			return fmt.Errorf("committing delete batch [%d:%d): %w", from, toDelete, err)
-		}
-
-		// cleanup caches after disk is flushed
-		for _, h := range headers {
-			s.cache.Remove(h.Hash().String())
-			s.heightIndex.cache.Remove(h.Height())
-		}
-		s.pending.DeleteRange(from, toDelete)
-
-		log.Infow("deleted header range", "from_height", from, "to_height", toDelete)
-
-		// move iterator
-		from = toDelete
-	}
-
-	return nil
-}
-
-func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64) error {
+func (s *Store[H]) setTail(ctx context.Context, write datastore.Write, to uint64) error {
 	newTail, err := s.getByHeight(ctx, to)
 	if errors.Is(err, header.ErrNotFound) {
 		return nil
@@ -510,17 +373,16 @@ func (s *Store[H]) setTail(ctx context.Context, batch datastore.Batch, to uint64
 
 	// set directly to `to`, avoiding iteration in recedeTail
 	s.tailHeader.Store(&newTail)
-	if err := writeHeaderHashTo(ctx, batch, newTail, tailKey); err != nil {
+	if err := writeHeaderHashTo(ctx, write, newTail, tailKey); err != nil {
 		return fmt.Errorf("writing tailKey in batch: %w", err)
 	}
+	log.Infow("new tail", "height", newTail.Height(), "hash", newTail.Hash())
+	s.metrics.newTail(newTail.Height())
 
 	// update head as well, if delete went over it
-	head, err := s.Head(ctx)
-	if err != nil {
-		return err
-	}
-	if to > head.Height() {
-		if err := writeHeaderHashTo(ctx, batch, newTail, headKey); err != nil {
+	head, _ := s.Head(ctx)
+	if head.IsZero() || to > head.Height() {
+		if err := writeHeaderHashTo(ctx, write, newTail, headKey); err != nil {
 			return fmt.Errorf("writing headKey in batch: %w", err)
 		}
 		s.contiguousHead.Store(&newTail)
@@ -574,9 +436,8 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 // This way writes are controlled and manageable from one place allowing
 // (1) Appends not to be blocked on long disk IO writes and underlying DB compactions
 // (2) Batching header writes
-func (s *Store[H]) flushLoop() {
+func (s *Store[H]) flushLoop(ctx context.Context) {
 	defer close(s.writesDn)
-	ctx := context.Background()
 
 	flush := func(headers []H) {
 		s.ensureInit(headers)
@@ -703,10 +564,21 @@ func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) 
 
 	var h header.Hash
 	if err := h.UnmarshalJSON(b); err != nil {
+		return zero, fmt.Errorf("unmarshaling header hash at %s key: %w", key, err)
+	}
+
+	hdr, err := s.Get(ctx, h)
+	if err != nil {
+		if errors.Is(err, header.ErrNotFound) {
+			derr := s.ds.Delete(ctx, key)
+			if derr != nil {
+				err = errors.Join(err, fmt.Errorf("deleting key %s, header for which was not found: %w", key, derr))
+			}
+		}
 		return zero, err
 	}
 
-	return s.Get(ctx, h)
+	return hdr, nil
 }
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
@@ -756,14 +628,26 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
+			log.Debugw("next head error", "current", head.Height(), "err", err)
 			return head, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("advancing head", "start_height", head.Height())
+			defer func() {
+				log.Debugw("finished advancing head", "end_height", head.Height(), "took(s)", time.Since(now))
+			}()
+		}
+
 		head = h
 		changed = true
 	}
+
+	return head, changed
 }
 
 // nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
@@ -775,49 +659,76 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		return tail, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
 		if err != nil {
+			log.Debugw("next tail error", "current", tail.Height(), "err", err)
 			return tail, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("receding tail", "start_height", tail.Height())
+			defer func() {
+				log.Debugw("finished receding tail", "end_height", tail.Height(), "took(s)", time.Since(now))
+			}()
+		}
+
 		tail = h
 		changed = true
 	}
+
+	log.Debugw("just left next tail", "current", tail.Height(), "err", ctx.Err())
+	return tail, changed
 }
 
-func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
+// init loads the head and tail headers and sets them on the store.
+// allows partial initialization of either tail or head if one of the is not found.
+func (s *Store[H]) init(ctx context.Context) error {
 	head, err := s.readByKey(ctx, headKey)
-	if err != nil {
-		return fmt.Errorf("header/store: cannot load headKey: %w", err)
+	if err != nil && !errors.Is(err, header.ErrNotFound) {
+		return fmt.Errorf("reading headKey: %w", err)
+	}
+	if !head.IsZero() {
+		s.contiguousHead.Store(&head)
+		s.heightSub.Init(head.Height())
+		log.Debugw("initialized head", "height", head.Height())
 	}
 
 	tail, err := s.readByKey(ctx, tailKey)
-	if err != nil {
-		return fmt.Errorf("header/store: cannot load tailKey: %w", err)
+	if err != nil && !errors.Is(err, header.ErrNotFound) {
+		return fmt.Errorf("reading tailKey: %w", err)
+	}
+	if !tail.IsZero() {
+		s.tailHeader.Store(&tail)
+		log.Debugw("initialized tail", "height", tail.Height())
 	}
 
-	s.init(head, tail)
 	return nil
 }
 
+// ensureInit initializes the store with the given headers if it is not already initialized.
 func (s *Store[H]) ensureInit(headers []H) {
-	headExist, tailExist := s.contiguousHead.Load() != nil, s.tailHeader.Load() != nil
-	if len(headers) == 0 || (tailExist && headExist) {
+	if len(headers) == 0 {
 		return
-	} else if tailExist || headExist {
-		panic("header/store: head and tail must be both present or absent")
 	}
 
-	tail, head := headers[0], headers[len(headers)-1]
-	s.init(head, tail)
+	if headPtr := s.contiguousHead.Load(); headPtr == nil {
+		head := headers[len(headers)-1]
+		if s.contiguousHead.CompareAndSwap(headPtr, &head) {
+			s.heightSub.Init(head.Height())
+			log.Debugw("initialized head", "height", head.Height())
+		}
+	}
+
+	if tailPtr := s.tailHeader.Load(); tailPtr == nil {
+		tail := headers[0]
+		s.tailHeader.CompareAndSwap(tailPtr, &tail)
+		log.Debugw("initialized tail", "height", tail.Height())
+	}
 }
 
-func (s *Store[H]) init(head, tail H) {
-	s.contiguousHead.Store(&head)
-	s.heightSub.Init(head.Height())
-	s.tailHeader.Store(&tail)
-}
-
+// deinit deinitializes the store.
 func (s *Store[H]) deinit() {
 	s.cache.Purge()
 	s.heightIndex.cache.Purge()
@@ -828,7 +739,7 @@ func (s *Store[H]) deinit() {
 
 func writeHeaderHashTo[H header.Header[H]](
 	ctx context.Context,
-	batch datastore.Batch,
+	write datastore.Write,
 	h H,
 	key datastore.Key,
 ) error {
@@ -837,7 +748,7 @@ func writeHeaderHashTo[H header.Header[H]](
 		return err
 	}
 
-	if err := batch.Put(ctx, key, hashBytes); err != nil {
+	if err := write.Put(ctx, key, hashBytes); err != nil {
 		return err
 	}
 

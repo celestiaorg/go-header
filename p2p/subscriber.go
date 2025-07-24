@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -85,7 +86,7 @@ func NewSubscriber[H header.Header[H]](
 // be called separately to ensure a validator is mounted on the topic.
 func (s *Subscriber[H]) Start(context.Context) (err error) {
 	log.Debugw("joining topic", "topic ID", s.pubsubTopicID)
-	err = s.pubsub.RegisterTopicValidator(s.pubsubTopicID, s.verifyMessage)
+	err = s.pubsub.RegisterTopicValidator(s.pubsubTopicID, s.verifyMessage, pubsub.WithValidatorTimeout(time.Minute))
 	if err != nil {
 		return err
 	}
