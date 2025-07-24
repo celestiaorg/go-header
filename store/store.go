@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -59,6 +60,7 @@ type Store[H header.Header[H]] struct {
 	pending *batch[H]
 	// syncCh is a channel used to synchronize writes
 	syncCh chan chan struct{}
+	cancel context.CancelFunc
 
 	onDeleteMu sync.Mutex
 	onDelete   []func(context.Context, []H) error
@@ -133,7 +135,9 @@ func (s *Store[H]) Start(ctx context.Context) error {
 		return err
 	}
 
-	go s.flushLoop()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	go s.flushLoop(ctx)
 	return nil
 }
 
@@ -574,9 +578,8 @@ func (s *Store[H]) Append(ctx context.Context, headers ...H) error {
 // This way writes are controlled and manageable from one place allowing
 // (1) Appends not to be blocked on long disk IO writes and underlying DB compactions
 // (2) Batching header writes
-func (s *Store[H]) flushLoop() {
+func (s *Store[H]) flushLoop(ctx context.Context) {
 	defer close(s.writesDn)
-	ctx := context.Background()
 
 	flush := func(headers []H) {
 		s.ensureInit(headers)
@@ -752,18 +755,36 @@ func (s *Store[H]) recedeTail(ctx context.Context) {
 func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 	head, err := s.Head(ctx)
 	if err != nil {
-		log.Errorw("cannot load head", "err", err)
+		log.Errorw("cannot load head while advancing", "err", err)
 		return head, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
+			log.Debugw("next head error", "current", head.Height(), "err", err)
 			return head, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("advancing head", "start_height", head.Height())
+			defer func() {
+				log.Debugw(
+					"finished advancing head",
+					"end_height",
+					head.Height(),
+					"took(s)",
+					time.Since(now),
+				)
+			}()
+		}
+
 		head = h
 		changed = true
 	}
+
+	return head, changed
 }
 
 // nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
@@ -771,18 +792,35 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	tail, err := s.Tail(ctx)
 	if err != nil {
-		log.Errorw("cannot load tail", "err", err)
+		log.Errorw("cannot load tail while receding", "err", err)
 		return tail, false
 	}
 
-	for {
+	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
 		if err != nil {
 			return tail, changed
 		}
+
+		if !changed && log.Level() == zapcore.DebugLevel {
+			now := time.Now()
+			log.Debugw("receding tail", "start_height", tail.Height())
+			defer func() {
+				log.Debugw(
+					"finished receding tail",
+					"end_height",
+					tail.Height(),
+					"took(s)",
+					time.Since(now),
+				)
+			}()
+		}
+
 		tail = h
 		changed = true
 	}
+
+	return tail, changed
 }
 
 func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
