@@ -129,8 +129,8 @@ func (s *Store[H]) Start(ctx context.Context) error {
 	default:
 	}
 
-	if err := s.loadHeadAndTail(ctx); err != nil && !errors.Is(err, header.ErrNotFound) {
-		return err
+	if err := s.init(ctx); err != nil {
+		return fmt.Errorf("header/store: initializing: %w", err)
 	}
 
 	go s.flushLoop()
@@ -703,10 +703,24 @@ func (s *Store[H]) readByKey(ctx context.Context, key datastore.Key) (H, error) 
 
 	var h header.Hash
 	if err := h.UnmarshalJSON(b); err != nil {
+		return zero, fmt.Errorf("unmarshaling header hash at %s key: %w", key, err)
+	}
+
+	hdr, err := s.Get(ctx, h)
+	if err != nil {
+		if errors.Is(err, header.ErrNotFound) {
+			derr := s.ds.Delete(ctx, key)
+			if derr != nil {
+				err = errors.Join(
+					err,
+					fmt.Errorf("deleting key %s, header for which was not found: %w", key, derr),
+				)
+			}
+		}
 		return zero, err
 	}
 
-	return s.Get(ctx, h)
+	return hdr, nil
 }
 
 func (s *Store[H]) get(ctx context.Context, hash header.Hash) ([]byte, error) {
@@ -785,39 +799,53 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	}
 }
 
-func (s *Store[H]) loadHeadAndTail(ctx context.Context) error {
+// init loads the head and tail headers and sets them on the store.
+// allows partial initialization of either tail or head if one of the is not found.
+func (s *Store[H]) init(ctx context.Context) error {
 	head, err := s.readByKey(ctx, headKey)
-	if err != nil {
-		return fmt.Errorf("header/store: cannot load headKey: %w", err)
+	if err != nil && !errors.Is(err, header.ErrNotFound) {
+		return fmt.Errorf("reading headKey: %w", err)
+	}
+	if !head.IsZero() {
+		s.contiguousHead.Store(&head)
+		s.heightSub.Init(head.Height())
+		log.Debugw("initialized head", "height", head.Height())
 	}
 
 	tail, err := s.readByKey(ctx, tailKey)
-	if err != nil {
-		return fmt.Errorf("header/store: cannot load tailKey: %w", err)
+	if err != nil && !errors.Is(err, header.ErrNotFound) {
+		return fmt.Errorf("reading tailKey: %w", err)
+	}
+	if !tail.IsZero() {
+		s.tailHeader.Store(&tail)
+		log.Debugw("initialized tail", "height", tail.Height())
 	}
 
-	s.init(head, tail)
 	return nil
 }
 
+// ensureInit initializes the store with the given headers if it is not already initialized.
 func (s *Store[H]) ensureInit(headers []H) {
-	headExist, tailExist := s.contiguousHead.Load() != nil, s.tailHeader.Load() != nil
-	if len(headers) == 0 || (tailExist && headExist) {
+	if len(headers) == 0 {
 		return
-	} else if tailExist || headExist {
-		panic("header/store: head and tail must be both present or absent")
 	}
 
-	tail, head := headers[0], headers[len(headers)-1]
-	s.init(head, tail)
+	if headPtr := s.contiguousHead.Load(); headPtr == nil {
+		head := headers[len(headers)-1]
+		if s.contiguousHead.CompareAndSwap(headPtr, &head) {
+			s.heightSub.Init(head.Height())
+			log.Debugw("initialized head", "height", head.Height())
+		}
+	}
+
+	if tailPtr := s.tailHeader.Load(); tailPtr == nil {
+		tail := headers[0]
+		s.tailHeader.CompareAndSwap(tailPtr, &tail)
+		log.Debugw("initialized tail", "height", tail.Height())
+	}
 }
 
-func (s *Store[H]) init(head, tail H) {
-	s.contiguousHead.Store(&head)
-	s.heightSub.Init(head.Height())
-	s.tailHeader.Store(&tail)
-}
-
+// deinit deinitializes the store.
 func (s *Store[H]) deinit() {
 	s.cache.Purge()
 	s.heightIndex.cache.Purge()
