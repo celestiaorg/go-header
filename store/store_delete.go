@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-datastore"
@@ -88,53 +87,66 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 
 // deleteRangeParallelThreshold defines the threshold for parallel deletion.
 // If range is smaller than this threshold, deletion will be performed sequentially.
-var deleteRangeParallelThreshold uint64 = 10000
+var (
+	deleteRangeParallelThreshold uint64 = 10000
+	errDeleteTimeout                    = errors.New("delete timeout")
+)
 
 // deleteRange deletes [from:to) header range from the store.
-func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) error {
-	if to-from < deleteRangeParallelThreshold {
-		return s.deleteSequential(ctx, from, to)
-	}
+// It gracefully handles context and errors attempting to save interrupted progress.
+func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error) {
+	startTime := time.Now()
 
-	return s.deleteParallel(ctx, from, to)
-}
-
-// deleteSequential deletes [from:to) header range from the store sequentially.
-func (s *Store[H]) deleteSequential(ctx context.Context, from, to uint64) (err error) {
-	log.Debugw("starting delete range sequential", "from_height", from, "to_height", to)
-
-	batch, err := s.ds.Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("new batch: %w", err)
-	}
-	// ctx = badger4.WithBatch(ctx, batch)
-
-	height := from
+	var height uint64
 	defer func() {
+		if err != nil {
+			if errors.Is(err, errDeleteTimeout) {
+				log.Warnw("partial delete",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"took(s)", time.Since(startTime),
+				)
+			} else {
+				log.Errorw("partial delete with error",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"took(s)", time.Since(startTime),
+					"err", err,
+				)
+			}
+		} else if to-from > 1 {
+			log.Debugw("deleted headers", "from_height", from, "to_height", to, "took", time.Since(startTime))
+		}
+
 		if derr := s.setTail(ctx, s.ds, height); derr != nil {
 			err = errors.Join(err, fmt.Errorf("setting tail to %d: %w", height, derr))
 		}
-
-		if derr := batch.Commit(ctx); derr != nil {
-			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
-		}
 	}()
 
-	s.onDeleteMu.Lock()
-	onDelete := slices.Clone(s.onDelete)
-	s.onDeleteMu.Unlock()
+	if deadline, ok := ctx.Deadline(); ok {
+		// allocate 95% of caller's set deadline for deletion
+		// and give leftover to save progress
+		// this prevents store's state corruption from partial deletion
+		sub := deadline.Sub(startTime) / 100 * 95
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
+		defer cancel()
+	}
 
-	for ; height < to; height++ {
-		if err := s.delete(ctx, height, batch, onDelete); err != nil {
-			return err
-		}
+	if to-from < deleteRangeParallelThreshold {
+		height, err = s.deleteSequential(ctx, from, to)
+	} else {
+		height, err = s.deleteParallel(ctx, from, to)
 	}
 
 	return nil
 }
 
-// delete deletes a single header from the store, its caches and indexies, notifying any registered onDelete handlers.
-func (s *Store[H]) delete(
+// deleteSingle deletes a single header from the store,
+// its caches and indexies, notifying any registered onDelete handlers.
+func (s *Store[H]) deleteSingle(
 	ctx context.Context,
 	height uint64,
 	batch datastore.Batch,
@@ -173,53 +185,41 @@ func (s *Store[H]) delete(
 	return nil
 }
 
-// deleteParallel deletes [from:to) header range from the store in parallel.
-// It gracefully handles context and errors attempting to save interrupted progress.
-func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err error) {
-	log.Debugw("starting delete range parallel", "from_height", from, "to_height", to)
+// deleteSequential deletes [from:to) header range from the store sequentially
+// and returns the highest unprocessed height: 'to' in success case or the failed height in error case.
+func (s *Store[H]) deleteSequential(
+	ctx context.Context,
+	from, to uint64,
+) (highest uint64, err error) {
+	log.Debugw("starting delete range sequential", "from_height", from, "to_height", to)
 
-	deleteCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	startTime := time.Now()
-	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 95% of caller's set deadline for deletion
-		// and give leftover to save progress
-		// this prevents store's state corruption from partial deletion
-		sub := deadline.Sub(startTime) / 100 * 95
-		var cancel context.CancelFunc
-		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
-		defer cancel()
+	batch, err := s.ds.Batch(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("new batch: %w", err)
 	}
-
-	var highestDeleted atomic.Uint64
 	defer func() {
-		newTailHeight := highestDeleted.Load() + 1
-		if err != nil {
-			if errors.Is(err, errDeleteTimeout) {
-				log.Warnw("partial delete",
-					"from_height", from,
-					"expected_to_height", to,
-					"actual_to_height", newTailHeight,
-					"took(s)", time.Since(startTime),
-				)
-			} else {
-				log.Errorw("partial delete with error",
-					"from_height", from,
-					"expected_to_height", to,
-					"actual_to_height", newTailHeight,
-					"took(s)", time.Since(startTime),
-					"err", err,
-				)
-			}
-		} else if to-from > 1 {
-			log.Infow("deleted headers", "from_height", from, "to_height", to, "took", time.Since(startTime))
-		}
-
-		if derr := s.setTail(ctx, s.ds, newTailHeight); derr != nil {
-			err = errors.Join(err, fmt.Errorf("setting tail to %d: %w", newTailHeight, derr))
+		if derr := batch.Commit(ctx); derr != nil {
+			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
 		}
 	}()
+
+	s.onDeleteMu.Lock()
+	onDelete := slices.Clone(s.onDelete)
+	s.onDeleteMu.Unlock()
+
+	for height := from; height < to; height++ {
+		if err := s.deleteSingle(ctx, height, batch, onDelete); err != nil {
+			return height, err
+		}
+	}
+
+	return to, nil
+}
+
+// deleteParallel deletes [from:to) header range from the store in parallel
+// and returns the highest unprocessed height: 'to' in success case or the failed height in error case.
+func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64, error) {
+	log.Debugw("starting delete range parallel", "from_height", from, "to_height", to)
 
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
@@ -232,53 +232,50 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 	// require too much RAM, yet shows good performance.
 	workerNum := runtime.GOMAXPROCS(-1) * 3
 
+	type result struct {
+		height uint64
+		err    error
+	}
+	results := make([]result, workerNum)
 	jobCh := make(chan uint64, workerNum)
-	errCh := make(chan error, 1)
+	errCh := make(chan error)
 
-	worker := func() {
+	worker := func(worker int) {
+		var last result
+		defer func() {
+			results[worker] = last
+			if last.err != nil {
+				close(errCh)
+			}
+		}()
+
 		batch, err := s.ds.Batch(ctx)
 		if err != nil {
-			errCh <- fmt.Errorf("new batch: %w", err)
+			last.err = fmt.Errorf("new batch: %w", err)
 			return
 		}
-		// deleteCtx := badger4.WithBatch(deleteCtx, batch)
-
-		defer func() {
-			if err := batch.Commit(ctx); err != nil {
-				errCh <- fmt.Errorf("committing delete batch: %w", err)
-			}
-		}()
-
-		var lastHeight uint64
-		defer func() {
-			highest := highestDeleted.Load()
-			for lastHeight > highest && !highestDeleted.CompareAndSwap(highest, lastHeight) {
-				highest = highestDeleted.Load()
-			}
-		}()
 
 		for height := range jobCh {
-			if err := s.delete(deleteCtx, height, batch, onDelete); err != nil {
-				select {
-				case errCh <- fmt.Errorf("delete header %d: %w", height, err):
-				default:
-				}
-				return
+			last.height = height
+			last.err = s.deleteSingle(ctx, height, batch, onDelete)
+			if last.err != nil {
+				break
 			}
+		}
 
-			lastHeight = height
+		if err := batch.Commit(ctx); err != nil {
+			last.err = errors.Join(last.err, fmt.Errorf("committing delete batch: %w", err))
 		}
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(workerNum)
-	for range workerNum {
-		go func() {
+	for i := range workerNum {
+		go func(i int) {
 			defer wg.Done()
-			worker()
-		}()
+			worker(i)
+		}(i)
 	}
-	defer wg.Wait()
 
 	for i, height := 0, from; height < to; height++ {
 		select {
@@ -287,14 +284,33 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (err err
 			if uint64(1)%deleteRangeParallelThreshold == 0 {
 				log.Debugf("deleting %dth header height %d", deleteRangeParallelThreshold, height)
 			}
-		case err = <-errCh:
-			close(jobCh)
-			return err
+		case <-errCh:
 		}
 	}
 
+	// tell workers to stop
 	close(jobCh)
-	return err
-}
+	// await all workers to finish
+	wg.Wait()
+	// ensure results are sorted in ascending order of heights
+	slices.SortFunc(results, func(a, b result) int {
+		return int(a.height - b.height) //nolint:gosec
+	})
+	// find the highest deleted height
+	var highest uint64
+	for _, result := range results {
+		if result.err != nil {
+			// return the error immediately even if some higher headers may have been deleted
+			// this ensures we set tail to the lowest errored height, s.t. retries do not shadowly miss any headers
+			return result.height, result.err
+		}
 
-var errDeleteTimeout = errors.New("delete timeout")
+		if result.height > highest {
+			highest = result.height
+		}
+	}
+
+	// ensures the height after the highest deleted becomes the new tail
+	highest++
+	return highest, nil
+}
