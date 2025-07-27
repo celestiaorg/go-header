@@ -10,6 +10,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/go-datastore"
+	contextds "github.com/ipfs/go-datastore/context"
+	"github.com/ipfs/go-datastore/keytransform"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"go.uber.org/zap/zapcore"
@@ -31,7 +33,7 @@ type Store[H header.Header[H]] struct {
 	// header storing
 	//
 	// underlying KV store
-	ds datastore.Batching
+	ds *keytransform.Datastore
 	// adaptive replacement cache of headers
 	cache *lru.TwoQueueCache[string, H]
 	// metrics collection instance
@@ -275,6 +277,11 @@ func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
+	ctx, txn := s.withReadTransaction(ctx)
+	if txn != nil {
+		defer txn.Discard(ctx)
+	}
+
 	hash, err := s.heightIndex.HashByHeight(ctx, height, true)
 	if err != nil {
 		var zero H
@@ -308,6 +315,12 @@ func (s *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 	if from >= to {
 		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
+
+	ctx, txn := s.withReadTransaction(ctx)
+	if txn != nil {
+		defer txn.Discard(ctx)
+	}
+
 	h, err := s.GetByHeight(ctx, to-1)
 	if err != nil {
 		return nil, err
@@ -627,6 +640,11 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
+	ctx, tx := s.withReadTransaction(ctx)
+	if tx != nil {
+		defer tx.Discard(ctx)
+	}
+
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
@@ -662,6 +680,11 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	if err != nil {
 		log.Errorw("cannot load tail while receding", "err", err)
 		return tail, false
+	}
+
+	ctx, tx := s.withReadTransaction(ctx)
+	if tx != nil {
+		defer tx.Discard(ctx)
 	}
 
 	for ctx.Err() == nil {
@@ -744,6 +767,48 @@ func (s *Store[H]) deinit() {
 	s.contiguousHead.Store(nil)
 	s.tailHeader.Store(nil)
 	s.heightSub.SetHeight(0)
+}
+
+func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, datastore.Batch) {
+	bds, ok := s.ds.Children()[0].(datastore.Batching)
+	if !ok {
+		return ctx, nil
+	}
+
+	if _, ok = contextds.GetWrite(ctx); ok {
+		// there is a batch already
+		// avoid returning so its not discarded
+		return ctx, nil
+	}
+
+	batch, err := bds.Batch(ctx)
+	if err != nil {
+		log.Errorw("new batch", "err", err)
+		return ctx, nil
+	}
+
+	return contextds.WithWrite(ctx, batch), batch
+}
+
+func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, datastore.Txn) {
+	tds, ok := s.ds.Children()[0].(datastore.TxnFeature)
+	if !ok {
+		return ctx, nil
+	}
+
+	if _, ok = contextds.GetRead(ctx); ok {
+		// there is a transaction already
+		// avoid returning so its not discarded
+		return ctx, nil
+	}
+
+	txn, err := tds.NewTransaction(ctx, true)
+	if err != nil {
+		log.Errorw("new transaction", "err", err)
+		return ctx, nil
+	}
+
+	return contextds.WithRead(ctx, txn), txn
 }
 
 func writeHeaderHashTo[H header.Header[H]](
