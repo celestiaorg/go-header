@@ -141,7 +141,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error)
 		height, err = s.deleteParallel(ctx, from, to)
 	}
 
-	return nil
+	return err
 }
 
 // deleteSingle deletes a single header from the store,
