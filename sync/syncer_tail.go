@@ -103,7 +103,15 @@ func (s *Syncer[H]) renewTail(ctx context.Context, oldTail, head H) (newTail H, 
 		log.Debugw("fetched tail header by height", "height", tailHeight)
 	}
 
-	if err := s.store.Append(ctx, newTail); err != nil {
+	err = s.store.Append(ctx, newTail)
+	var errNonAdj *errNonAdjacent
+	if errors.As(err, &errNonAdj) {
+		// TODO(@Wondertan): We have to force through the write here
+		//  We don't car if its non-adjacent
+		//  Remove with bsync
+		err = s.store.Store.Append(ctx, newTail)
+	}
+	if err != nil {
 		return newTail, fmt.Errorf("appending tail header %d: %w", newTail.Height(), err)
 	}
 
@@ -235,9 +243,9 @@ func (s *Syncer[H]) findTailHeight(ctx context.Context, oldTail, head H) (uint64
 	)
 
 	newTailHeight := estimatedTailHeight
-	for {
+	for newTailHeight > oldTail.Height() && newTailHeight < s.store.Height() {
 		// store keeps all the headers up to the current head
-		// to iterate over the headers and find the most accurate tail
+		// iterate over the headers and find the most accurate tail
 		newTail, err := s.store.GetByHeight(ctx, newTailHeight)
 		if err != nil {
 			return 0, fmt.Errorf(
