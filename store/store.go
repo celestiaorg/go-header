@@ -149,6 +149,7 @@ func (s *Store[H]) Stop(ctx context.Context) error {
 	// signal to prevent further writes to Store
 	select {
 	case s.writes <- nil:
+		s.cancel()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -362,9 +363,6 @@ func (s *Store[H]) HasAt(ctx context.Context, height uint64) bool {
 
 func (s *Store[H]) setTail(ctx context.Context, write datastore.Write, to uint64) error {
 	newTail, err := s.getByHeight(ctx, to)
-	if errors.Is(err, header.ErrNotFound) {
-		return nil
-	}
 	if err != nil {
 		return fmt.Errorf("getting tail: %w", err)
 	}

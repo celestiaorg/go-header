@@ -178,7 +178,12 @@ func (s *Syncer[H]) localHead(ctx context.Context) (H, error) {
 		return pendHead, nil
 	}
 	// if pending is empty - get the latest stored/synced head
-	return s.store.Head(ctx)
+	head, err := s.store.Head(ctx)
+	if err != nil {
+		return head, fmt.Errorf("local store head: %w", err)
+	}
+
+	return head, nil
 }
 
 // setLocalHead takes the already validated head and sets it as the new sync target.
