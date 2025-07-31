@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+	contextds "github.com/ipfs/go-datastore/context"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -200,6 +201,7 @@ func (s *Store[H]) deleteSequential(
 	if err != nil {
 		return 0, fmt.Errorf("new batch: %w", err)
 	}
+	ctx = contextds.WithWrite(ctx, batch)
 	defer func() {
 		if derr := batch.Commit(ctx); derr != nil {
 			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
@@ -263,6 +265,7 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 			last.err = fmt.Errorf("new batch: %w", err)
 			return
 		}
+		ctx = contextds.WithWrite(ctx, batch)
 
 		for height := range jobCh {
 			last.height = height
