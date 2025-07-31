@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+	contextds "github.com/ipfs/go-datastore/context"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -70,16 +71,18 @@ func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 		return fmt.Errorf("header/store: delete to %d below current tail(%d)", to, tail.Height())
 	}
 
-	if err := s.deleteRange(ctx, tail.Height(), to); err != nil {
-		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
-	}
-
-	if head.Height()+1 == to {
+	err = s.deleteRange(ctx, tail.Height(), to)
+	if errors.Is(err, header.ErrNotFound) && head.Height()+1 == to {
 		// this is the case where we have deleted all the headers
 		// wipe the store
 		if err := s.wipe(ctx); err != nil {
 			return fmt.Errorf("header/store: wipe: %w", err)
 		}
+
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("header/store: delete to height %d: %w", to, err)
 	}
 
 	return nil
@@ -117,7 +120,7 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error)
 				)
 			}
 		} else if to-from > 1 {
-			log.Debugw("deleted headers", "from_height", from, "to_height", to, "took", time.Since(startTime))
+			log.Debugw("deleted headers", "from_height", from, "to_height", to, "took(s)", time.Since(startTime).Seconds())
 		}
 
 		if derr := s.setTail(ctx, s.ds, height); derr != nil {
@@ -125,20 +128,21 @@ func (s *Store[H]) deleteRange(ctx context.Context, from, to uint64) (err error)
 		}
 	}()
 
+	deleteCtx := ctx
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 95% of caller's set deadline for deletion
 		// and give leftover to save progress
 		// this prevents store's state corruption from partial deletion
 		sub := deadline.Sub(startTime) / 100 * 95
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
+		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
 		defer cancel()
 	}
 
 	if to-from < deleteRangeParallelThreshold {
-		height, err = s.deleteSequential(ctx, from, to)
+		height, err = s.deleteSequential(deleteCtx, from, to)
 	} else {
-		height, err = s.deleteParallel(ctx, from, to)
+		height, err = s.deleteParallel(deleteCtx, from, to)
 	}
 
 	return err
@@ -159,7 +163,7 @@ func (s *Store[H]) deleteSingle(
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
 	if errors.Is(err, datastore.ErrNotFound) {
-		log.Warnw("attempt to delete header that's not found", "height", height)
+		log.Debugw("attempt to delete header that's not found", "height", height)
 		return nil
 	}
 	if err != nil {
@@ -197,6 +201,7 @@ func (s *Store[H]) deleteSequential(
 	if err != nil {
 		return 0, fmt.Errorf("new batch: %w", err)
 	}
+	ctx = contextds.WithWrite(ctx, batch)
 	defer func() {
 		if derr := batch.Commit(ctx); derr != nil {
 			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
@@ -219,18 +224,20 @@ func (s *Store[H]) deleteSequential(
 // deleteParallel deletes [from:to) header range from the store in parallel
 // and returns the highest unprocessed height: 'to' in success case or the failed height in error case.
 func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64, error) {
-	log.Debugw("starting delete range parallel", "from_height", from, "to_height", to)
-
+	now := time.Now()
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
 	s.onDeleteMu.Unlock()
-
 	// workerNum defines how many parallel delete workers to run
 	// Scales of number of CPUs configured for the process.
 	// Usually, it's recommended to have 2-4 multiplier for the number of CPUs for
 	// IO operations. Three was picked empirically to be a sweet spot that doesn't
 	// require too much RAM, yet shows good performance.
 	workerNum := runtime.GOMAXPROCS(-1) * 3
+
+	log.Infow(
+		"deleting range parallel", "from_height", from, "to_height", to, "worker_num", workerNum,
+	)
 
 	type result struct {
 		height uint64
@@ -245,7 +252,11 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 		defer func() {
 			results[worker] = last
 			if last.err != nil {
-				close(errCh)
+				select {
+				case <-errCh:
+				default:
+					close(errCh)
+				}
 			}
 		}()
 
@@ -254,6 +265,7 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 			last.err = fmt.Errorf("new batch: %w", err)
 			return
 		}
+		ctx = contextds.WithWrite(ctx, batch)
 
 		for height := range jobCh {
 			last.height = height
@@ -277,11 +289,11 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 		}(i)
 	}
 
-	for i, height := 0, from; height < to; height++ {
+	for i, height := uint64(0), from; height < to; height++ {
 		select {
 		case jobCh <- height:
 			i++
-			if uint64(1)%deleteRangeParallelThreshold == 0 {
+			if i%deleteRangeParallelThreshold == 0 {
 				log.Debugf("deleting %dth header height %d", deleteRangeParallelThreshold, height)
 			}
 		case <-errCh:
@@ -312,5 +324,14 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 
 	// ensures the height after the highest deleted becomes the new tail
 	highest++
+	log.Infow(
+		"deleted range parallel",
+		"from_height",
+		from,
+		"to_height",
+		to,
+		"took(s)",
+		time.Since(now).Seconds(),
+	)
 	return highest, nil
 }
