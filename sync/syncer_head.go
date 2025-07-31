@@ -232,7 +232,11 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 
 // verify verifies given network head candidate.
 func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
-	sbjHead, _, err := s.subjectiveHead(ctx)
+	// TODO(@Wondertan): This has to be subjective head.
+	//  But due to an edge case during subjective init, this might be an expired tail
+	//  triggering subjective reinit death loop.
+	//  This can and will be fixed with bsync,
+	sbjHead, err := s.localHead(ctx)
 	if err != nil {
 		log.Errorw("getting subjective head during new network head verification", "err", err)
 		return err
