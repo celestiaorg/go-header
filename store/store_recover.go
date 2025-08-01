@@ -2,14 +2,16 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/celestiaorg/go-header"
+	"github.com/ipfs/go-datastore"
 )
 
 // ResetTail resets the tail of the store to be at the given height.
 // The new tail must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
-func ResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
+func UnsafeResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
 	if err := store.setTail(ctx, store.ds, height); err != nil {
 		return err
 	}
@@ -20,7 +22,7 @@ func ResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height 
 // ResetHead resets the head of the store to be at the given height.
 // The new head must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
-func ResetHead[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
+func UnsafeResetHead[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
 	newHead, err := store.getByHeight(ctx, height)
 	if err != nil {
 		return err
@@ -41,10 +43,22 @@ func FindHeader[H header.Header[H]](
 	store *Store[H],
 	startFrom uint64,
 ) (H, error) {
+	ctx, done := store.withReadTransaction(ctx)
+	defer done()
+
 	for height := startFrom; ctx.Err() == nil; height++ {
-		header, err := store.getByHeight(ctx, height)
-		if err == nil {
-			return header, nil
+		hash, err := store.heightIndex.HashByHeight(ctx, height, false)
+		if errors.Is(err, datastore.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			var zero H
+			return zero, err
+		}
+
+		ok, err := store.Has(ctx, hash)
+		if ok {
+			return store.Get(ctx, hash)
 		}
 	}
 
