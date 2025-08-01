@@ -277,10 +277,8 @@ func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
-	ctx, txn := s.withReadTransaction(ctx)
-	if txn != nil {
-		defer txn.Discard(ctx)
-	}
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
 
 	hash, err := s.heightIndex.HashByHeight(ctx, height, true)
 	if err != nil {
@@ -316,10 +314,8 @@ func (s *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
 
-	ctx, txn := s.withReadTransaction(ctx)
-	if txn != nil {
-		defer txn.Discard(ctx)
-	}
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
 
 	h, err := s.GetByHeight(ctx, to-1)
 	if err != nil {
@@ -640,10 +636,8 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
-	ctx, tx := s.withReadTransaction(ctx)
-	if tx != nil {
-		defer tx.Discard(ctx)
-	}
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
 
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
@@ -682,10 +676,8 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		return tail, false
 	}
 
-	ctx, tx := s.withReadTransaction(ctx)
-	if tx != nil {
-		defer tx.Discard(ctx)
-	}
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
 
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
@@ -769,46 +761,52 @@ func (s *Store[H]) deinit() {
 	s.heightSub.SetHeight(0)
 }
 
-func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, datastore.Batch) {
+// withWriteBatch attaches a new batch to the given context and returns cleanup func.
+func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, func() error) {
 	bds, ok := s.ds.Children()[0].(datastore.Batching)
 	if !ok {
-		return ctx, nil
+		return ctx, func() error { return nil }
 	}
 
 	if _, ok = contextds.GetWrite(ctx); ok {
 		// there is a batch already
 		// avoid returning so its not discarded
-		return ctx, nil
+		return ctx, func() error { return nil }
 	}
 
 	batch, err := bds.Batch(ctx)
 	if err != nil {
 		log.Errorw("new batch", "err", err)
-		return ctx, nil
+		return ctx, func() error { return nil }
 	}
 
-	return contextds.WithWrite(ctx, batch), batch
+	return contextds.WithWrite(ctx, batch), func() error {
+		return batch.Commit(ctx)
+	}
 }
 
-func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, datastore.Txn) {
+// withReadTransaction attaches a new transaction to the given context and returns cleanup func.
+func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, func()) {
 	tds, ok := s.ds.Children()[0].(datastore.TxnFeature)
 	if !ok {
-		return ctx, nil
+		return ctx, func() {}
 	}
 
 	if _, ok = contextds.GetRead(ctx); ok {
 		// there is a transaction already
 		// avoid returning so its not discarded
-		return ctx, nil
+		return ctx, func() {}
 	}
 
 	txn, err := tds.NewTransaction(ctx, true)
 	if err != nil {
 		log.Errorw("new transaction", "err", err)
-		return ctx, nil
+		return ctx, func() {}
 	}
 
-	return contextds.WithRead(ctx, txn), txn
+	return contextds.WithRead(ctx, txn), func() {
+		txn.Discard(ctx)
+	}
 }
 
 func writeHeaderHashTo[H header.Header[H]](

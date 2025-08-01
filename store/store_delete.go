@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	contextds "github.com/ipfs/go-datastore/context"
 
 	"github.com/celestiaorg/go-header"
 )
@@ -202,19 +201,14 @@ func (s *Store[H]) deleteSequential(
 ) (highest uint64, missing int, err error) {
 	log.Debugw("starting delete range sequential", "from_height", from, "to_height", to)
 
-	ctx, batch := s.withWriteBatch(ctx)
-	if batch != nil {
-		defer func() {
-			if derr := batch.Commit(ctx); derr != nil {
-				err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
-			}
-		}()
-	}
-
-	ctx, txn := s.withReadTransaction(ctx)
-	if txn != nil {
-		defer txn.Discard(ctx)
-	}
+	ctx, done := s.withWriteBatch(ctx)
+	defer func() {
+		if derr := done(); derr != nil {
+			err = errors.Join(err, fmt.Errorf("committing batch: %w", derr))
+		}
+	}()
+	ctx, doneTx := s.withReadTransaction(ctx)
+	defer doneTx()
 
 	s.onDeleteMu.Lock()
 	onDelete := slices.Clone(s.onDelete)
@@ -275,20 +269,14 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 			}
 		}()
 
-		workerCtx, batch := s.withWriteBatch(ctx)
-		if batch != nil {
-			defer func() {
-				if err := batch.Commit(ctx); err != nil {
-					last.err = errors.Join(last.err, fmt.Errorf("committing delete batch: %w", err))
-				}
-			}()
-		}
-
-		workerCtx, txn := s.withReadTransaction(workerCtx)
-		if txn != nil {
-			defer txn.Discard(ctx)
-		}
-		ctx = contextds.WithWrite(ctx, batch)
+		workerCtx, done := s.withWriteBatch(ctx)
+		defer func() {
+			if err := done(); err != nil {
+				last.err = errors.Join(last.err, fmt.Errorf("committing delete batch: %w", err))
+			}
+		}()
+		workerCtx, doneTx := s.withReadTransaction(workerCtx)
+		defer doneTx()
 
 		for height := range jobCh {
 			last.height = height
