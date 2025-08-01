@@ -115,4 +115,4 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250725152401-1597fcd4fa90
+replace github.com/ipfs/go-datastore => github.com/celestiaorg/go-datastore v0.0.0-20250801131506-48a63ae531e4

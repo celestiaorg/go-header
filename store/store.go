@@ -10,6 +10,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/go-datastore"
+	contextds "github.com/ipfs/go-datastore/context"
+	"github.com/ipfs/go-datastore/keytransform"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"go.uber.org/zap/zapcore"
@@ -31,7 +33,7 @@ type Store[H header.Header[H]] struct {
 	// header storing
 	//
 	// underlying KV store
-	ds datastore.Batching
+	ds *keytransform.Datastore
 	// adaptive replacement cache of headers
 	cache *lru.TwoQueueCache[string, H]
 	// metrics collection instance
@@ -275,6 +277,9 @@ func (s *Store[H]) getByHeight(ctx context.Context, height uint64) (H, error) {
 		return h, nil
 	}
 
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
+
 	hash, err := s.heightIndex.HashByHeight(ctx, height, true)
 	if err != nil {
 		var zero H
@@ -308,6 +313,10 @@ func (s *Store[H]) getRangeByHeight(ctx context.Context, from, to uint64) ([]H, 
 	if from >= to {
 		return nil, fmt.Errorf("header/store: invalid range(%d,%d)", from, to)
 	}
+
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
+
 	h, err := s.GetByHeight(ctx, to-1)
 	if err != nil {
 		return nil, err
@@ -627,6 +636,9 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 		return head, false
 	}
 
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
+
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, head.Height()+1)
 		if err != nil {
@@ -663,6 +675,9 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 		log.Errorw("cannot load tail while receding", "err", err)
 		return tail, false
 	}
+
+	ctx, done := s.withReadTransaction(ctx)
+	defer done()
 
 	for ctx.Err() == nil {
 		h, err := s.getByHeight(ctx, tail.Height()-1)
@@ -744,6 +759,54 @@ func (s *Store[H]) deinit() {
 	s.contiguousHead.Store(nil)
 	s.tailHeader.Store(nil)
 	s.heightSub.SetHeight(0)
+}
+
+// withWriteBatch attaches a new batch to the given context and returns cleanup func.
+// batch is used to couple multiple related writes to substantially optimize performance.
+func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, func() error) {
+	bds, ok := s.ds.Children()[0].(datastore.Batching)
+	if !ok {
+		return ctx, func() error { return nil }
+	}
+
+	if _, ok = contextds.GetWrite(ctx); ok {
+		// there is a batch already provided by parent
+		return ctx, func() error { return nil }
+	}
+
+	batch, err := bds.Batch(ctx)
+	if err != nil {
+		log.Errorw("new batch", "err", err)
+		return ctx, func() error { return nil }
+	}
+
+	return contextds.WithWrite(ctx, batch), func() error {
+		return batch.Commit(ctx)
+	}
+}
+
+// withReadTransaction attaches a new transaction to the given context and returns cleanup func.
+// transaction is used to couple multiple related reads to substantially optimize performance.
+func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, func()) {
+	tds, ok := s.ds.Children()[0].(datastore.TxnFeature)
+	if !ok {
+		return ctx, func() {}
+	}
+
+	if _, ok = contextds.GetRead(ctx); ok {
+		// there is a transaction already
+		return ctx, func() {}
+	}
+
+	txn, err := tds.NewTransaction(ctx, true)
+	if err != nil {
+		log.Errorw("new transaction", "err", err)
+		return ctx, func() {}
+	}
+
+	return contextds.WithRead(ctx, txn), func() {
+		txn.Discard(ctx)
+	}
 }
 
 func writeHeaderHashTo[H header.Header[H]](
