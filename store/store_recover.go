@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 
-	"github.com/celestiaorg/go-header"
 	"github.com/ipfs/go-datastore"
+
+	"github.com/celestiaorg/go-header"
 )
 
 // ResetTail resets the tail of the store to be at the given height.
 // The new tail must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
-func UnsafeResetTail[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
+func UnsafeResetTail[H header.Header[H]](
+	ctx context.Context,
+	store *Store[H],
+	height uint64,
+) error {
 	if err := store.setTail(ctx, store.ds, height); err != nil {
 		return err
 	}
@@ -22,7 +27,11 @@ func UnsafeResetTail[H header.Header[H]](ctx context.Context, store *Store[H], h
 // ResetHead resets the head of the store to be at the given height.
 // The new head must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
-func UnsafeResetHead[H header.Header[H]](ctx context.Context, store *Store[H], height uint64) error {
+func UnsafeResetHead[H header.Header[H]](
+	ctx context.Context,
+	store *Store[H],
+	height uint64,
+) error {
 	newHead, err := store.getByHeight(ctx, height)
 	if err != nil {
 		return err
@@ -42,7 +51,7 @@ func FindHeader[H header.Header[H]](
 	ctx context.Context,
 	store *Store[H],
 	startFrom uint64,
-) (H, error) {
+) (hdr H, err error) {
 	ctx, done := store.withReadTransaction(ctx)
 	defer done()
 
@@ -52,16 +61,17 @@ func FindHeader[H header.Header[H]](
 			continue
 		}
 		if err != nil {
-			var zero H
-			return zero, err
+			return hdr, err
 		}
 
 		ok, err := store.Has(ctx, hash)
+		if err != nil {
+			return hdr, err
+		}
 		if ok {
 			return store.Get(ctx, hash)
 		}
 	}
 
-	var zero H
-	return zero, ctx.Err()
+	return hdr, ctx.Err()
 }
