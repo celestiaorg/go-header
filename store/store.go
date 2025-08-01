@@ -762,6 +762,7 @@ func (s *Store[H]) deinit() {
 }
 
 // withWriteBatch attaches a new batch to the given context and returns cleanup func.
+// batch is used to couple multiple related writes to substantially optimize performance.
 func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, func() error) {
 	bds, ok := s.ds.Children()[0].(datastore.Batching)
 	if !ok {
@@ -769,8 +770,7 @@ func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, func() 
 	}
 
 	if _, ok = contextds.GetWrite(ctx); ok {
-		// there is a batch already
-		// avoid returning so its not discarded
+		// there is a batch already provided by parent
 		return ctx, func() error { return nil }
 	}
 
@@ -786,6 +786,7 @@ func (s *Store[H]) withWriteBatch(ctx context.Context) (context.Context, func() 
 }
 
 // withReadTransaction attaches a new transaction to the given context and returns cleanup func.
+// transaction is used to couple multiple related reads to substantially optimize performance.
 func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, func()) {
 	tds, ok := s.ds.Children()[0].(datastore.TxnFeature)
 	if !ok {
@@ -794,7 +795,6 @@ func (s *Store[H]) withReadTransaction(ctx context.Context) (context.Context, fu
 
 	if _, ok = contextds.GetRead(ctx); ok {
 		// there is a transaction already
-		// avoid returning so its not discarded
 		return ctx, func() {}
 	}
 
