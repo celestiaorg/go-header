@@ -67,9 +67,9 @@ func (p *Parameters) Validate() error {
 	if p.TrustingPeriod == 0 {
 		return fmt.Errorf("invalid TrustingPeriod duration: %v", p.TrustingPeriod)
 	}
-	if (p.SyncFromHeight == 0 || p.SyncFromHash == "") && p.PruningWindow == 0 {
+	if p.SyncFromHash == "" && p.PruningWindow == 0 && p.SyncFromHeight == 0 {
 		return fmt.Errorf(
-			"PruningWindow duration can't be zero when either of SyncFromHeight or SyncFromHash are not set",
+			"at least one of SyncFromHeight, SyncFromHash, or PruningWindow must be set",
 		)
 	}
 	_, err := p.Hash()
