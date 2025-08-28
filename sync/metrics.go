@@ -39,8 +39,8 @@ type metrics struct {
 	requestRangeTimeHist metric.Float64Histogram
 	requestRangeStartTS  time.Time
 
-	blockTime  metric.Float64Histogram
-	prevHeader time.Time
+	blockTime    metric.Float64Histogram
+	prevHeaderTs time.Time
 }
 
 func newMetrics() (*metrics, error) {
@@ -213,12 +213,15 @@ func (m *metrics) updateGetRangeRequestInfo(ctx context.Context, amount uint64, 
 	})
 }
 
-func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
+func (m *metrics) newNetHead(ctx context.Context, height uint64, timestamp time.Time) {
 	m.observe(ctx, func(ctx context.Context) {
 		m.subjectiveHead.Store(height)
 
-		if !m.prevHeader.IsZero() {
-			m.blockTime.Record(ctx, timestamp.Sub(m.prevHeader).Seconds())
+		if timestamp.After(m.prevHeaderTs) {
+			if !m.prevHeaderTs.IsZero() {
+				m.blockTime.Record(ctx, timestamp.Sub(m.prevHeaderTs).Seconds())
+			}
+			m.prevHeaderTs = time.Now()
 		}
 	})
 }
