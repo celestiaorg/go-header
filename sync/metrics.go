@@ -219,7 +219,10 @@ func (m *metrics) newNetHead(ctx context.Context, height uint64, timestamp time.
 
 		if timestamp.After(m.prevHeaderTs) {
 			if !m.prevHeaderTs.IsZero() {
-				m.blockTime.Record(ctx, timestamp.Sub(m.prevHeaderTs).Seconds())
+				m.blockTime.Record(ctx, timestamp.Sub(m.prevHeaderTs).Seconds(),
+					metric.WithAttributes(
+						otelattr.Uint64("height", height),
+					))
 			}
 			m.prevHeaderTs = time.Now()
 		}
