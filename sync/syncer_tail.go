@@ -200,7 +200,7 @@ func (s *Syncer[H]) tailHeight(ctx context.Context, oldTail, head H) (uint64, er
 // estimateTailHeight estimates the tail header based on the current head.
 // It respects the trusting period, ensuring Syncer never initializes off an expired header.
 func (s *Syncer[H]) estimateTailHeight(head H) uint64 {
-	headersToRetain := uint64(s.Params.TrustingPeriod / s.Params.blockTime) //nolint:gosec
+	headersToRetain := uint64(s.Params.trustingPeriod / s.Params.blockTime) //nolint:gosec
 	if headersToRetain >= head.Height() {
 		// means chain is very young so we can keep all headers starting from genesis
 		return 1
