@@ -201,7 +201,6 @@ func (s *Syncer[H]) setLocalHead(ctx context.Context, netHead H) {
 			"hash", netHead.Hash().String(),
 			"err", err)
 	}
-	s.metrics.newSubjectiveHead(s.ctx, netHead.Height(), netHead.Time())
 
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {
@@ -227,6 +226,7 @@ func (s *Syncer[H]) incomingNetworkHead(ctx context.Context, head H) error {
 	}
 
 	s.setLocalHead(ctx, head)
+	s.metrics.newNetHead(s.ctx, head.Height(), head.Time())
 	return nil
 }
 
