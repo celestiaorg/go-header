@@ -348,3 +348,158 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 	)
 	return highest, missing, nil
 }
+
+// DeleteFromHead deletes headers from the current head down to (but not including) the specified height.
+// The specified height becomes the new head of the store.
+// This is conceptually the opposite of DeleteTo, which deletes from tail up to a height.
+func (s *Store[H]) DeleteFromHead(ctx context.Context, to uint64) error {
+	// ensure all the pending headers are synchronized
+	err := s.Sync(ctx)
+	if err != nil {
+		return err
+	}
+
+	head, err := s.Head(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading head: %w", err)
+	}
+
+	tail, err := s.Tail(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading tail: %w", err)
+	}
+
+	// validate that 'to' height is within valid bounds
+	if to < tail.Height() {
+		return fmt.Errorf(
+			"header/store: delete from head to %d below current tail(%d)",
+			to,
+			tail.Height(),
+		)
+	}
+	if to > head.Height() {
+		return fmt.Errorf(
+			"header/store: delete from head to %d above current head(%d)",
+			to,
+			head.Height(),
+		)
+	}
+
+	// if to equals head height, it's a no-op
+	if to == head.Height() {
+		return nil
+	}
+
+	// verify that the target height exists and will become the new head
+	_, err = s.getByHeight(ctx, to)
+	if err != nil {
+		return fmt.Errorf(
+			"header/store: target height %d not found: %w",
+			to,
+			err,
+		)
+	}
+
+	// delete the range (to, head.Height()]
+	err = s.deleteRangeFromHead(ctx, to+1, head.Height()+1)
+	if err != nil {
+		return fmt.Errorf(
+			"header/store: delete from head to height %d: %w",
+			to,
+			err,
+		)
+	}
+
+	return nil
+}
+
+// deleteRangeFromHead deletes [from:to) header range from the store and updates the head.
+// This is similar to deleteRange but updates the head pointer instead of tail.
+func (s *Store[H]) deleteRangeFromHead(ctx context.Context, from, to uint64) (err error) {
+	startTime := time.Now()
+
+	var (
+		height  uint64
+		missing int
+	)
+	defer func() {
+		if err != nil {
+			if errors.Is(err, errDeleteTimeout) {
+				log.Warnw("partial delete from head",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"hdrs_not_found", missing,
+					"took(s)", time.Since(startTime),
+				)
+			} else {
+				log.Errorw("partial delete from head with error",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"hdrs_not_found", missing,
+					"took(s)", time.Since(startTime),
+					"err", err,
+				)
+			}
+		} else if to-from > 1 {
+			log.Debugw("deleted headers from head",
+				"from_height", from,
+				"to_height", to,
+				"hdrs_not_found", missing,
+				"took(s)", time.Since(startTime).Seconds(),
+			)
+		}
+
+		// Set new head to the height just before the deleted range
+		if from > 0 {
+			newHeadHeight := from - 1
+			if derr := s.setHead(ctx, s.ds, newHeadHeight); derr != nil {
+				err = errors.Join(
+					err,
+					fmt.Errorf("setting head to %d: %w", newHeadHeight, derr),
+				)
+			}
+		}
+	}()
+
+	deleteCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		// allocate 95% of caller's set deadline for deletion
+		// and give leftover to save progress
+		// this prevents store's state corruption from partial deletion
+		sub := deadline.Sub(startTime) / 100 * 95
+		var cancel context.CancelFunc
+		deleteCtx, cancel = context.WithDeadlineCause(
+			ctx,
+			startTime.Add(sub),
+			errDeleteTimeout,
+		)
+		defer cancel()
+	}
+
+	if to-from < deleteRangeParallelThreshold {
+		height, missing, err = s.deleteSequential(deleteCtx, from, to)
+	} else {
+		height, missing, err = s.deleteParallel(deleteCtx, from, to)
+	}
+
+	return err
+}
+
+// setHead sets the head of the store to the specified height.
+// This is similar to setTail but updates the head pointer.
+func (s *Store[H]) setHead(ctx context.Context, write datastore.Write, to uint64) error {
+	newHead, err := s.getByHeight(ctx, to)
+	if err != nil {
+		return fmt.Errorf("getting head: %w", err)
+	}
+
+	// update the contiguous head
+	s.contiguousHead.Store(&newHead)
+	if err := writeHeaderHashTo(ctx, write, newHead, headKey); err != nil {
+		return fmt.Errorf("writing headKey in batch: %w", err)
+	}
+
+	return nil
+}
