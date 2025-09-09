@@ -1160,7 +1160,7 @@ func TestStore_DeleteRange_Synchronized(t *testing.T) {
 	err = store.Sync(ctx)
 	require.NoError(t, err)
 
-	// Delete from height 26 to head+1 (equivalent to DeleteFromHead(25))
+	// Delete from height 26 to head+1
 	head, err := store.Head(ctx)
 	require.NoError(t, err)
 
@@ -1209,7 +1209,7 @@ func TestStore_DeleteRange_OnDeleteHandlers(t *testing.T) {
 		return nil
 	})
 
-	// Delete from height 41 to head+1 (equivalent to DeleteFromHead(40))
+	// Delete from height 41 to head+1
 	err = store.DeleteRange(ctx, 41, head.Height()+1)
 	require.NoError(t, err)
 
