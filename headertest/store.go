@@ -99,6 +99,34 @@ func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	return nil
 }
 
+func (m *Store[H]) DeleteFromHead(ctx context.Context, to uint64) error {
+	// Find the current head height
+	headHeight := uint64(0)
+	for h := range m.Headers {
+		if h > headHeight {
+			headHeight = h
+		}
+	}
+
+	// Delete from head down to (but not including) 'to'
+	for h := headHeight; h > to; h-- {
+		_, ok := m.Headers[h]
+		if !ok {
+			continue
+		}
+
+		for _, deleteFn := range m.onDelete {
+			err := deleteFn(ctx, h)
+			if err != nil {
+				return err
+			}
+		}
+		delete(m.Headers, h) // must be after deleteFn
+	}
+
+	return nil
+}
+
 func (m *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 	m.onDeleteMu.Lock()
 	defer m.onDeleteMu.Unlock()
