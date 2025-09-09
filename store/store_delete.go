@@ -286,6 +286,19 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return nil
 	}
 
+	// Validate that deletion won't create gaps in the store
+	// Only allow deletions that:
+	// 1. Start from tail (advancing tail forward)
+	// 2. End at head+1 (moving head backward)
+	// 3. Delete the entire store
+	if from > tail.Height() && to <= head.Height() {
+		return fmt.Errorf(
+			"header/store: deletion range [%d:%d) would create gaps in the store. "+
+				"Only deletion from tail (%d) or to head+1 (%d) is supported",
+			from, to, tail.Height(), head.Height()+1,
+		)
+	}
+
 	// Check if we're deleting all existing headers (making store empty)
 	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
 	if from <= tail.Height() && to == head.Height()+1 {
