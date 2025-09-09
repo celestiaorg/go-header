@@ -99,17 +99,9 @@ func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 	return nil
 }
 
-func (m *Store[H]) DeleteFromHead(ctx context.Context, to uint64) error {
-	// Find the current head height
-	headHeight := uint64(0)
-	for h := range m.Headers {
-		if h > headHeight {
-			headHeight = h
-		}
-	}
-
-	// Delete from head down to (but not including) 'to'
-	for h := headHeight; h > to; h-- {
+func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	// Delete headers in the range [from:to)
+	for h := from; h < to; h++ {
 		_, ok := m.Headers[h]
 		if !ok {
 			continue
@@ -122,6 +114,11 @@ func (m *Store[H]) DeleteFromHead(ctx context.Context, to uint64) error {
 			}
 		}
 		delete(m.Headers, h) // must be after deleteFn
+	}
+
+	// Update TailHeight if we deleted from the beginning
+	if from <= m.TailHeight {
+		m.TailHeight = to
 	}
 
 	return nil
