@@ -88,8 +88,8 @@ type Store[H Header[H]] interface {
 	// DeleteTo deletes the range [Tail():to).
 	DeleteTo(ctx context.Context, to uint64) error
 
-	// DeleteFromHead deletes the range (to:Head()].
-	DeleteFromHead(ctx context.Context, to uint64) error
+	// DeleteRange deletes the range [from:to).
+	DeleteRange(ctx context.Context, from, to uint64) error
 
 	// OnDelete registers given handler to be called whenever a header with the height is being removed.
 	// OnDelete guarantees that the header is accessible for the handler with GetByHeight and is removed

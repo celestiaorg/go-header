@@ -197,7 +197,7 @@ func (timeoutStore[H]) DeleteTo(ctx context.Context, _ uint64) error {
 	return ctx.Err()
 }
 
-func (timeoutStore[H]) DeleteFromHead(ctx context.Context, _ uint64) error {
+func (timeoutStore[H]) DeleteRange(ctx context.Context, _, _ uint64) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
