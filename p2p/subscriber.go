@@ -162,7 +162,7 @@ func (s *Subscriber[H]) verifyMessage(
 	hdr, err := s.extractHeader(msg)
 	if err != nil {
 		log.Errorw("invalid header",
-			"from", p.ShortString(),
+			"from", p.String(),
 			"err", err)
 		s.metrics.reject(ctx)
 		return pubsub.ValidationReject
