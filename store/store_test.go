@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"math/rand"
-	"strings"
 	stdsync "sync"
 	"testing"
 	"time"
@@ -526,7 +525,7 @@ func TestStore_GetRange(t *testing.T) {
 	}
 }
 
-func TestStore_DeleteTo(t *testing.T) {
+func TestStore_DeleteRange_Tail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -591,7 +590,7 @@ func TestStore_DeleteTo(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			err := store.DeleteTo(ctx, tt.to)
+			err := store.DeleteRange(ctx, from, tt.to)
 			if tt.wantError {
 				assert.Error(t, err)
 				return
@@ -613,7 +612,7 @@ func TestStore_DeleteTo(t *testing.T) {
 	}
 }
 
-func TestStore_DeleteTo_EmptyStore(t *testing.T) {
+func TestStore_DeleteRange_EmptyStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -630,11 +629,14 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 101)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 101)
 	require.NoError(t, err)
 
 	// assert store is empty
-	tail, err := store.Tail(ctx)
+	tail, err = store.Tail(ctx)
 	assert.Nil(t, tail)
 	assert.ErrorIs(t, err, header.ErrEmptyStore)
 	head, err := store.Head(ctx)
@@ -655,7 +657,7 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 	assert.ErrorIs(t, err, header.ErrEmptyStore)
 }
 
-func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
+func TestStore_DeleteRange_MoveHeadAndTail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -678,11 +680,14 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 111)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 111)
 	require.NoError(t, err)
 
 	// assert store is not empty
-	tail, err := store.Tail(ctx)
+	tail, err = store.Tail(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int(gap[len(gap)-1].Height()+1), int(tail.Height()))
 	head, err := store.Head(ctx)
@@ -701,32 +706,6 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	head, err = store.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, suite.Head().Height(), head.Height())
-}
-
-func TestStore_DeleteTo_Synchronized(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
-
-	err := store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.DeleteTo(ctx, 100)
-	require.NoError(t, err)
-
-	tail, err := store.Tail(ctx)
-	require.NoError(t, err)
-	require.EqualValues(t, 100, tail.Height())
 }
 
 func TestStore_OnDelete(t *testing.T) {
@@ -759,7 +738,10 @@ func TestStore_OnDelete(t *testing.T) {
 		return nil
 	})
 
-	err = store.DeleteTo(ctx, 101)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 101)
 	require.NoError(t, err)
 	assert.Equal(t, 50, deleted)
 
@@ -890,7 +872,10 @@ func TestStore_HasAt(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 50)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 50)
 	require.NoError(t, err)
 
 	has := store.HasAt(ctx, 100)
@@ -1088,39 +1073,6 @@ func TestStore_DeleteRange(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "would create gaps")
 	})
-}
-
-func TestStore_DeleteRange_EmptyStore(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store, err := NewStore[*headertest.DummyHeader](ds)
-	require.NoError(t, err)
-
-	err = store.Start(ctx)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err := store.Stop(ctx)
-		require.NoError(t, err)
-	})
-
-	// wait until headers are written
-	time.Sleep(10 * time.Millisecond)
-
-	// should fail when trying to delete from empty store because it can't read head/tail
-	err = store.DeleteRange(ctx, 50, 60)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "store is empty")
-
-	// invalid range should also error with empty store, but it will hit the empty store error first
-	err = store.DeleteRange(ctx, 60, 50)
-	require.Error(t, err)
-	// Could be either empty store error or range validation error, both are valid
-	assert.True(t,
-		strings.Contains(err.Error(), "store is empty") ||
-			strings.Contains(err.Error(), "from must be less than to"),
-		"Expected either empty store or range validation error, got: %v", err)
 }
 
 func TestStore_DeleteRange_SingleHeader(t *testing.T) {

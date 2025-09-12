@@ -85,9 +85,6 @@ type Store[H Header[H]] interface {
 	// GetRange returns the range [from:to).
 	GetRange(context.Context, uint64, uint64) ([]H, error)
 
-	// DeleteTo deletes the range [Tail():to).
-	DeleteTo(ctx context.Context, to uint64) error
-
 	// DeleteRange deletes the range [from:to).
 	DeleteRange(ctx context.Context, from, to uint64) error
 
