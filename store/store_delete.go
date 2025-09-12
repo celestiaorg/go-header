@@ -34,17 +34,6 @@ func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 	})
 }
 
-// DeleteTo implements [header.Store] interface.
-// This is a convenience wrapper around DeleteRange that deletes from tail up to a height.
-func (s *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	tail, err := s.Tail(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading tail: %w", err)
-	}
-
-	return s.DeleteRange(ctx, tail.Height(), to)
-}
-
 // deleteRangeParallelThreshold defines the threshold for parallel deletion.
 // If range is smaller than this threshold, deletion will be performed sequentially.
 var (
@@ -332,10 +321,6 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 
 	// Update tail if we deleted from the beginning
 	if updateTail {
-		_, err = s.getByHeight(ctx, to)
-		if err != nil {
-			return fmt.Errorf("header/store: new tail height %d not found: %w", to, err)
-		}
 		err = s.setTail(ctx, s.ds, to)
 		if err != nil {
 			return fmt.Errorf("header/store: setting tail to %d: %w", to, err)

@@ -82,29 +82,10 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
-func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
+func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	m.HeaderMu.Lock()
 	defer m.HeaderMu.Unlock()
-	for h := m.TailHeight; h < to; h++ {
-		_, ok := m.Headers[h]
-		if !ok {
-			continue
-		}
 
-		for _, deleteFn := range m.onDelete {
-			err := deleteFn(ctx, h)
-			if err != nil {
-				return err
-			}
-		}
-		delete(m.Headers, h) // must be after deleteFn
-	}
-
-	m.TailHeight = to
-	return nil
-}
-
-func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	// Delete headers in the range [from:to)
 	for h := from; h < to; h++ {
 		_, ok := m.Headers[h]
@@ -124,6 +105,11 @@ func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	// Update TailHeight if we deleted from the beginning
 	if from <= m.TailHeight {
 		m.TailHeight = to
+	}
+
+	// Update HeadHeight if we deleted from the end
+	if to >= m.HeadHeight {
+		m.HeadHeight = from - 1
 	}
 
 	return nil
