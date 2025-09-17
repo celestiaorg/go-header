@@ -198,19 +198,20 @@ func (s *Subscriber[H]) verifyMessage(
 	}
 }
 
-func (s *Subscriber[H]) extractHeader(msg *pubsub.Message) (H, error) {
+func (s *Subscriber[H]) extractHeader(msg *pubsub.Message) (hdr H, err error) {
 	if msg.ValidatorData != nil {
-		hdr, ok := msg.ValidatorData.(H)
+		var ok bool
+		hdr, ok = msg.ValidatorData.(H)
 		if !ok {
 			panic(fmt.Sprintf("msg ValidatorData is of type %T", msg.ValidatorData))
 		}
-		return hdr, nil
+	} else {
+		hdr = header.New[H]()
+		if err := hdr.UnmarshalBinary(msg.Data); err != nil {
+			return hdr, err
+		}
 	}
 
-	hdr := header.New[H]()
-	if err := hdr.UnmarshalBinary(msg.Data); err != nil {
-		return hdr, err
-	}
 	if err := hdr.Validate(); err != nil {
 		return hdr, err
 	}

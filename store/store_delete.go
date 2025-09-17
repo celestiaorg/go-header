@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -22,9 +23,10 @@ func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 			err := recover()
 			if err != nil {
 				rerr = fmt.Errorf(
-					"header/store: user provided onDelete panicked on %d with: %s",
+					"user provided onDelete panicked on %d with: %s\n%s",
 					height,
 					err,
+					string(debug.Stack()),
 				)
 			}
 		}()
