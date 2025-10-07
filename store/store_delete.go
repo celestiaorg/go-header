@@ -272,6 +272,7 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 
 	// if range is empty within the current store bounds, it's a no-op
 	if from > head.Height() || to <= tail.Height() {
+		log.Warn("header/store range is empty, nothing needs to be deleted")
 		return nil
 	}
 
