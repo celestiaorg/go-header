@@ -365,7 +365,7 @@ func (s *Store[H]) deleteRangeRaw(ctx context.Context, from, to uint64) (err err
 					"expected_to_height", to,
 					"actual_to_height", height,
 					"hdrs_not_found", missing,
-					"took(s)", time.Since(startTime),
+					"took(s)", time.Since(startTime).Seconds(),
 					"err", err,
 				)
 			}
