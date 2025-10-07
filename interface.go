@@ -85,7 +85,7 @@ type Store[H Header[H]] interface {
 	// GetRange returns the range [from:to).
 	GetRange(context.Context, uint64, uint64) ([]H, error)
 
-	// DeleteRange deletes the range [from:to).
+	// DeleteRange deletes the range [from:to). It disallows the creation of gaps in the implementation's chain, ensuring contiguity between Tail --> Head. 
 	DeleteRange(ctx context.Context, from, to uint64) error
 
 	// OnDelete registers given handler to be called whenever a header with the height is being removed.
