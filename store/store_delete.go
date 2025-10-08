@@ -315,9 +315,15 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	updateHead := to > head.Height()
 
 	// Delete the headers without automatic tail updates
-	err = s.deleteRangeRaw(ctx, from, to)
+	actualTo, _, err := s.deleteRangeRaw(ctx, from, to)
 	if err != nil {
-		return fmt.Errorf("header/store: delete range [%d:%d): %w", from, to, err)
+		return fmt.Errorf(
+			"header/store: delete range [%d:%d) (actual: %d): %w",
+			from,
+			to,
+			actualTo,
+			err,
+		)
 	}
 
 	// Update tail if we deleted from the beginning
@@ -343,14 +349,16 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 }
 
 // deleteRangeRaw deletes [from:to) header range without updating head or tail pointers.
-func (s *Store[H]) deleteRangeRaw(ctx context.Context, from, to uint64) (err error) {
+// Returns the actual highest height processed (actualTo) and the number of missing headers.
+func (s *Store[H]) deleteRangeRaw(
+	ctx context.Context,
+	from, to uint64,
+) (actualTo uint64, missing int, err error) {
 	startTime := time.Now()
 
-	var (
-		height  uint64
-		missing int
-	)
+	var height uint64
 	defer func() {
+		actualTo = height
 		if err != nil {
 			if errors.Is(err, errDeleteTimeout) {
 				log.Warnw("partial delete range",
@@ -396,7 +404,7 @@ func (s *Store[H]) deleteRangeRaw(ctx context.Context, from, to uint64) (err err
 		height, missing, err = s.deleteParallel(deleteCtx, from, to)
 	}
 
-	return err
+	return height, missing, err
 }
 
 // setHead sets the head of the store to the specified height.
