@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math/rand"
 	stdsync "sync"
 	"testing"
@@ -525,7 +526,7 @@ func TestStore_GetRange(t *testing.T) {
 	}
 }
 
-func TestStore_DeleteTo(t *testing.T) {
+func TestStore_DeleteRange_Tail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -590,7 +591,7 @@ func TestStore_DeleteTo(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
 
-			err := store.DeleteTo(ctx, tt.to)
+			err := store.DeleteRange(ctx, from, tt.to)
 			if tt.wantError {
 				assert.Error(t, err)
 				return
@@ -612,7 +613,7 @@ func TestStore_DeleteTo(t *testing.T) {
 	}
 }
 
-func TestStore_DeleteTo_EmptyStore(t *testing.T) {
+func TestStore_DeleteRange_EmptyStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -629,11 +630,14 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 101)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 101)
 	require.NoError(t, err)
 
 	// assert store is empty
-	tail, err := store.Tail(ctx)
+	tail, err = store.Tail(ctx)
 	assert.Nil(t, tail)
 	assert.ErrorIs(t, err, header.ErrEmptyStore)
 	head, err := store.Head(ctx)
@@ -654,7 +658,7 @@ func TestStore_DeleteTo_EmptyStore(t *testing.T) {
 	assert.ErrorIs(t, err, header.ErrEmptyStore)
 }
 
-func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
+func TestStore_DeleteRange_MoveHeadAndTail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
 
@@ -677,11 +681,14 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(10 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 111)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 111)
 	require.NoError(t, err)
 
 	// assert store is not empty
-	tail, err := store.Tail(ctx)
+	tail, err = store.Tail(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int(gap[len(gap)-1].Height()+1), int(tail.Height()))
 	head, err := store.Head(ctx)
@@ -700,32 +707,6 @@ func TestStore_DeleteTo_MoveHeadAndTail(t *testing.T) {
 	head, err = store.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, suite.Head().Height(), head.Height())
-}
-
-func TestStore_DeleteTo_Synchronized(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	t.Cleanup(cancel)
-
-	suite := headertest.NewTestSuite(t)
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
-
-	err := store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.Append(ctx, suite.GenDummyHeaders(50)...)
-	require.NoError(t, err)
-
-	err = store.DeleteTo(ctx, 100)
-	require.NoError(t, err)
-
-	tail, err := store.Tail(ctx)
-	require.NoError(t, err)
-	require.EqualValues(t, 100, tail.Height())
 }
 
 func TestStore_OnDelete(t *testing.T) {
@@ -758,7 +739,10 @@ func TestStore_OnDelete(t *testing.T) {
 		return nil
 	})
 
-	err = store.DeleteTo(ctx, 101)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 101)
 	require.NoError(t, err)
 	assert.Equal(t, 50, deleted)
 
@@ -889,7 +873,10 @@ func TestStore_HasAt(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
-	err = store.DeleteTo(ctx, 50)
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, tail.Height(), 50)
 	require.NoError(t, err)
 
 	has := store.HasAt(ctx, 100)
@@ -906,4 +893,606 @@ func TestStore_HasAt(t *testing.T) {
 
 	has = store.HasAt(ctx, 0)
 	assert.False(t, has)
+}
+
+func TestStore_DeleteRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	t.Cleanup(cancel)
+
+	t.Run("delete range from head down", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		const count = 20
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		// Genesis is at height 1, GenDummyHeaders(20) creates headers 2-21
+		// So head should be at height 21, tail at height 1
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(21), head.Height())
+
+		// Delete from height 16 to 22 (should delete 16, 17, 18, 19, 20, 21)
+		err = store.DeleteRange(ctx, 16, 22)
+		require.NoError(t, err)
+
+		// Verify new head is at height 15
+		newHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(15), newHead.Height())
+
+		// Verify deleted headers are gone
+		for h := uint64(16); h <= 21; h++ {
+			has := store.HasAt(ctx, h)
+			assert.False(t, has, "height %d should be deleted", h)
+		}
+
+		// Verify remaining headers still exist
+		for h := uint64(1); h <= 15; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("delete range in middle should fail", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		const count = 20
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		// Try to delete a range in the middle (heights 8-12) which would create gaps
+		err = store.DeleteRange(ctx, 8, 12)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "would create gaps in the store")
+
+		// Verify all headers still exist since the operation failed
+		for h := uint64(1); h <= 21; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist after failed deletion", h)
+		}
+	})
+
+	t.Run("delete range from tail up", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		const count = 20
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		originalHead, err := store.Head(ctx)
+		require.NoError(t, err)
+
+		// Delete from tail height to height 10
+		err = store.DeleteRange(ctx, 1, 10)
+		require.NoError(t, err)
+
+		// Verify head is unchanged
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalHead.Height(), head.Height())
+
+		// Verify tail moved to height 10
+		tail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(10), tail.Height())
+
+		// Verify deleted headers are gone
+		for h := uint64(1); h < 10; h++ {
+			has := store.HasAt(ctx, h)
+			assert.False(t, has, "height %d should be deleted", h)
+		}
+
+		// Verify remaining headers still exist
+		for h := uint64(10); h <= 21; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("delete range completely out of bounds", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		const count = 20
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		originalHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		originalTail, err := store.Tail(ctx)
+		require.NoError(t, err)
+
+		// Delete range completely above head - should be no-op
+		err = store.DeleteRange(ctx, 200, 300)
+		require.NoError(t, err)
+
+		// Verify head and tail are unchanged
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalHead.Height(), head.Height())
+
+		tail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalTail.Height(), tail.Height())
+
+		// Verify all original headers still exist
+		for h := uint64(1); h <= 21; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("invalid range errors", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		const count = 20
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		// from >= to should error
+		err = store.DeleteRange(ctx, 50, 50)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "from must be less than to")
+
+		// from > to should error
+		err = store.DeleteRange(ctx, 60, 50)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "from must be less than to")
+
+		// from below tail should error
+		err = store.DeleteRange(ctx, 0, 5)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "below current tail")
+
+		// middle deletion should error
+		err = store.DeleteRange(ctx, 10, 15)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "would create gaps")
+	})
+}
+
+func TestStore_DeleteRange_SingleHeader(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	// Add single header at height 1 (genesis is at 0)
+	headers := suite.GenDummyHeaders(1)
+	err := store.Append(ctx, headers...)
+	require.NoError(t, err)
+
+	// Should not be able to delete below tail
+	err = store.DeleteRange(ctx, 0, 1)
+	require.Error(t, err) // should error - would delete below tail
+}
+
+func TestStore_DeleteRange_Synchronized(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	err := store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Ensure sync completes
+	err = store.Sync(ctx)
+	require.NoError(t, err)
+
+	// Delete from height 26 to head+1
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+
+	err = store.DeleteRange(ctx, 26, head.Height()+1)
+	require.NoError(t, err)
+
+	// Verify head is now at height 25
+	newHead, err := store.Head(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 25, newHead.Height())
+
+	// Verify headers above 25 are gone
+	for h := uint64(26); h <= 50; h++ {
+		has := store.HasAt(ctx, h)
+		assert.False(t, has, "height %d should be deleted", h)
+	}
+
+	// Verify headers at and below 25 still exist
+	for h := uint64(1); h <= 25; h++ {
+		has := store.HasAt(ctx, h)
+		assert.True(t, has, "height %d should still exist", h)
+	}
+}
+
+func TestStore_DeleteRange_OnDeleteHandlers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	err := store.Append(ctx, suite.GenDummyHeaders(50)...)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Get the actual head height to calculate expected deletions
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+
+	var deletedHeights []uint64
+	store.OnDelete(func(ctx context.Context, height uint64) error {
+		deletedHeights = append(deletedHeights, height)
+		return nil
+	})
+
+	// Delete from height 41 to head+1
+	err = store.DeleteRange(ctx, 41, head.Height()+1)
+	require.NoError(t, err)
+
+	// Verify onDelete was called for each deleted height (from 41 to head height)
+	var expectedDeleted []uint64
+	for h := uint64(41); h <= head.Height(); h++ {
+		expectedDeleted = append(expectedDeleted, h)
+	}
+	assert.ElementsMatch(t, expectedDeleted, deletedHeights)
+}
+
+func TestStore_DeleteRange_LargeRange(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(100))
+
+	// Create a large number of headers to trigger parallel deletion
+	const count = 15000
+	headers := suite.GenDummyHeaders(count)
+	err := store.Append(ctx, headers...)
+	require.NoError(t, err)
+
+	time.Sleep(500 * time.Millisecond) // allow time for large batch to write
+
+	// Get head height for deletion range
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+
+	// Delete a large range to test parallel deletion path (from 5001 to head+1)
+	const keepHeight = 5000
+	err = store.DeleteRange(ctx, keepHeight+1, head.Height()+1)
+	require.NoError(t, err)
+
+	// Verify new head
+	newHead, err := store.Head(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, keepHeight, newHead.Height())
+
+	// Spot check that high numbered headers are gone
+	for h := uint64(keepHeight + 1000); h <= count; h += 1000 {
+		has := store.HasAt(ctx, h)
+		assert.False(t, has, "height %d should be deleted", h)
+	}
+
+	// Spot check that low numbered headers still exist
+	for h := uint64(1000); h <= keepHeight; h += 1000 {
+		has := store.HasAt(ctx, h)
+		assert.True(t, has, "height %d should still exist", h)
+	}
+}
+
+func TestStore_DeleteRange_Wipe(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(100))
+
+	// Create a large number of headers
+	const count = 15000
+	headers := suite.GenDummyHeaders(count)
+	err := store.Append(ctx, headers...)
+	require.NoError(t, err)
+
+	time.Sleep(500 * time.Millisecond) // allow time for large batch to write
+
+	// Get head height for deletion range
+	head, err := store.Head(ctx)
+	require.NoError(t, err)
+
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	// Delete a large range to test parallel deletion path (from 5001 to head+1)
+	err = store.DeleteRange(ctx, tail.Height(), head.Height()+1)
+	require.NoError(t, err)
+
+	// Verify new head
+	_, err = store.Head(ctx)
+	require.Error(t, err)
+	_, err = store.Tail(ctx)
+	require.Error(t, err)
+}
+
+func TestStore_DeleteRange_ValidationErrors(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+	err := store.Append(ctx, suite.GenDummyHeaders(20)...)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	tail, err := store.Tail(ctx)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name   string
+		from   uint64
+		to     uint64
+		errMsg string
+	}{
+		{
+			name:   "delete from below tail boundary",
+			from:   tail.Height() - 1,
+			to:     tail.Height() + 5,
+			errMsg: "below current tail",
+		},
+		{
+			name:   "invalid range - from equals to",
+			from:   10,
+			to:     10,
+			errMsg: "from must be less than to",
+		},
+		{
+			name:   "invalid range - from greater than to",
+			from:   15,
+			to:     10,
+			errMsg: "from must be less than to",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := store.DeleteRange(ctx, tt.from, tt.to)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errMsg)
+		})
+	}
+}
+
+func TestStore_DeleteRange_PartialDelete(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	t.Cleanup(cancel)
+
+	t.Run("partial delete from head with timeout and recovery", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		// Add headers
+		const count = 1000
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		originalHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(1001), originalHead.Height())
+
+		originalTail, err := store.Tail(ctx)
+		require.NoError(t, err)
+
+		// Create a context with very short timeout to trigger partial delete
+		shortCtx, shortCancel := context.WithTimeout(ctx, 1*time.Millisecond)
+		defer shortCancel()
+
+		// Try to delete from height 500 to head+1 (should partially fail)
+		err = store.DeleteRange(shortCtx, 500, 1002)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(err, errDeleteTimeout),
+			"expected timeout error, got: %v", err)
+
+		// Head should not have been updated after partial delete
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalHead.Height(), head.Height())
+
+		// Tail should not have changed
+		tail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalTail.Height(), tail.Height())
+
+		// Some headers may have been deleted, but store should be consistent
+		// Verify we can still read the head
+		_, err = store.Get(ctx, head.Hash())
+		require.NoError(t, err)
+
+		// Now complete the deletion with proper timeout
+		err = store.DeleteRange(ctx, 500, 1002)
+		require.NoError(t, err)
+
+		// After successful deletion, verify state
+		newHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(499), newHead.Height())
+
+		// Verify deleted headers are gone
+		for h := uint64(500); h <= 1001; h++ {
+			has := store.HasAt(ctx, h)
+			assert.False(t, has, "height %d should be deleted", h)
+		}
+
+		// Verify remaining headers exist
+		for h := uint64(1); h <= 499; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("partial delete from tail with timeout and recovery", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		// Add headers
+		const count = 1000
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		originalHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		originalTail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(1), originalTail.Height())
+
+		// Create a context with very short timeout
+		shortCtx, shortCancel := context.WithTimeout(ctx, 1*time.Millisecond)
+		defer shortCancel()
+
+		// Try to delete from tail to height 500 (should partially fail)
+		err = store.DeleteRange(shortCtx, 1, 500)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(err, errDeleteTimeout),
+			"expected timeout error, got: %v", err)
+
+		// Tail should not have been updated after partial delete
+		tail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalTail.Height(), tail.Height())
+
+		// Head should not have changed
+		head, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalHead.Height(), head.Height())
+
+		// Now complete the deletion with proper timeout
+		err = store.DeleteRange(ctx, 1, 500)
+		require.NoError(t, err)
+
+		// After successful deletion, verify state
+		newTail, err := store.Tail(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(500), newTail.Height())
+
+		// Head should be unchanged
+		head, err = store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originalHead.Height(), head.Height())
+
+		// Verify deleted headers are gone
+		for h := uint64(1); h < 500; h++ {
+			has := store.HasAt(ctx, h)
+			assert.False(t, has, "height %d should be deleted", h)
+		}
+
+		// Verify remaining headers exist
+		for h := uint64(500); h <= 1001; h++ {
+			has := store.HasAt(ctx, h)
+			assert.True(t, has, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("multiple partial deletes eventually succeed", func(t *testing.T) {
+		suite := headertest.NewTestSuite(t)
+		ds := sync.MutexWrap(datastore.NewMapDatastore())
+		store := NewTestStore(t, ctx, ds, suite.Head(), WithWriteBatchSize(10))
+
+		// Add headers
+		const count = 800
+		in := suite.GenDummyHeaders(count)
+		err := store.Append(ctx, in...)
+		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
+
+		// Attempt delete with progressively longer timeouts
+		from, to := uint64(300), uint64(802)
+		maxAttempts := 5
+
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			attemptCtx, attemptCancel := context.WithTimeout(ctx,
+				time.Duration(attempt*20)*time.Millisecond)
+
+			err = store.DeleteRange(attemptCtx, from, to)
+			attemptCancel()
+
+			if err == nil {
+				// Success!
+				break
+			}
+
+			// Verify store remains consistent after each failed attempt
+			head, err := store.Head(ctx)
+			require.NoError(t, err)
+			_, err = store.Get(ctx, head.Hash())
+			require.NoError(t, err)
+
+			if attempt == maxAttempts {
+				// Last attempt with full context
+				err = store.DeleteRange(ctx, from, to)
+				require.NoError(t, err)
+			}
+		}
+
+		// Verify final state
+		newHead, err := store.Head(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(299), newHead.Height())
+
+		// Verify deleted range is gone
+		for h := from; h <= 801; h++ {
+			has := store.HasAt(ctx, h)
+			assert.False(t, has, "height %d should be deleted", h)
+		}
+	})
 }

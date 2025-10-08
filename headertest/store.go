@@ -79,8 +79,13 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 	return zero, header.ErrNotFound
 }
 
-func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
-	for h := m.TailHeight; h < to; h++ {
+func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	if from >= to {
+		return fmt.Errorf("malformed range, from: %d, to: %d", from, to)
+	}
+
+	// Delete headers in the range [from:to)
+	for h := from; h < to; h++ {
 		_, ok := m.Headers[h]
 		if !ok {
 			continue
@@ -95,7 +100,16 @@ func (m *Store[H]) DeleteTo(ctx context.Context, to uint64) error {
 		delete(m.Headers, h) // must be after deleteFn
 	}
 
-	m.TailHeight = to
+	// Update TailHeight if we deleted from the beginning
+	if from <= m.TailHeight {
+		m.TailHeight = to
+	}
+
+	// Update HeadHeight if we deleted from the end
+	if to >= m.HeadHeight {
+		m.HeadHeight = from - 1
+	}
+
 	return nil
 }
 
