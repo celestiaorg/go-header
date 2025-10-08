@@ -86,6 +86,10 @@ func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	m.HeaderMu.Lock()
 	defer m.HeaderMu.Unlock()
 
+	if from >= to {
+		return fmt.Errorf("malformed range, from: %d, to: %d", from, to)
+	}
+
 	// Delete headers in the range [from:to)
 	for h := from; h < to; h++ {
 		_, ok := m.Headers[h]
