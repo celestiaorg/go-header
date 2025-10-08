@@ -292,23 +292,26 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	// Check if we're deleting all existing headers (making store empty)
 	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
 	if from == tail.Height() && to == head.Height()+1 {
-		// Check if any headers exist at or beyond 'to' in the pending buffer
-		hasHeadersAtOrBeyond := false
-		pendingHeaders := s.pending.GetAll()
-		for _, h := range pendingHeaders {
-			if h.Height() >= to {
-				hasHeadersAtOrBeyond = true
-				break
+		if from == tail.Height() && to == head.Height()+1 {
+			// Check if a header exists exactly at 'to' in the pending buffer
+			hasHeaderAtTo := false
+			pendingHeaders := s.pending.GetAll()
+			for _, h := range pendingHeaders {
+				if h.Height() == to {
+					hasHeaderAtTo = true
+					break
+				}
+			}
+
+			if !hasHeaderAtTo {
+				// wipe the entire store
+				if err := s.wipe(ctx); err != nil {
+					return fmt.Errorf("header/store: wipe: %w", err)
+				}
+				return nil
 			}
 		}
 
-		if !hasHeadersAtOrBeyond {
-			// wipe the entire store
-			if err := s.wipe(ctx); err != nil {
-				return fmt.Errorf("header/store: wipe: %w", err)
-			}
-			return nil
-		}
 	}
 
 	// Determine which pointers need updating
