@@ -292,10 +292,11 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	// Check if we're deleting all existing headers (making store empty)
 	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
 	if from == tail.Height() && to == head.Height()+1 {
-		// Check if any headers exist at or beyond 'to'
+		// Check if any headers exist at or beyond 'to' in the pending buffer
 		hasHeadersAtOrBeyond := false
-		for checkHeight := to; checkHeight <= to+10; checkHeight++ {
-			if _, err := s.getByHeight(ctx, checkHeight); err == nil {
+		pendingHeaders := s.pending.GetAll()
+		for _, h := range pendingHeaders {
+			if h.Height() >= to {
 				hasHeadersAtOrBeyond = true
 				break
 			}
@@ -350,7 +351,10 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 
 // deleteRangeRaw deletes [from:to) header range without updating head or tail pointers.
 // Returns the actual highest height processed (actualTo) and the number of missing headers.
-func (s *Store[H]) deleteRangeRaw(ctx context.Context, from, to uint64) (actualTo uint64, missing int, err error) {
+func (s *Store[H]) deleteRangeRaw(
+	ctx context.Context,
+	from, to uint64,
+) (actualTo uint64, missing int, err error) {
 	startTime := time.Now()
 
 	var height uint64
