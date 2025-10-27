@@ -9,7 +9,7 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
-// ResetTail resets the tail of the store to be at the given height.
+// UnsafeResetTail resets the tail of the store to be at the given height.
 // The new tail must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
 func UnsafeResetTail[H header.Header[H]](
@@ -24,7 +24,7 @@ func UnsafeResetTail[H header.Header[H]](
 	return nil
 }
 
-// ResetHead resets the head of the store to be at the given height.
+// UnsafeResetHead resets the head of the store to be at the given height.
 // The new head must be present in the store.
 // WARNING: Only use this function if you know what you are doing.
 func UnsafeResetHead[H header.Header[H]](
