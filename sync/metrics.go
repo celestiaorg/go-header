@@ -142,7 +142,7 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 }
 
 func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64) {
-	m.observe(ctx, func(ctx context.Context) {
+	m.observe(ctx, func(_ context.Context) {
 		m.subjectiveHead.Store(height)
 	})
 }
