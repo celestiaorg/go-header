@@ -1,4 +1,4 @@
-# Go Header
+#### Go Headers
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/celestiaorg/go-header.svg)](https://pkg.go.dev/github.com/celestiaorg/go-header)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/celestiaorg/go-header)](https://github.com/celestiaorg/go-header/releases/latest)
