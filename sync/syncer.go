@@ -223,9 +223,7 @@ func (s *Syncer[H]) syncLoop() {
 	for {
 		select {
 		case <-s.triggerSync:
-			s.metrics.syncStarted(s.ctx)
 			s.sync(s.ctx)
-			s.metrics.syncFinished(s.ctx)
 		case <-s.ctx.Done():
 			return
 		}
@@ -360,10 +358,9 @@ func (s *Syncer[H]) requestHeaders(
 		}
 
 		to := fromHead.Height() + size + 1
-		s.metrics.rangeRequestStart()
+		start := time.Now()
 		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
-		s.metrics.updateGetRangeRequestInfo(s.ctx, size/100, err != nil)
-		s.metrics.rangeRequestStop()
+		s.metrics.recordRangeRequest(ctx, time.Since(start), size)
 		if err != nil {
 			return err
 		}
