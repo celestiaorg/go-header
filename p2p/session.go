@@ -182,7 +182,7 @@ func (s *session[H]) doRequest(
 	))
 	defer span.End()
 
-	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, s.requestTimeout, errors.New("peer "+string(stat.peerID)+": request timed out"))
 	defer cancel()
 
 	start := time.Now()
