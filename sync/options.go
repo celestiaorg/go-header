@@ -14,15 +14,6 @@ type Option func(*Parameters)
 
 // Parameters is the set of parameters that must be configured for the syncer.
 type Parameters struct {
-	// TrustingPeriod is period through which we can trust a header's validators set.
-	//
-	// Should be significantly less than the unbonding period (e.g. unbonding
-	// period = 3 weeks, trusting period = 2 weeks).
-	//
-	// More specifically, trusting period + time needed to check headers + time
-	// needed to report and punish misbehavior should be less than the unbonding
-	// period.
-	TrustingPeriod time.Duration
 	// PruningWindow defines the duration within which headers are retained before being pruned.
 	PruningWindow time.Duration
 	// SyncFromHash is the hash of the header from which Syncer should start syncing.
@@ -41,6 +32,15 @@ type Parameters struct {
 	//
 	// SyncFromHeight has lower priority than SyncFromHash.
 	SyncFromHeight uint64
+	// trustingPeriod is period through which we can trust a header's validators set.
+	//
+	// Should be significantly less than the unbonding period (e.g. unbonding
+	// period = 3 weeks, trusting period = 2 weeks).
+	//
+	// More specifically, trusting period + time needed to check headers + time
+	// needed to report and punish misbehavior should be less than the unbonding
+	// period.
+	trustingPeriod time.Duration
 	// blockTime provides a reference point for the Syncer to determine
 	// whether its subjective head is outdated.
 	// Keeping it private to disable serialization for it.
@@ -58,14 +58,14 @@ type Parameters struct {
 // DefaultParameters returns the default params to configure the syncer.
 func DefaultParameters() Parameters {
 	return Parameters{
-		TrustingPeriod: 336 * time.Hour, // tendermint's default trusting period
+		trustingPeriod: 336 * time.Hour, // tendermint's default trusting period
 		PruningWindow:  337 * time.Hour,
 	}
 }
 
 func (p *Parameters) Validate() error {
-	if p.TrustingPeriod == 0 {
-		return fmt.Errorf("invalid TrustingPeriod duration: %v", p.TrustingPeriod)
+	if p.trustingPeriod == 0 {
+		return fmt.Errorf("invalid trustingPeriod duration: %v", p.trustingPeriod)
 	}
 	if p.SyncFromHash == "" && p.PruningWindow == 0 && p.SyncFromHeight == 0 {
 		return fmt.Errorf(
@@ -115,10 +115,10 @@ func WithRecencyThreshold(threshold time.Duration) Option {
 }
 
 // WithTrustingPeriod is a functional option that configures the
-// `TrustingPeriod` parameter.
+// `trustingPeriod` parameter.
 func WithTrustingPeriod(duration time.Duration) Option {
 	return func(p *Parameters) {
-		p.TrustingPeriod = duration
+		p.trustingPeriod = duration
 	}
 }
 

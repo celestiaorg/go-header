@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -24,9 +25,10 @@ func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 			err := recover()
 			if err != nil {
 				rerr = fmt.Errorf(
-					"header/store: user provided onDelete panicked on %d with: %s",
+					"user provided onDelete panicked on %d with: %s\n%s",
 					height,
 					err,
+					string(debug.Stack()),
 				)
 			}
 		}()
@@ -254,6 +256,8 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 	}
 	results := make([]result, workerNum)
 	jobCh := make(chan uint64, workerNum)
+
+	var closeErrChOnce sync.Once
 	errCh := make(chan error)
 
 	worker := func(worker int) {
@@ -261,11 +265,9 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 		defer func() {
 			results[worker] = last
 			if last.err != nil {
-				select {
-				case <-errCh:
-				default:
+				closeErrChOnce.Do(func() {
 					close(errCh)
-				}
+				})
 			}
 		}()
 

@@ -129,7 +129,7 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 	sbjHead, err := s.localHead(ctx)
 
-	switch expired, expiredFor := isExpired(sbjHead, s.Params.TrustingPeriod); {
+	switch expired, expiredFor := isExpired(sbjHead, s.Params.trustingPeriod); {
 	case expired:
 		log.Infow(
 			"subjective head expired, reinitializing...",
@@ -152,7 +152,7 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 		return newHead, false, fmt.Errorf("exchange head: %w", err)
 	}
 	// still check if even the newly requested head is expired
-	if expired, expiredFor := isExpired(newHead, s.Params.TrustingPeriod); expired {
+	if expired, expiredFor := isExpired(newHead, s.Params.trustingPeriod); expired {
 		// forbid initializing off an expired header
 		err := fmt.Errorf(
 			"subjective initialization with header(%d) expired for %s",
@@ -201,7 +201,7 @@ func (s *Syncer[H]) setLocalHead(ctx context.Context, netHead H) {
 			"hash", netHead.Hash().String(),
 			"err", err)
 	}
-	s.metrics.newSubjectiveHead(s.ctx, netHead.Height(), netHead.Time())
+	s.metrics.newSubjectiveHead(s.ctx, netHead.Height())
 
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {
