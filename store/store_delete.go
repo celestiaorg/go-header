@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
+
+	"github.com/celestiaorg/go-header"
 )
 
 // OnDelete implements [header.Store] interface.
@@ -267,8 +269,13 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		)
 	}
 
-	// Note: Allow deletion beyond head to match original DeleteTo behavior
-	// Missing headers in the range will be handled gracefully by the deletion logic
+	if to > head.Height()+1 {
+		return fmt.Errorf(
+			"header/store: delete range to %d beyond current head+1(%d)",
+			to,
+			head.Height()+1,
+		)
+	}
 
 	// if range is empty within the current store bounds, it's a no-op
 	if from > head.Height() || to <= tail.Height() {
@@ -292,26 +299,20 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	// Check if we're deleting all existing headers (making store empty)
 	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
 	if from == tail.Height() && to == head.Height()+1 {
-		if from == tail.Height() && to == head.Height()+1 {
-			// Check if a header exists exactly at 'to' in the pending buffer
-			hasHeaderAtTo := false
-			pendingHeaders := s.pending.GetAll()
-			for _, h := range pendingHeaders {
-				if h.Height() == to {
-					hasHeaderAtTo = true
-					break
-				}
+		// Check if a header exists exactly at 'to' (in pending, cache, or disk)
+		// If it exists, we can't wipe - there's a header that would become the new tail
+		_, err := s.getByHeight(ctx, to)
+		if errors.Is(err, header.ErrNotFound) {
+			// No header at 'to', safe to wipe the entire store
+			if err := s.wipe(ctx); err != nil {
+				return fmt.Errorf("header/store: wipe: %w", err)
 			}
-
-			if !hasHeaderAtTo {
-				// wipe the entire store
-				if err := s.wipe(ctx); err != nil {
-					return fmt.Errorf("header/store: wipe: %w", err)
-				}
-				return nil
-			}
+			return nil
 		}
-
+		if err != nil {
+			return fmt.Errorf("header/store: checking header at %d: %w", to, err)
+		}
+		// Header exists at 'to', proceed with normal deletion
 	}
 
 	// Determine which pointers need updating
@@ -319,34 +320,38 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	updateHead := to > head.Height()
 
 	// Delete the headers without automatic tail updates
-	actualTo, _, err := s.deleteRangeRaw(ctx, from, to)
-	if err != nil {
+	actualTo, _, deleteErr := s.deleteRangeRaw(ctx, from, to)
+
+	// Always update pointers to reflect actual progress, even on partial delete.
+	// This ensures store consistency and allows retries to continue from where we left off.
+	if updateTail {
+		// For tail-side deletion, update tail to actual progress
+		if err := s.setTail(ctx, s.ds, actualTo); err != nil {
+			return errors.Join(deleteErr, fmt.Errorf("header/store: setting tail to %d: %w", actualTo, err))
+		}
+	}
+
+	if updateHead && from > tail.Height() {
+		// For head-side deletion, only update head if we made progress
+		// actualTo represents the height we processed up to
+		if actualTo > from {
+			newHeadHeight := from - 1
+			if newHeadHeight >= tail.Height() {
+				if err := s.setHead(ctx, s.ds, newHeadHeight); err != nil {
+					return errors.Join(deleteErr, fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err))
+				}
+			}
+		}
+	}
+
+	if deleteErr != nil {
 		return fmt.Errorf(
 			"header/store: delete range [%d:%d) (actual: %d): %w",
 			from,
 			to,
 			actualTo,
-			err,
+			deleteErr,
 		)
-	}
-
-	// Update tail if we deleted from the beginning
-	if updateTail {
-		err = s.setTail(ctx, s.ds, to)
-		if err != nil {
-			return fmt.Errorf("header/store: setting tail to %d: %w", to, err)
-		}
-	}
-
-	// Update head if we deleted from the end
-	if updateHead && from > tail.Height() {
-		newHeadHeight := from - 1
-		if newHeadHeight >= tail.Height() {
-			err = s.setHead(ctx, s.ds, newHeadHeight)
-			if err != nil {
-				return fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err)
-			}
-		}
 	}
 
 	return nil
