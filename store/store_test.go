@@ -685,9 +685,6 @@ func TestStore_DeleteRange_MoveHeadAndTail(t *testing.T) {
 	tail, err := store.Tail(ctx)
 	require.NoError(t, err)
 
-	head, err := store.Head(ctx)
-	require.NoError(t, err)
-
 	// Delete from tail to head+1 (wipes the store, then we verify behavior)
 	// Instead, let's delete a portion from tail to keep some headers
 	deleteTo := uint64(102) // Delete heights 1-101, keep 102-111
@@ -698,7 +695,7 @@ func TestStore_DeleteRange_MoveHeadAndTail(t *testing.T) {
 	tail, err = store.Tail(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, deleteTo, tail.Height())
-	head, err = store.Head(ctx)
+	head, err := store.Head(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, newHeaders[len(newHeaders)-1].Height(), head.Height())
 
