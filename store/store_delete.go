@@ -15,6 +15,130 @@ import (
 	"github.com/celestiaorg/go-header"
 )
 
+// DeleteRange deletes headers in the range [from:to) from the store.
+// It intelligently updates head and/or tail pointers based on what range is being deleted.
+func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+	// ensure all the pending headers are synchronized
+	err := s.Sync(ctx)
+	if err != nil {
+		return err
+	}
+
+	head, err := s.Head(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading head: %w", err)
+	}
+
+	tail, err := s.Tail(ctx)
+	if err != nil {
+		return fmt.Errorf("header/store: reading tail: %w", err)
+	}
+
+	// validate range parameters
+	if from >= to {
+		return fmt.Errorf(
+			"header/store: invalid range [%d:%d) - from must be less than to",
+			from,
+			to,
+		)
+	}
+
+	if from < tail.Height() {
+		return fmt.Errorf(
+			"header/store: delete range from %d below current tail(%d)",
+			from,
+			tail.Height(),
+		)
+	}
+
+	if to > head.Height()+1 {
+		return fmt.Errorf(
+			"header/store: delete range to %d beyond current head+1(%d)",
+			to,
+			head.Height()+1,
+		)
+	}
+
+	// if range is empty within the current store bounds, it's a no-op
+	if from > head.Height() || to <= tail.Height() {
+		log.Warn("header/store range is empty, nothing needs to be deleted")
+		return nil
+	}
+
+	// Validate that deletion won't create gaps in the store
+	// Only allow deletions that:
+	// 1. Start from tail (advancing tail forward)
+	// 2. End at head+1 (moving head backward)
+	// 3. Delete the entire store
+	if from > tail.Height() && to <= head.Height() {
+		return fmt.Errorf(
+			"header/store: deletion range [%d:%d) would create gaps in the store. "+
+				"Only deletion from tail (%d) or to head+1 (%d) is supported",
+			from, to, tail.Height(), head.Height()+1,
+		)
+	}
+
+	// Check if we're deleting all existing headers (making store empty)
+	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
+	if from == tail.Height() && to == head.Height()+1 {
+		// Check if a header exists exactly at 'to' (in pending, cache, or disk)
+		// If it exists, we can't wipe - there's a header that would become the new tail
+		_, err := s.getByHeight(ctx, to)
+		if errors.Is(err, header.ErrNotFound) {
+			// No header at 'to', safe to wipe the entire store
+			if err := s.wipe(ctx); err != nil {
+				return fmt.Errorf("header/store: wipe: %w", err)
+			}
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("header/store: checking header at %d: %w", to, err)
+		}
+		// Header exists at 'to', proceed with normal deletion
+	}
+
+	// Determine which pointers need updating
+	updateTail := from <= tail.Height()
+	updateHead := to > head.Height()
+
+	// Delete the headers without automatic tail updates
+	actualTo, _, deleteErr := s.deleteRangeRaw(ctx, from, to)
+
+	// Always update pointers to reflect actual progress, even on partial delete.
+	// This ensures store consistency and allows retries to continue from where we left off.
+	if updateTail {
+		// For tail-side deletion, update tail to actual progress
+		if err := s.setTail(ctx, s.ds, actualTo); err != nil {
+			return errors.Join(deleteErr, fmt.Errorf("header/store: setting tail to %d: %w", actualTo, err))
+		}
+	}
+
+	if updateHead && from > tail.Height() {
+		// For head-side deletion, only update head if we made progress
+		// actualTo represents the height we processed up to
+		if actualTo > from {
+			newHeadHeight := from - 1
+			if newHeadHeight >= tail.Height() {
+				if err := s.setHead(ctx, s.ds, newHeadHeight); err != nil {
+					return errors.Join(deleteErr, fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err))
+				}
+			}
+		}
+	}
+
+	if deleteErr != nil {
+		return fmt.Errorf(
+			"header/store: delete range [%d:%d) (actual: %d): %w",
+			from,
+			to,
+			actualTo,
+			deleteErr,
+		)
+	}
+
+	return nil
+}
+
 // OnDelete implements [header.Store] interface.
 func (s *Store[H]) OnDelete(fn func(context.Context, uint64) error) {
 	s.onDeleteMu.Lock()
@@ -43,40 +167,63 @@ var (
 	errDeleteTimeout                    = errors.New("delete timeout")
 )
 
-// deleteSingle deletes a single header from the store,
-// its caches and indexies, notifying any registered onDelete handlers.
-func (s *Store[H]) deleteSingle(
+// deleteRangeRaw deletes [from:to) header range without updating head or tail pointers.
+// Returns the actual highest height processed (actualTo) and the number of missing headers.
+func (s *Store[H]) deleteRangeRaw(
 	ctx context.Context,
-	height uint64,
-	onDelete []func(ctx context.Context, height uint64) error,
-) error {
-	// some of the methods may not handle context cancellation properly
-	if ctx.Err() != nil {
-		return context.Cause(ctx)
-	}
+	from, to uint64,
+) (actualTo uint64, missing int, err error) {
+	startTime := time.Now()
 
-	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
-	if err != nil {
-		return fmt.Errorf("hash by height %d: %w", height, err)
-	}
-
-	for _, deleteFn := range onDelete {
-		if err := deleteFn(ctx, height); err != nil {
-			return fmt.Errorf("on delete handler for %d: %w", height, err)
+	var height uint64
+	defer func() {
+		actualTo = height
+		if err != nil {
+			if errors.Is(err, errDeleteTimeout) {
+				log.Warnw("partial delete range",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"hdrs_not_found", missing,
+					"took(s)", time.Since(startTime).Seconds(),
+				)
+			} else {
+				log.Errorw("partial delete range with error",
+					"from_height", from,
+					"expected_to_height", to,
+					"actual_to_height", height,
+					"hdrs_not_found", missing,
+					"took(s)", time.Since(startTime).Seconds(),
+					"err", err,
+				)
+			}
+		} else if to-from > 1 {
+			log.Debugw("deleted range",
+				"from_height", from,
+				"to_height", to,
+				"hdrs_not_found", missing,
+				"took(s)", time.Since(startTime).Seconds(),
+			)
 		}
+	}()
+
+	deleteCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		// allocate 95% of caller's set deadline for deletion
+		// and give leftover to save progress
+		sub := deadline.Sub(startTime) / 100 * 95
+		var cancel context.CancelFunc
+		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
+		defer cancel()
 	}
 
-	if err := s.ds.Delete(ctx, hashKey(hash)); err != nil {
-		return fmt.Errorf("delete hash key (%X): %w", hash, err)
-	}
-	if err := s.ds.Delete(ctx, heightKey(height)); err != nil {
-		return fmt.Errorf("delete height key (%d): %w", height, err)
+	if to-from < deleteRangeParallelThreshold {
+		height, missing, err = s.deleteSequential(deleteCtx, from, to)
+	} else {
+		height, missing, err = s.deleteParallel(deleteCtx, from, to)
 	}
 
-	s.cache.Remove(hash.String())
-	s.heightIndex.cache.Remove(height)
-	s.pending.DeleteRange(height, height+1)
-	return nil
+	return height, missing, err
 }
 
 // deleteSequential deletes [from:to) header range from the store sequentially
@@ -233,187 +380,40 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 	return highest, missing, nil
 }
 
-// DeleteRange deletes headers in the range [from:to) from the store.
-// It intelligently updates head and/or tail pointers based on what range is being deleted.
-func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
-	// ensure all the pending headers are synchronized
-	err := s.Sync(ctx)
-	if err != nil {
-		return err
-	}
-
-	head, err := s.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading head: %w", err)
-	}
-
-	tail, err := s.Tail(ctx)
-	if err != nil {
-		return fmt.Errorf("header/store: reading tail: %w", err)
-	}
-
-	// validate range parameters
-	if from >= to {
-		return fmt.Errorf(
-			"header/store: invalid range [%d:%d) - from must be less than to",
-			from,
-			to,
-		)
-	}
-
-	if from < tail.Height() {
-		return fmt.Errorf(
-			"header/store: delete range from %d below current tail(%d)",
-			from,
-			tail.Height(),
-		)
-	}
-
-	if to > head.Height()+1 {
-		return fmt.Errorf(
-			"header/store: delete range to %d beyond current head+1(%d)",
-			to,
-			head.Height()+1,
-		)
-	}
-
-	// if range is empty within the current store bounds, it's a no-op
-	if from > head.Height() || to <= tail.Height() {
-		log.Warn("header/store range is empty, nothing needs to be deleted")
-		return nil
-	}
-
-	// Validate that deletion won't create gaps in the store
-	// Only allow deletions that:
-	// 1. Start from tail (advancing tail forward)
-	// 2. End at head+1 (moving head backward)
-	// 3. Delete the entire store
-	if from > tail.Height() && to <= head.Height() {
-		return fmt.Errorf(
-			"header/store: deletion range [%d:%d) would create gaps in the store. "+
-				"Only deletion from tail (%d) or to head+1 (%d) is supported",
-			from, to, tail.Height(), head.Height()+1,
-		)
-	}
-
-	// Check if we're deleting all existing headers (making store empty)
-	// Only wipe if 'to' is exactly at head+1 (normal case) to avoid accidental wipes
-	if from == tail.Height() && to == head.Height()+1 {
-		// Check if a header exists exactly at 'to' (in pending, cache, or disk)
-		// If it exists, we can't wipe - there's a header that would become the new tail
-		_, err := s.getByHeight(ctx, to)
-		if errors.Is(err, header.ErrNotFound) {
-			// No header at 'to', safe to wipe the entire store
-			if err := s.wipe(ctx); err != nil {
-				return fmt.Errorf("header/store: wipe: %w", err)
-			}
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("header/store: checking header at %d: %w", to, err)
-		}
-		// Header exists at 'to', proceed with normal deletion
-	}
-
-	// Determine which pointers need updating
-	updateTail := from <= tail.Height()
-	updateHead := to > head.Height()
-
-	// Delete the headers without automatic tail updates
-	actualTo, _, deleteErr := s.deleteRangeRaw(ctx, from, to)
-
-	// Always update pointers to reflect actual progress, even on partial delete.
-	// This ensures store consistency and allows retries to continue from where we left off.
-	if updateTail {
-		// For tail-side deletion, update tail to actual progress
-		if err := s.setTail(ctx, s.ds, actualTo); err != nil {
-			return errors.Join(deleteErr, fmt.Errorf("header/store: setting tail to %d: %w", actualTo, err))
-		}
-	}
-
-	if updateHead && from > tail.Height() {
-		// For head-side deletion, only update head if we made progress
-		// actualTo represents the height we processed up to
-		if actualTo > from {
-			newHeadHeight := from - 1
-			if newHeadHeight >= tail.Height() {
-				if err := s.setHead(ctx, s.ds, newHeadHeight); err != nil {
-					return errors.Join(deleteErr, fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err))
-				}
-			}
-		}
-	}
-
-	if deleteErr != nil {
-		return fmt.Errorf(
-			"header/store: delete range [%d:%d) (actual: %d): %w",
-			from,
-			to,
-			actualTo,
-			deleteErr,
-		)
-	}
-
-	return nil
-}
-
-// deleteRangeRaw deletes [from:to) header range without updating head or tail pointers.
-// Returns the actual highest height processed (actualTo) and the number of missing headers.
-func (s *Store[H]) deleteRangeRaw(
+// deleteSingle deletes a single header from the store,
+// its caches and indexies, notifying any registered onDelete handlers.
+func (s *Store[H]) deleteSingle(
 	ctx context.Context,
-	from, to uint64,
-) (actualTo uint64, missing int, err error) {
-	startTime := time.Now()
+	height uint64,
+	onDelete []func(ctx context.Context, height uint64) error,
+) error {
+	// some of the methods may not handle context cancellation properly
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
 
-	var height uint64
-	defer func() {
-		actualTo = height
-		if err != nil {
-			if errors.Is(err, errDeleteTimeout) {
-				log.Warnw("partial delete range",
-					"from_height", from,
-					"expected_to_height", to,
-					"actual_to_height", height,
-					"hdrs_not_found", missing,
-					"took(s)", time.Since(startTime).Seconds(),
-				)
-			} else {
-				log.Errorw("partial delete range with error",
-					"from_height", from,
-					"expected_to_height", to,
-					"actual_to_height", height,
-					"hdrs_not_found", missing,
-					"took(s)", time.Since(startTime).Seconds(),
-					"err", err,
-				)
-			}
-		} else if to-from > 1 {
-			log.Debugw("deleted range",
-				"from_height", from,
-				"to_height", to,
-				"hdrs_not_found", missing,
-				"took(s)", time.Since(startTime).Seconds(),
-			)
+	hash, err := s.heightIndex.HashByHeight(ctx, height, false)
+	if err != nil {
+		return fmt.Errorf("hash by height %d: %w", height, err)
+	}
+
+	for _, deleteFn := range onDelete {
+		if err := deleteFn(ctx, height); err != nil {
+			return fmt.Errorf("on delete handler for %d: %w", height, err)
 		}
-	}()
-
-	deleteCtx := ctx
-	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 95% of caller's set deadline for deletion
-		// and give leftover to save progress
-		sub := deadline.Sub(startTime) / 100 * 95
-		var cancel context.CancelFunc
-		deleteCtx, cancel = context.WithDeadlineCause(ctx, startTime.Add(sub), errDeleteTimeout)
-		defer cancel()
 	}
 
-	if to-from < deleteRangeParallelThreshold {
-		height, missing, err = s.deleteSequential(deleteCtx, from, to)
-	} else {
-		height, missing, err = s.deleteParallel(deleteCtx, from, to)
+	if err := s.ds.Delete(ctx, hashKey(hash)); err != nil {
+		return fmt.Errorf("delete hash key (%X): %w", hash, err)
+	}
+	if err := s.ds.Delete(ctx, heightKey(height)); err != nil {
+		return fmt.Errorf("delete height key (%d): %w", height, err)
 	}
 
-	return height, missing, err
+	s.cache.Remove(hash.String())
+	s.heightIndex.cache.Remove(height)
+	s.pending.DeleteRange(height, height+1)
+	return nil
 }
 
 // setHead sets the head of the store to the specified height.
