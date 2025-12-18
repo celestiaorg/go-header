@@ -84,6 +84,10 @@ func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 		return fmt.Errorf("malformed range, from: %d, to: %d", from, to)
 	}
 
+	if to > m.HeadHeight+1 {
+		return fmt.Errorf("delete range to %d beyond current head+1(%d)", to, m.HeadHeight+1)
+	}
+
 	// Delete headers in the range [from:to)
 	for h := from; h < to; h++ {
 		_, ok := m.Headers[h]
@@ -106,7 +110,8 @@ func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	}
 
 	// Update HeadHeight if we deleted from the end
-	if to >= m.HeadHeight {
+	// Range is [from:to), so head is only affected if to > HeadHeight
+	if to > m.HeadHeight {
 		m.HeadHeight = from - 1
 	}
 
