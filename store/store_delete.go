@@ -327,7 +327,10 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 	if updateTail {
 		// For tail-side deletion, update tail to actual progress
 		if err := s.setTail(ctx, s.ds, actualTo); err != nil {
-			return errors.Join(deleteErr, fmt.Errorf("header/store: setting tail to %d: %w", actualTo, err))
+			return errors.Join(
+				deleteErr,
+				fmt.Errorf("header/store: setting tail to %d: %w", actualTo, err),
+			)
 		}
 	}
 
@@ -338,7 +341,10 @@ func (s *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
 			newHeadHeight := from - 1
 			if newHeadHeight >= tail.Height() {
 				if err := s.setHead(ctx, s.ds, newHeadHeight); err != nil {
-					return errors.Join(deleteErr, fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err))
+					return errors.Join(
+						deleteErr,
+						fmt.Errorf("header/store: setting head to %d: %w", newHeadHeight, err),
+					)
 				}
 			}
 		}
