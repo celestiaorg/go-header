@@ -140,6 +140,8 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 	}
 	results := make([]result, workerNum)
 	jobCh := make(chan uint64, workerNum)
+
+	var closeErrChOnce sync.Once
 	errCh := make(chan error)
 
 	worker := func(worker int) {
@@ -147,11 +149,9 @@ func (s *Store[H]) deleteParallel(ctx context.Context, from, to uint64) (uint64,
 		defer func() {
 			results[worker] = last
 			if last.err != nil {
-				select {
-				case <-errCh:
-				default:
+				closeErrChOnce.Do(func() {
 					close(errCh)
-				}
+				})
 			}
 		}()
 

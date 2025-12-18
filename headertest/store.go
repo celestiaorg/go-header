@@ -15,6 +15,7 @@ type Generator[H header.Header[H]] interface {
 }
 
 type Store[H header.Header[H]] struct {
+	HeaderMu   sync.Mutex
 	Headers    map[uint64]H
 	HeadHeight uint64
 	TailHeight uint64
@@ -72,6 +73,8 @@ func (m *Store[H]) Get(_ context.Context, hash header.Hash) (H, error) {
 }
 
 func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
+	m.HeaderMu.Lock()
+	defer m.HeaderMu.Unlock()
 	if header, exists := m.Headers[height]; exists {
 		return header, nil
 	}
@@ -80,6 +83,9 @@ func (m *Store[H]) GetByHeight(_ context.Context, height uint64) (H, error) {
 }
 
 func (m *Store[H]) DeleteRange(ctx context.Context, from, to uint64) error {
+  m.HeaderMu.Lock()
+	defer m.HeaderMu.Unlock()
+  
 	if from >= to {
 		return fmt.Errorf("malformed range, from: %d, to: %d", from, to)
 	}
