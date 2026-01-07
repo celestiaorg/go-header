@@ -352,7 +352,7 @@ func isRecent[H header.Header[H]](
 	blockTime, recencyThreshold time.Duration,
 ) (bool, time.Duration) {
 	if recencyThreshold == 0 {
-		recencyThreshold = blockTime * 2 // allow some drift by adding additional buffer of 2 blocks
+		recencyThreshold = blockTime * 3 // allow some drift by adding additional buffer of 3 blocks
 	}
 
 	recencyTime := header.Time().Add(recencyThreshold)
