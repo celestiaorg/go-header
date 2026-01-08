@@ -1029,10 +1029,10 @@ func TestStore_DeleteRange(t *testing.T) {
 		originalTail, err := store.Tail(ctx)
 		require.NoError(t, err)
 
-		// Delete range completely above head - should error (to > head+1)
+		// Delete range completely above head - should error (from > head.Height())
 		err = store.DeleteRange(ctx, 200, 300)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "beyond current head+1")
+		assert.Contains(t, err.Error(), "is not present in store")
 
 		// Verify head and tail are unchanged
 		head, err := store.Head(ctx)
@@ -1072,10 +1072,10 @@ func TestStore_DeleteRange(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "from must be less than to")
 
-		// from below tail should error
+		// from < tail && to < head+1 should error
 		err = store.DeleteRange(ctx, 0, 5)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "below current tail")
+		assert.Contains(t, err.Error(), "Only deletion from tail or head+1 is supported")
 
 		// middle deletion should error
 		err = store.DeleteRange(ctx, 10, 15)
@@ -1291,7 +1291,7 @@ func TestStore_DeleteRange_ValidationErrors(t *testing.T) {
 			name:   "delete from below tail boundary",
 			from:   tail.Height() - 1,
 			to:     tail.Height() + 5,
-			errMsg: "below current tail",
+			errMsg: "Only deletion from tail or head+1 is supported",
 		},
 		{
 			name:   "invalid range - from equals to",
