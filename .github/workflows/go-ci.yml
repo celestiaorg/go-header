@@ -7,7 +7,6 @@ on:
       - main
   pull_request:
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +27,7 @@ jobs:
           file: ./coverage.o
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
       - name: Go Mod Tidy
