@@ -93,7 +93,11 @@ func (s *Syncer[H]) networkHead(ctx context.Context) (H, bool, error) {
 		return sbjHead, false, nil
 	}
 	// still check if even the newly requested head is not recent
-	if recent, timeDiff = isRecent(newHead, s.Params.blockTime, s.Params.recencyThreshold); !recent {
+	if recent, timeDiff = isRecent(
+		newHead,
+		s.Params.blockTime,
+		s.Params.recencyThreshold,
+	); !recent {
 		log.Warnw(
 			"non recent head from trusted peers",
 			"height",

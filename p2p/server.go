@@ -115,7 +115,11 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	case *p2p_pb.HeaderRequest_Hash:
 		headers, err = serv.handleRequestByHash(ctx, pbreq.GetHash())
 	case *p2p_pb.HeaderRequest_Origin:
-		headers, err = serv.handleRangeRequest(ctx, pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
+		headers, err = serv.handleRangeRequest(
+			ctx,
+			pbreq.GetOrigin(),
+			pbreq.GetOrigin()+pbreq.Amount,
+		)
 	default:
 		log.Warn("server: invalid data type received")
 		stream.Reset() //nolint:errcheck
