@@ -192,7 +192,7 @@ func (timeoutStore[H]) GetRange(ctx context.Context, _, _ uint64) ([]H, error) {
 	return nil, ctx.Err()
 }
 
-func (timeoutStore[H]) DeleteTo(ctx context.Context, _ uint64) error {
+func (timeoutStore[H]) DeleteRange(ctx context.Context, _, _ uint64) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
