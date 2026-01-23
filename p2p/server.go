@@ -106,7 +106,7 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 		log.Error(err)
 	}
 
-	ctx, cancel := context.WithTimeout(serv.ctx, serv.Params.RequestTimeout)
+	ctx, cancel := context.WithTimeoutCause(serv.ctx, serv.Params.RequestTimeout, errors.New("server "+string(serv.host.ID())+": request timed out "))
 	defer cancel()
 
 	var headers []H
