@@ -476,8 +476,8 @@ func TestExchange_HandleHeaderWithDifferentChainID(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestExchange_RequestHeadersFromAnotherPeer tests that the Exchange instance will request range
-// from another peer with lower score after receiving header.ErrNotFound
+// TestExchange_RequestHeadersFromAnotherPeerWhenTimeout tests that the Exchange instance
+// will request range from another peer with lower score after receiving header.ErrNotFound
 func TestExchange_RequestHeadersFromAnotherPeerWhenTimeout(t *testing.T) {
 	// create blankhost because mocknet does not support deadlines
 	swarm0 := swarm.GenSwarm(t)
