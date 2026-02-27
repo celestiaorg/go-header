@@ -20,6 +20,7 @@ type SubscriberOption func(*SubscriberParams)
 type SubscriberParams struct {
 	networkID string
 	metrics   bool
+	topicOpts []pubsub.TopicOpt
 }
 
 // Subscriber manages the lifecycle and relationship of header Module
@@ -27,10 +28,11 @@ type SubscriberParams struct {
 type Subscriber[H header.Header[H]] struct {
 	pubsubTopicID string
 
-	metrics *subscriberMetrics
-	pubsub  *pubsub.PubSub
-	topic   *pubsub.Topic
-	msgID   pubsub.MsgIdFunction
+	metrics   *subscriberMetrics
+	pubsub    *pubsub.PubSub
+	topic     *pubsub.Topic
+	msgID     pubsub.MsgIdFunction
+	topicOpts []pubsub.TopicOpt
 
 	verifierMu   sync.Mutex
 	verifierSema chan struct{} // closed when verifier is set
@@ -48,6 +50,14 @@ func WithSubscriberMetrics() SubscriberOption {
 func WithSubscriberNetworkID(networkID string) SubscriberOption {
 	return func(params *SubscriberParams) {
 		params.networkID = networkID
+	}
+}
+
+// WithTopicOpts sets additional pubsub.TopicOpt options for the topic.
+// This can be used to configure topic-level behavior such as pubsub.FanoutOnly().
+func WithTopicOpts(opts ...pubsub.TopicOpt) SubscriberOption {
+	return func(params *SubscriberParams) {
+		params.topicOpts = append(params.topicOpts, opts...)
 	}
 }
 
@@ -77,6 +87,7 @@ func NewSubscriber[H header.Header[H]](
 		pubsubTopicID: PubsubTopicID(params.networkID),
 		pubsub:        ps,
 		msgID:         msgID,
+		topicOpts:     params.topicOpts,
 		verifierSema:  make(chan struct{}),
 	}, nil
 }
@@ -90,7 +101,8 @@ func (s *Subscriber[H]) Start(context.Context) (err error) {
 		return err
 	}
 
-	topic, err := s.pubsub.Join(s.pubsubTopicID, pubsub.WithTopicMessageIdFn(s.msgID))
+	topicOpts := append([]pubsub.TopicOpt{pubsub.WithTopicMessageIdFn(s.msgID)}, s.topicOpts...)
+	topic, err := s.pubsub.Join(s.pubsubTopicID, topicOpts...)
 	if err != nil {
 		return err
 	}
