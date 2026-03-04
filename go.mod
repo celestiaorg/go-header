@@ -108,3 +108,5 @@ require (
 )
 
 replace github.com/libp2p/go-libp2p => github.com/celestiaorg/go-libp2p v0.0.0-20260227132409-ca1f74a6feb6
+
+replace github.com/libp2p/go-libp2p-pubsub => github.com/celestiaorg/go-libp2p-pubsub v0.6.2-0.20260225133553-213565e2a428
