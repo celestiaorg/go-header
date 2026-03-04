@@ -217,6 +217,7 @@ func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
 		WithRequestTimeout[ClientParameters](perPeerTimeout),
 	)
 	require.NoError(t, err)
+	//nolint:gosec // G118 - cancel is called in cleanup
 	exchg.ctx, exchg.cancel = context.WithCancel(context.Background())
 	t.Cleanup(exchg.cancel)
 
@@ -238,6 +239,34 @@ func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
 	// The request must complete well before the slow peer's delay.
 	assert.Less(t, elapsed, slowDelay,
 		"performRequest should not wait for the slow peer's full delay")
+}
+
+func TestExchange_RequestHead_EarlyReturn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	hosts := quicHosts(t, 4)
+	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
+	exchg := client(ctx, t, hosts[0], trustedPeers)
+
+	// Two fast servers serving the same store (identical headers → same hashes)
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	_ = server(ctx, t, hosts[1], goodStore)
+	_ = server(ctx, t, hosts[2], goodStore)
+
+	// One slow server that takes 5 seconds to respond
+	slowDelay := 5 * time.Second
+	_ = server(ctx, t, hosts[3], &timedOutStore{timeout: slowDelay})
+
+	start := time.Now()
+	head, err := exchg.Head(ctx)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, head)
+	assert.Equal(t, goodStore.HeadHeight, head.Height())
+	assert.Less(t, elapsed, slowDelay,
+		"Head() should return early once 2 peers agree, without waiting for the slow peer")
 }
 
 func TestExchange_RequestHeader(t *testing.T) {
