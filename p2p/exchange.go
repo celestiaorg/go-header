@@ -133,10 +133,14 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		// this avoids DeadlineExceeded error when any of the peers are unresponsive
 
 		sub := deadline.Sub(startTime) * 9 / 10
-		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
-		defer cancel()
+		var deadlineCancel context.CancelFunc
+		reqCtx, deadlineCancel = context.WithDeadline(ctx, startTime.Add(sub))
+		defer deadlineCancel()
 	}
+	// wrap reqCtx with cancel so we can abort outstanding peer requests early
+	// once enough peers agree on the same head (consensus reached)
+	reqCtx, reqCancel := context.WithCancel(reqCtx)
+	defer reqCancel()
 
 	reqParams := header.HeadParams[H]{}
 	for _, opt := range opts {
@@ -216,11 +220,26 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	}
 
 	headers := make([]H, 0, len(peers))
+	counter := make(map[string]int)
 	for range peers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
 				headers = append(headers, h)
+				hash := h.Hash().String()
+				counter[hash]++
+				if counter[hash] >= minHeadResponses {
+					reqCancel()
+					head, err := bestHead[H](headers)
+					if err != nil {
+						ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusNoHeaders)
+						span.SetStatus(codes.Error, headStatusNoHeaders)
+						return zero, err
+					}
+					ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
+					span.SetStatus(codes.Ok, "")
+					return head, nil
+				}
 			}
 		case <-ctx.Done():
 			status := headStatusCanceled
