@@ -158,6 +158,88 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	assert.NotNil(t, head)
 }
 
+// TestExchange_PerformRequest_PeerTimeout verifies that performRequest applies a
+// per-peer timeout so that a single slow trusted peer does not consume the entire
+// context deadline. The exchange is configured with two trusted peers where the
+// first is slow (delays longer than RequestTimeout) and the second serves the
+// requested header. The test asserts the request succeeds without waiting for the
+// slow peer's full delay.
+func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
+	// Use real transports (blankhost + swarm) because mocknet does not support deadlines.
+	swarm0 := swarm.GenSwarm(t)
+	host0 := blankhost.NewBlankHost(swarm0)
+	swarm1 := swarm.GenSwarm(t)
+	host1 := blankhost.NewBlankHost(swarm1)
+	swarm2 := swarm.GenSwarm(t)
+	host2 := blankhost.NewBlankHost(swarm2)
+	dial := func(a, b network.Network) {
+		swarm.DivulgeAddresses(b, a)
+		if _, err := a.DialPeer(context.Background(), b.LocalPeer()); err != nil {
+			t.Fatalf("Failed to dial: %s", err)
+		}
+	}
+	dial(swarm0, swarm1)
+	dial(swarm0, swarm2)
+
+	slowDelay := 5 * time.Second
+	perPeerTimeout := 500 * time.Millisecond
+
+	// host1 = slow peer: server whose store blocks in HasAt for slowDelay
+	slowServer, err := NewExchangeServer[*headertest.DummyHeader](
+		host1,
+		&timedOutStore{timeout: slowDelay},
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, slowServer.Start(context.Background()))
+	t.Cleanup(func() { slowServer.Stop(context.Background()) }) //nolint:errcheck
+
+	// host2 = good peer: server with real headers
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	goodServer, err := NewExchangeServer[*headertest.DummyHeader](
+		host2,
+		goodStore,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, goodServer.Start(context.Background()))
+	t.Cleanup(func() { goodServer.Stop(context.Background()) }) //nolint:errcheck
+
+	// Create exchange with both peers as trusted. Order: slow peer first, good peer second.
+	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
+	require.NoError(t, err)
+	exchg, err := NewExchange[*headertest.DummyHeader](
+		host0,
+		[]peer.ID{host1.ID(), host2.ID()},
+		connGater,
+		WithNetworkID[ClientParameters](networkID),
+		WithChainID(networkID),
+		WithRequestTimeout[ClientParameters](perPeerTimeout),
+	)
+	require.NoError(t, err)
+	exchg.ctx, exchg.cancel = context.WithCancel(context.Background())
+	t.Cleanup(exchg.cancel)
+
+	// Fix trusted peer order so slow peer is always tried first.
+	exchg.trustedPeers = func() peer.IDSlice {
+		return peer.IDSlice{host1.ID(), host2.ID()}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	start := time.Now()
+	h, err := exchg.GetByHeight(ctx, 3)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Equal(t, goodStore.Headers[3].Height(), h.Height())
+	assert.Equal(t, goodStore.Headers[3].Hash(), h.Hash())
+	// The request must complete well before the slow peer's delay.
+	assert.Less(t, elapsed, slowDelay,
+		"performRequest should not wait for the slow peer's full delay")
+}
+
 func TestExchange_RequestHeader(t *testing.T) {
 	hosts := createMocknet(t, 2)
 	exchg, store := createP2PExAndServer(t, hosts[0], hosts[1])
