@@ -96,7 +96,7 @@ func NewExchange[H header.Header[H]](
 }
 
 func (ex *Exchange[H]) Start(context.Context) error {
-	ex.ctx, ex.cancel = context.WithCancel(context.Background())
+	ex.ctx, ex.cancel = context.WithCancel(context.Background()) //nolint:gosec // G118 - cancel is called in Stop
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
 	go ex.peerTracker.gc()
