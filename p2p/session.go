@@ -62,7 +62,7 @@ func newSession[H header.Header[H]](
 	metrics *exchangeMetrics,
 	options ...option[H],
 ) *session[H] {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx) //nolint:gosec // G118 - cancel is called in session.close
 	ses := &session[H]{
 		ctx:            ctx,
 		cancel:         cancel,

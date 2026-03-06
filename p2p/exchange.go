@@ -96,7 +96,7 @@ func NewExchange[H header.Header[H]](
 }
 
 func (ex *Exchange[H]) Start(context.Context) error {
-	ex.ctx, ex.cancel = context.WithCancel(context.Background())
+	ex.ctx, ex.cancel = context.WithCancel(context.Background()) //nolint:gosec // G118 - cancel is called in Stop
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
 	go ex.peerTracker.gc()
@@ -129,14 +129,17 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	startTime := time.Now()
 	if deadline, ok := ctx.Deadline(); ok {
 		// allocate 90% of caller's set deadline for requests
-		// and give leftover to determine the bestHead from gathered responses
 		// this avoids DeadlineExceeded error when any of the peers are unresponsive
 
 		sub := deadline.Sub(startTime) * 9 / 10
-		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
-		defer cancel()
+		var deadlineCancel context.CancelFunc
+		reqCtx, deadlineCancel = context.WithDeadline(ctx, startTime.Add(sub))
+		defer deadlineCancel()
 	}
+	// wrap reqCtx with cancel so we can abort outstanding peer requests early
+	// once enough peers agree on the same head (consensus reached)
+	reqCtx, reqCancel := context.WithCancel(reqCtx)
+	defer reqCancel()
 
 	reqParams := header.HeadParams[H]{}
 	for _, opt := range opts {
@@ -216,11 +219,22 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	}
 
 	headers := make([]H, 0, len(peers))
+	counter := make(map[string]int)
 	for range peers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
 				headers = append(headers, h)
+				hash := h.Hash().String()
+				counter[hash]++
+				if counter[hash] >= minHeadResponses {
+					reqCancel()
+					ex.metrics.head(
+						ctx, time.Since(startTime), len(headers), headType, headStatusOk,
+					)
+					span.SetStatus(codes.Ok, "")
+					return h, nil
+				}
 			}
 		case <-ctx.Done():
 			status := headStatusCanceled
@@ -237,16 +251,19 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		}
 	}
 
-	head, err := bestHead[H](headers)
-	if err != nil {
-		ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusNoHeaders)
+	// no two peers agreed on the same head, return the highest
+	if len(headers) == 0 {
+		ex.metrics.head(ctx, time.Since(startTime), 0, headType, headStatusNoHeaders)
 		span.SetStatus(codes.Error, headStatusNoHeaders)
-		return zero, err
+		return zero, header.ErrNotFound
 	}
-
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Height() > headers[j].Height()
+	})
+	log.Debug("could not find head confirmed by two peers, returning highest")
 	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
 	span.SetStatus(codes.Ok, "")
-	return head, nil
+	return headers[0], nil
 }
 
 // GetByHeight performs a request for the Header at the given
@@ -431,37 +448,4 @@ func shufflePeers(peers peer.IDSlice) peer.IDSlice {
 		func(i, j int) { tpeers[i], tpeers[j] = tpeers[j], tpeers[i] },
 	)
 	return tpeers
-}
-
-// bestHead chooses Header that matches the conditions:
-// * should have max height among received;
-// * should be received at least from 2 peers;
-// If neither condition is met, then latest Header will be returned (header of the highest
-// height).
-func bestHead[H header.Header[H]](result []H) (H, error) {
-	if len(result) == 0 {
-		var zero H
-		return zero, header.ErrNotFound
-	}
-	counter := make(map[string]int)
-	// go through all of Headers and count the number of headers with a specific hash
-	for _, res := range result {
-		counter[res.Hash().String()]++
-	}
-	// sort results in a decreasing order
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Height() > result[j].Height()
-	})
-
-	// try to find Header with the maximum height that was received at least from 2 peers
-	for _, res := range result {
-		if counter[res.Hash().String()] >= minHeadResponses {
-			return res, nil
-		}
-	}
-	log.Debug(
-		"could not find latest header received from at least two peers, returning header with the max height",
-	)
-	// otherwise return header with the max height
-	return result[0], nil
 }
