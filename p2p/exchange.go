@@ -377,7 +377,9 @@ func (ex *Exchange[H]) performRequest(
 			default:
 			}
 
-			h, err := ex.request(ctx, peer, req)
+			reqCtx, cancel := context.WithTimeout(ctx, ex.Params.RequestTimeout)
+			h, err := ex.request(reqCtx, peer, req)
+			cancel()
 			if err != nil {
 				reqErr = err
 				log.Debugw("requesting header from trustedPeer failed",
