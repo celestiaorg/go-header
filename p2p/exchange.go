@@ -125,20 +125,10 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	ctx, span := tracerClient.Start(ctx, "head")
 	defer span.End()
 
-	reqCtx := ctx
 	startTime := time.Now()
-	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 90% of caller's set deadline for requests
-		// this avoids DeadlineExceeded error when any of the peers are unresponsive
-
-		sub := deadline.Sub(startTime) * 9 / 10
-		var deadlineCancel context.CancelFunc
-		reqCtx, deadlineCancel = context.WithDeadline(ctx, startTime.Add(sub))
-		defer deadlineCancel()
-	}
-	// wrap reqCtx with cancel so we can abort outstanding peer requests early
+	// wrap ctx with cancel so we can abort outstanding peer requests early
 	// once enough peers agree on the same head (consensus reached)
-	reqCtx, reqCancel := context.WithCancel(reqCtx)
+	reqCtx, reqCancel := context.WithCancel(ctx)
 	defer reqCancel()
 
 	reqParams := header.HeadParams[H]{}
