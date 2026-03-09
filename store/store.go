@@ -136,6 +136,7 @@ func (s *Store[H]) Start(ctx context.Context) error {
 		return fmt.Errorf("header/store: initializing: %w", err)
 	}
 
+	//nolint:gosec // G118 - cancel is called in Stop
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	go s.flushLoop(ctx)

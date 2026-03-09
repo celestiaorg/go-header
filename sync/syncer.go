@@ -98,6 +98,7 @@ func NewSyncer[H header.Header[H]](
 
 // Start starts the syncing routine.
 func (s *Syncer[H]) Start(ctx context.Context) error {
+	//nolint:gosec // G118 - cancel is called in Stop
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
 	// register validator for header subscriptions

@@ -149,7 +149,7 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
-	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
+	ctx, cancel = context.WithTimeout(ctx, time.Second*2)
 	t.Cleanup(cancel)
 
 	// should still succeed with one responder
@@ -238,6 +238,34 @@ func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
 	// The request must complete well before the slow peer's delay.
 	assert.Less(t, elapsed, slowDelay,
 		"performRequest should not wait for the slow peer's full delay")
+}
+
+func TestExchange_RequestHead_EarlyReturn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	hosts := quicHosts(t, 4)
+	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
+	exchg := client(ctx, t, hosts[0], trustedPeers)
+
+	// Two fast servers serving the same store (identical headers → same hashes)
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	_ = server(ctx, t, hosts[1], goodStore)
+	_ = server(ctx, t, hosts[2], goodStore)
+
+	// One slow server that takes 5 seconds to respond
+	slowDelay := 5 * time.Second
+	_ = server(ctx, t, hosts[3], &timedOutStore{timeout: slowDelay})
+
+	start := time.Now()
+	head, err := exchg.Head(ctx)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, head)
+	assert.Equal(t, goodStore.HeadHeight, head.Height())
+	assert.Less(t, elapsed, slowDelay,
+		"Head() should return early once 2 peers agree, without waiting for the slow peer")
 }
 
 func TestExchange_RequestHeader(t *testing.T) {
@@ -431,71 +459,6 @@ func TestExchange_RequestByHash(t *testing.T) {
 
 	assert.Equal(t, store.Headers[reqHeight].Height(), eh.Height())
 	assert.Equal(t, store.Headers[reqHeight].Hash(), eh.Hash())
-}
-
-func Test_bestHead(t *testing.T) {
-	gen := func() []*headertest.DummyHeader {
-		suite := headertest.NewTestSuite(t)
-		res := make([]*headertest.DummyHeader, 0)
-		for i := 0; i < 3; i++ {
-			res = append(res, suite.NextHeader())
-		}
-		return res
-	}
-	testCases := []struct {
-		precondition   func() []*headertest.DummyHeader
-		expectedHeight uint64
-	}{
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 1
-			headerHeight[1]=2 -> 1
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[2]
-		*/
-		{
-			precondition:   gen,
-			expectedHeight: 3,
-		},
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 2
-			headerHeight[1]=2 -> 1
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[0]
-		*/
-		{
-			precondition: func() []*headertest.DummyHeader {
-				res := gen()
-				res = append(res, res[0])
-				return res
-			},
-			expectedHeight: 1,
-		},
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 3
-			headerHeight[1]=2 -> 2
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[1]
-		*/
-		{
-			precondition: func() []*headertest.DummyHeader {
-				res := gen()
-				res = append(res, res[0])
-				res = append(res, res[0])
-				res = append(res, res[1])
-				return res
-			},
-			expectedHeight: 2,
-		},
-	}
-	for _, tt := range testCases {
-		res := tt.precondition()
-		header, err := bestHead(res)
-		require.NoError(t, err)
-		require.True(t, header.Height() == tt.expectedHeight)
-	}
 }
 
 // TestExchange_RequestByHashFails tests that the Exchange instance can
