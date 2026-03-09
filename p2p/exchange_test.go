@@ -149,7 +149,7 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
-	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
+	ctx, cancel = context.WithTimeout(ctx, time.Second*2)
 	t.Cleanup(cancel)
 
 	// should still succeed with one responder
@@ -217,7 +217,6 @@ func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
 		WithRequestTimeout[ClientParameters](perPeerTimeout),
 	)
 	require.NoError(t, err)
-	//nolint:gosec // G118 - cancel is called in cleanup
 	exchg.ctx, exchg.cancel = context.WithCancel(context.Background())
 	t.Cleanup(exchg.cancel)
 

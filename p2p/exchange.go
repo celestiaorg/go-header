@@ -30,11 +30,15 @@ var (
 	tracerClient = otel.Tracer("header/p2p-client")
 )
 
-// minHeadResponses is the minimum number of headers of the same height
-// received from peers to determine the network head. If all trusted peers
-// will return headers with non-equal height, then the highest header will be
-// chosen.
-const minHeadResponses = 2
+// minHeadResponses returns the minimum number of peers that must agree on the
+// same header hash to accept it as head. Returns the peer count for 1-2 peers,
+// and 2/3 majority (rounded up) for 3+.
+func minHeadResponses(numPeers int) int {
+	if numPeers <= 2 {
+		return numPeers
+	}
+	return (numPeers*2 + 2) / 3 // ceil(2n/3)
+}
 
 // maxUntrustedHeadRequests is the number of head requests to be made to
 // the network in order to determine the network head.
@@ -96,7 +100,8 @@ func NewExchange[H header.Header[H]](
 }
 
 func (ex *Exchange[H]) Start(context.Context) error {
-	ex.ctx, ex.cancel = context.WithCancel(context.Background()) //nolint:gosec // G118 - cancel is called in Stop
+	//nolint:gosec // G118 - cancel is called in Stop
+	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
 	go ex.peerTracker.gc()
@@ -217,7 +222,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 				headers = append(headers, h)
 				hash := h.Hash().String()
 				counter[hash]++
-				if counter[hash] >= minHeadResponses {
+				if counter[hash] >= minHeadResponses(len(peers)) {
 					reqCancel()
 					ex.metrics.head(
 						ctx, time.Since(startTime), len(headers), headType, headStatusOk,
