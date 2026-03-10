@@ -362,8 +362,6 @@ func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	return headers[0], nil
 }
 
-const requestRetry = 3
-
 func (ex *Exchange[H]) performRequest(
 	ctx context.Context,
 	req *p2p_pb.HeaderRequest,
@@ -377,31 +375,44 @@ func (ex *Exchange[H]) performRequest(
 		return nil, errors.New("no trusted peers")
 	}
 
-	var reqErr error
+	// Fire requests to all trusted peers in parallel and return the first
+	// valid response. This avoids a single slow or broken peer blocking the
+	// entire request for its full timeout duration.
+	reqCtx, reqCancel := context.WithTimeout(ctx, ex.Params.RequestTimeout)
+	defer reqCancel()
 
-	for i := 0; i < requestRetry; i++ {
-		for _, peer := range trustedPeers {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-ex.ctx.Done():
-				return nil, ex.ctx.Err()
-			default:
-			}
+	type result struct {
+		headers []H
+		err     error
+	}
+	resultCh := make(chan result, len(trustedPeers))
 
-			reqCtx, cancel := context.WithTimeout(ctx, ex.Params.RequestTimeout)
-			h, err := ex.request(reqCtx, peer, req)
-			cancel()
+	for _, from := range trustedPeers {
+		go func(from peer.ID) {
+			h, err := ex.request(reqCtx, from, req)
 			if err != nil {
-				reqErr = err
 				log.Debugw("requesting header from trustedPeer failed",
-					"trustedPeer", peer, "err", err, "try", i)
-				continue
+					"trustedPeer", from, "err", err)
 			}
-			return h, err
+			resultCh <- result{h, err}
+		}(from)
+	}
+
+	var lastErr error
+	for range trustedPeers {
+		select {
+		case res := <-resultCh:
+			if res.err == nil {
+				return res.headers, nil
+			}
+			lastErr = res.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ex.ctx.Done():
+			return nil, ex.ctx.Err()
 		}
 	}
-	return nil, reqErr
+	return nil, lastErr
 }
 
 // request sends the HeaderRequest to a remote peer.
