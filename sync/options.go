@@ -42,7 +42,9 @@ type Parameters struct {
 	// period.
 	trustingPeriod time.Duration
 	// blockTime provides a reference point for the Syncer to determine
-	// whether its subjective head is outdated.
+	// whether its subjective head is outdated and to estimate tail height on first startup.
+	// It should be set to the upper bound of expected block production time to ensure
+	// the estimated tail stays within the pruning window despite block time variance.
 	// Keeping it private to disable serialization for it.
 	// default value is set to 0 so syncer will constantly request networking head.
 	blockTime time.Duration
@@ -98,8 +100,9 @@ func WithMetrics() Option {
 	}
 }
 
-// WithBlockTime is a functional option that configures the
-// `blockTime` parameter.
+// WithBlockTime is a functional option that configures the `blockTime` parameter.
+// It should be set to the upper bound of expected block production time to ensure
+// tail height estimation on first startup stays within the pruning window.
 func WithBlockTime(duration time.Duration) Option {
 	return func(p *Parameters) {
 		p.blockTime = duration
