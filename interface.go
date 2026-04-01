@@ -117,5 +117,9 @@ type Getter[H Header[H]] interface {
 // reporting it.
 type Head[H Header[H]] interface {
 	// Head returns the latest known header.
+	//
+	// If a TrustedHead option is provided and the returned header fails
+	// verification against it with a SoftFailure, implementations MUST return
+	// both the header and the *VerifyError so callers can attempt bifurcation.
 	Head(context.Context, ...HeadOption[H]) (H, error)
 }

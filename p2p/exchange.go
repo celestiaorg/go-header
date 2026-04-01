@@ -156,13 +156,18 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		}
 	}
 
+	type headResp struct {
+		h       H
+		softErr error
+	}
+
 	var (
 		zero      H
 		headerReq = &p2p_pb.HeaderRequest{
 			Data:   &p2p_pb.HeaderRequest_Origin{Origin: uint64(0)},
 			Amount: 1,
 		}
-		headerRespCh = make(chan H, len(peers))
+		headerRespCh = make(chan headResp, len(peers))
 	)
 	for _, from := range peers {
 		go func(from peer.ID) {
@@ -176,7 +181,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 			if err != nil {
 				newSpan.SetStatus(codes.Error, err.Error())
 				log.Errorw("head request to peer failed", "peer", from, "err", err)
-				headerRespCh <- zero
+				headerRespCh <- headResp{h: zero}
 				return
 			}
 			// if tracked (untrusted) peers were requested, verify head
@@ -188,7 +193,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 						log.Debugw("received head from tracked peer that soft-failed verification",
 							"tracked peer", from, "err", err)
 						newSpan.SetStatus(codes.Error, err.Error())
-						headerRespCh <- headers[0]
+						headerRespCh <- headResp{h: headers[0], softErr: err}
 						return
 					}
 					logF := log.Warnw
@@ -198,13 +203,13 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 					logF("verifying head received from tracked peer", "tracked peer", from,
 						"height", headers[0].Height(), "err", err)
 					newSpan.SetStatus(codes.Error, err.Error())
-					headerRespCh <- zero
+					headerRespCh <- headResp{h: zero}
 					return
 				}
 			}
 			newSpan.SetStatus(codes.Ok, "")
 			// request ensures that the result slice will have at least one Header
-			headerRespCh <- headers[0]
+			headerRespCh <- headResp{h: headers[0]}
 		}(from)
 	}
 
@@ -215,12 +220,16 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 
 	headers := make([]H, 0, len(peers))
 	counter := make(map[string]int)
+	softErrs := make(map[string]error)
 	for range peers {
 		select {
-		case h := <-headerRespCh:
-			if !h.IsZero() {
-				headers = append(headers, h)
-				hash := h.Hash().String()
+		case res := <-headerRespCh:
+			if !res.h.IsZero() {
+				headers = append(headers, res.h)
+				hash := res.h.Hash().String()
+				if res.softErr != nil {
+					softErrs[hash] = res.softErr
+				}
 				counter[hash]++
 				if counter[hash] >= minHeadResponses(len(peers)) {
 					reqCancel()
@@ -228,7 +237,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 						ctx, time.Since(startTime), len(headers), headType, headStatusOk,
 					)
 					span.SetStatus(codes.Ok, "")
-					return h, nil
+					return res.h, softErrs[hash]
 				}
 			}
 		case <-ctx.Done():
@@ -258,7 +267,7 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	log.Debug("could not find head confirmed by two peers, returning highest")
 	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
 	span.SetStatus(codes.Ok, "")
-	return headers[0], nil
+	return headers[0], softErrs[headers[0].Hash().String()]
 }
 
 // GetByHeight performs a request for the Header at the given
