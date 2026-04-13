@@ -130,7 +130,7 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 	switch {
 	case from.Height() < to.Height():
 		log.Infof("move tail up from %d to %d, pruning the diff...", from.Height(), to.Height())
-		err := s.store.DeleteTo(ctx, to.Height())
+		err := s.store.DeleteRange(ctx, from.Height(), to.Height())
 		if err != nil {
 			return fmt.Errorf(
 				"deleting headers up to newly configured tail(%d): %w",

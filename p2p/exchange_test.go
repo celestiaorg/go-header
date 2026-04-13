@@ -149,13 +149,123 @@ func TestExchange_RequestHead_UnresponsivePeer(t *testing.T) {
 	} // simulates peer that does not respond
 	_ = server(ctx, t, hosts[2], badStore)
 
-	ctx, cancel = context.WithTimeout(ctx, time.Millisecond*500)
+	ctx, cancel = context.WithTimeout(ctx, time.Second*2)
 	t.Cleanup(cancel)
 
 	// should still succeed with one responder
 	head, err := client.Head(ctx)
 	assert.NoError(t, err)
 	assert.NotNil(t, head)
+}
+
+// TestExchange_PerformRequest_PeerTimeout verifies that performRequest applies a
+// per-peer timeout so that a single slow trusted peer does not consume the entire
+// context deadline. The exchange is configured with two trusted peers where the
+// first is slow (delays longer than RequestTimeout) and the second serves the
+// requested header. The test asserts the request succeeds without waiting for the
+// slow peer's full delay.
+func TestExchange_PerformRequest_PeerTimeout(t *testing.T) {
+	// Use real transports (blankhost + swarm) because mocknet does not support deadlines.
+	swarm0 := swarm.GenSwarm(t)
+	host0 := blankhost.NewBlankHost(swarm0)
+	swarm1 := swarm.GenSwarm(t)
+	host1 := blankhost.NewBlankHost(swarm1)
+	swarm2 := swarm.GenSwarm(t)
+	host2 := blankhost.NewBlankHost(swarm2)
+	dial := func(a, b network.Network) {
+		swarm.DivulgeAddresses(b, a)
+		if _, err := a.DialPeer(context.Background(), b.LocalPeer()); err != nil {
+			t.Fatalf("Failed to dial: %s", err)
+		}
+	}
+	dial(swarm0, swarm1)
+	dial(swarm0, swarm2)
+
+	slowDelay := 5 * time.Second
+	perPeerTimeout := 500 * time.Millisecond
+
+	// host1 = slow peer: server whose store blocks in HasAt for slowDelay
+	slowServer, err := NewExchangeServer[*headertest.DummyHeader](
+		host1,
+		&timedOutStore{timeout: slowDelay},
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, slowServer.Start(context.Background()))
+	t.Cleanup(func() { slowServer.Stop(context.Background()) }) //nolint:errcheck
+
+	// host2 = good peer: server with real headers
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	goodServer, err := NewExchangeServer[*headertest.DummyHeader](
+		host2,
+		goodStore,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, goodServer.Start(context.Background()))
+	t.Cleanup(func() { goodServer.Stop(context.Background()) }) //nolint:errcheck
+
+	// Create exchange with both peers as trusted. Order: slow peer first, good peer second.
+	connGater, err := conngater.NewBasicConnectionGater(sync.MutexWrap(datastore.NewMapDatastore()))
+	require.NoError(t, err)
+	exchg, err := NewExchange[*headertest.DummyHeader](
+		host0,
+		[]peer.ID{host1.ID(), host2.ID()},
+		connGater,
+		WithNetworkID[ClientParameters](networkID),
+		WithChainID(networkID),
+		WithRequestTimeout[ClientParameters](perPeerTimeout),
+	)
+	require.NoError(t, err)
+	exchg.ctx, exchg.cancel = context.WithCancel(context.Background())
+	t.Cleanup(exchg.cancel)
+
+	// Fix trusted peer order so slow peer is always tried first.
+	exchg.trustedPeers = func() peer.IDSlice {
+		return peer.IDSlice{host1.ID(), host2.ID()}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	start := time.Now()
+	h, err := exchg.GetByHeight(ctx, 3)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Equal(t, goodStore.Headers[3].Height(), h.Height())
+	assert.Equal(t, goodStore.Headers[3].Hash(), h.Hash())
+	// The request must complete well before the slow peer's delay.
+	assert.Less(t, elapsed, slowDelay,
+		"performRequest should not wait for the slow peer's full delay")
+}
+
+func TestExchange_RequestHead_EarlyReturn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	hosts := quicHosts(t, 4)
+	trustedPeers := []peer.ID{hosts[1].ID(), hosts[2].ID(), hosts[3].ID()}
+	exchg := client(ctx, t, hosts[0], trustedPeers)
+
+	// Two fast servers serving the same store (identical headers → same hashes)
+	goodStore := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	_ = server(ctx, t, hosts[1], goodStore)
+	_ = server(ctx, t, hosts[2], goodStore)
+
+	// One slow server that takes 5 seconds to respond
+	slowDelay := 5 * time.Second
+	_ = server(ctx, t, hosts[3], &timedOutStore{timeout: slowDelay})
+
+	start := time.Now()
+	head, err := exchg.Head(ctx)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, head)
+	assert.Equal(t, goodStore.HeadHeight, head.Height())
+	assert.Less(t, elapsed, slowDelay,
+		"Head() should return early once 2 peers agree, without waiting for the slow peer")
 }
 
 func TestExchange_RequestHeader(t *testing.T) {
@@ -349,71 +459,6 @@ func TestExchange_RequestByHash(t *testing.T) {
 
 	assert.Equal(t, store.Headers[reqHeight].Height(), eh.Height())
 	assert.Equal(t, store.Headers[reqHeight].Hash(), eh.Hash())
-}
-
-func Test_bestHead(t *testing.T) {
-	gen := func() []*headertest.DummyHeader {
-		suite := headertest.NewTestSuite(t)
-		res := make([]*headertest.DummyHeader, 0)
-		for i := 0; i < 3; i++ {
-			res = append(res, suite.NextHeader())
-		}
-		return res
-	}
-	testCases := []struct {
-		precondition   func() []*headertest.DummyHeader
-		expectedHeight uint64
-	}{
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 1
-			headerHeight[1]=2 -> 1
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[2]
-		*/
-		{
-			precondition:   gen,
-			expectedHeight: 3,
-		},
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 2
-			headerHeight[1]=2 -> 1
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[0]
-		*/
-		{
-			precondition: func() []*headertest.DummyHeader {
-				res := gen()
-				res = append(res, res[0])
-				return res
-			},
-			expectedHeight: 1,
-		},
-		/*
-			Height -> Amount
-			headerHeight[0]=1 -> 3
-			headerHeight[1]=2 -> 2
-			headerHeight[2]=3 -> 1
-			result -> headerHeight[1]
-		*/
-		{
-			precondition: func() []*headertest.DummyHeader {
-				res := gen()
-				res = append(res, res[0])
-				res = append(res, res[0])
-				res = append(res, res[1])
-				return res
-			},
-			expectedHeight: 2,
-		},
-	}
-	for _, tt := range testCases {
-		res := tt.precondition()
-		header, err := bestHead(res)
-		require.NoError(t, err)
-		require.True(t, header.Height() == tt.expectedHeight)
-	}
 }
 
 // TestExchange_RequestByHashFails tests that the Exchange instance can

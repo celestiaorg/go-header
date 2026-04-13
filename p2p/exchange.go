@@ -30,11 +30,15 @@ var (
 	tracerClient = otel.Tracer("header/p2p-client")
 )
 
-// minHeadResponses is the minimum number of headers of the same height
-// received from peers to determine the network head. If all trusted peers
-// will return headers with non-equal height, then the highest header will be
-// chosen.
-const minHeadResponses = 2
+// minHeadResponses returns the minimum number of peers that must agree on the
+// same header hash to accept it as head. Returns the peer count for 1-2 peers,
+// and 2/3 majority (rounded up) for 3+.
+func minHeadResponses(numPeers int) int {
+	if numPeers <= 2 {
+		return numPeers
+	}
+	return (numPeers*2 + 2) / 3 // ceil(2n/3)
+}
 
 // maxUntrustedHeadRequests is the number of head requests to be made to
 // the network in order to determine the network head.
@@ -96,6 +100,7 @@ func NewExchange[H header.Header[H]](
 }
 
 func (ex *Exchange[H]) Start(context.Context) error {
+	//nolint:gosec // G118 - cancel is called in Stop
 	ex.ctx, ex.cancel = context.WithCancel(context.Background())
 	log.Infow("client: starting client", "protocol ID", ex.protocolID)
 
@@ -125,18 +130,11 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	ctx, span := tracerClient.Start(ctx, "head")
 	defer span.End()
 
-	reqCtx := ctx
 	startTime := time.Now()
-	if deadline, ok := ctx.Deadline(); ok {
-		// allocate 90% of caller's set deadline for requests
-		// and give leftover to determine the bestHead from gathered responses
-		// this avoids DeadlineExceeded error when any of the peers are unresponsive
-
-		sub := deadline.Sub(startTime) * 9 / 10
-		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithDeadline(ctx, startTime.Add(sub))
-		defer cancel()
-	}
+	// wrap ctx with cancel so we can abort outstanding peer requests early
+	// once enough peers agree on the same head (consensus reached)
+	reqCtx, reqCancel := context.WithCancel(ctx)
+	defer reqCancel()
 
 	reqParams := header.HeadParams[H]{}
 	for _, opt := range opts {
@@ -216,11 +214,22 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	}
 
 	headers := make([]H, 0, len(peers))
+	counter := make(map[string]int)
 	for range peers {
 		select {
 		case h := <-headerRespCh:
 			if !h.IsZero() {
 				headers = append(headers, h)
+				hash := h.Hash().String()
+				counter[hash]++
+				if counter[hash] >= minHeadResponses(len(peers)) {
+					reqCancel()
+					ex.metrics.head(
+						ctx, time.Since(startTime), len(headers), headType, headStatusOk,
+					)
+					span.SetStatus(codes.Ok, "")
+					return h, nil
+				}
 			}
 		case <-ctx.Done():
 			status := headStatusCanceled
@@ -237,16 +246,19 @@ func (ex *Exchange[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		}
 	}
 
-	head, err := bestHead[H](headers)
-	if err != nil {
-		ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusNoHeaders)
+	// no two peers agreed on the same head, return the highest
+	if len(headers) == 0 {
+		ex.metrics.head(ctx, time.Since(startTime), 0, headType, headStatusNoHeaders)
 		span.SetStatus(codes.Error, headStatusNoHeaders)
-		return zero, err
+		return zero, header.ErrNotFound
 	}
-
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Height() > headers[j].Height()
+	})
+	log.Debug("could not find head confirmed by two peers, returning highest")
 	ex.metrics.head(ctx, time.Since(startTime), len(headers), headType, headStatusOk)
 	span.SetStatus(codes.Ok, "")
-	return head, nil
+	return headers[0], nil
 }
 
 // GetByHeight performs a request for the Header at the given
@@ -350,8 +362,6 @@ func (ex *Exchange[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	return headers[0], nil
 }
 
-const requestRetry = 3
-
 func (ex *Exchange[H]) performRequest(
 	ctx context.Context,
 	req *p2p_pb.HeaderRequest,
@@ -365,29 +375,44 @@ func (ex *Exchange[H]) performRequest(
 		return nil, errors.New("no trusted peers")
 	}
 
-	var reqErr error
+	// Fire requests to all trusted peers in parallel and return the first
+	// valid response. This avoids a single slow or broken peer blocking the
+	// entire request for its full timeout duration.
+	reqCtx, reqCancel := context.WithTimeout(ctx, ex.Params.RequestTimeout)
+	defer reqCancel()
 
-	for i := 0; i < requestRetry; i++ {
-		for _, peer := range trustedPeers {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-ex.ctx.Done():
-				return nil, ex.ctx.Err()
-			default:
-			}
+	type result struct {
+		headers []H
+		err     error
+	}
+	resultCh := make(chan result, len(trustedPeers))
 
-			h, err := ex.request(ctx, peer, req)
+	for _, from := range trustedPeers {
+		go func(from peer.ID) {
+			h, err := ex.request(reqCtx, from, req)
 			if err != nil {
-				reqErr = err
 				log.Debugw("requesting header from trustedPeer failed",
-					"trustedPeer", peer, "err", err, "try", i)
-				continue
+					"trustedPeer", from, "err", err)
 			}
-			return h, err
+			resultCh <- result{h, err}
+		}(from)
+	}
+
+	var lastErr error
+	for range trustedPeers {
+		select {
+		case res := <-resultCh:
+			if res.err == nil {
+				return res.headers, nil
+			}
+			lastErr = res.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ex.ctx.Done():
+			return nil, ex.ctx.Err()
 		}
 	}
-	return nil, reqErr
+	return nil, lastErr
 }
 
 // request sends the HeaderRequest to a remote peer.
@@ -431,37 +456,4 @@ func shufflePeers(peers peer.IDSlice) peer.IDSlice {
 		func(i, j int) { tpeers[i], tpeers[j] = tpeers[j], tpeers[i] },
 	)
 	return tpeers
-}
-
-// bestHead chooses Header that matches the conditions:
-// * should have max height among received;
-// * should be received at least from 2 peers;
-// If neither condition is met, then latest Header will be returned (header of the highest
-// height).
-func bestHead[H header.Header[H]](result []H) (H, error) {
-	if len(result) == 0 {
-		var zero H
-		return zero, header.ErrNotFound
-	}
-	counter := make(map[string]int)
-	// go through all of Headers and count the number of headers with a specific hash
-	for _, res := range result {
-		counter[res.Hash().String()]++
-	}
-	// sort results in a decreasing order
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Height() > result[j].Height()
-	})
-
-	// try to find Header with the maximum height that was received at least from 2 peers
-	for _, res := range result {
-		if counter[res.Hash().String()] >= minHeadResponses {
-			return res, nil
-		}
-	}
-	log.Debug(
-		"could not find latest header received from at least two peers, returning header with the max height",
-	)
-	// otherwise return header with the max height
-	return result[0], nil
 }

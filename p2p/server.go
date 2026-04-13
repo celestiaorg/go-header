@@ -72,6 +72,7 @@ func NewExchangeServer[H header.Header[H]](
 
 // Start sets the stream handler for inbound header-related requests.
 func (serv *ExchangeServer[H]) Start(context.Context) error {
+	//nolint:gosec // G118 - cancel is called in Stop
 	serv.ctx, serv.cancel = context.WithCancel(context.Background())
 	log.Infow("server: listening for inbound header requests", "protocol ID", serv.protocolID)
 
@@ -115,7 +116,11 @@ func (serv *ExchangeServer[H]) requestHandler(stream network.Stream) {
 	case *p2p_pb.HeaderRequest_Hash:
 		headers, err = serv.handleRequestByHash(ctx, pbreq.GetHash())
 	case *p2p_pb.HeaderRequest_Origin:
-		headers, err = serv.handleRangeRequest(ctx, pbreq.GetOrigin(), pbreq.GetOrigin()+pbreq.Amount)
+		headers, err = serv.handleRangeRequest(
+			ctx,
+			pbreq.GetOrigin(),
+			pbreq.GetOrigin()+pbreq.Amount,
+		)
 	default:
 		log.Warn("server: invalid data type received")
 		stream.Reset() //nolint:errcheck

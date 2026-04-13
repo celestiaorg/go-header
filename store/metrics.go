@@ -81,7 +81,7 @@ func (m *metrics) newHead(height uint64) {
 
 func (m *metrics) newTail(height uint64) {
 	m.observe(context.Background(), func(context.Context) {
-		m.headHeight.Store(height)
+		m.tailHeight.Store(height)
 	})
 }
 
