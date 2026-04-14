@@ -125,9 +125,11 @@ func TestExchange_RequestHead_SoftFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// now use that trusted head to request a new head from the exchange
-	// from the tracked peer
+	// from the tracked peer — expect the header back alongside a SoftFailure error
 	softFailHead, err := exchg.Head(ctx, header.WithTrustedHead[*headertest.DummyHeader](head))
-	require.NoError(t, err)
+	var verErr *header.VerifyError
+	require.ErrorAs(t, err, &verErr)
+	require.True(t, verErr.SoftFailure)
 	assert.Equal(t, trackedStore.HeadHeight, softFailHead.Height())
 }
 
