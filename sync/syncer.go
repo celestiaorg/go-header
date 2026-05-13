@@ -331,6 +331,20 @@ func (s *Syncer[H]) processHeaders(
 			}
 		}
 
+		// Defense-in-depth: re-verify pending headers against the immediately
+		// preceding (just-stored) header before appending. Pending headers were
+		// admitted via incomingNetworkHead, which verifies against the subjective
+		// head and may rely on bifurcation for non-adjacent verification. That
+		// does not guarantee each pending header is valid against its direct
+		// predecessor, so we verify the adjacent chain here.
+		if _, err := header.VerifyRange(fromHead, headers); err != nil {
+			log.Errorw("verifying pending headers against predecessor",
+				"from_height", fromHead.Height(),
+				"from_hash", fromHead.Hash(),
+				"err", err)
+			return err
+		}
+
 		// apply cached headers
 		if err := s.store.Append(ctx, headers...); err != nil {
 			return err

@@ -286,6 +286,50 @@ func TestSyncer_FindHeadersReturnsCorrectRange(t *testing.T) {
 	assert.Equal(t, head.Height(), uint64(21))
 }
 
+// TestSyncer_ProcessHeadersRejectsInvalidPendingChain ensures that processHeaders
+// re-verifies pending headers against their immediately preceding (stored) header
+// before appending them to the store. A pending header that fails verification
+// against its predecessor must not be stored and processHeaders must return an error.
+func TestSyncer_ProcessHeadersRejectsInvalidPendingChain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := newTestStore(t, ctx, head)
+	syncer, err := NewSyncer(
+		local.NewExchange(remoteStore),
+		localStore,
+		headertest.NewDummySubscriber(),
+	)
+	require.NoError(t, err)
+
+	// build a malicious header at head.Height()+1 that should fail verification
+	// against the stored head. The header's height is adjacent so the store's
+	// adjacency-by-height check passes, but its Verify against head must fail.
+	malicious := suite.NextHeader()
+	malicious.VerifyFailure = true
+
+	// inject the malicious header into the pending cache directly to simulate
+	// the case where a header bypassed upstream validation.
+	syncer.pending.Add(malicious)
+
+	// processHeaders must reject the malicious header
+	err = syncer.processHeaders(ctx, head, malicious.Height())
+	require.Error(t, err)
+
+	// the malicious header must NOT be stored
+	require.False(t, localStore.HasAt(ctx, malicious.Height()),
+		"malicious header was stored despite failing verification")
+
+	// store head must remain the initial head
+	storeHead, err := localStore.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, head.Height(), storeHead.Height())
+}
+
 func TestSyncerIncomingDuplicate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
