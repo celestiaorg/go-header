@@ -345,32 +345,48 @@ func (s *Syncer[H]) processHeaders(
 }
 
 // requestHeaders requests headers from the network -> (fromHeader.Height : to].
+//
+// The getter may return a contiguous prefix shorter than requested (see
+// Getter.GetRangeByHeight). In that case we advance fromHead by the actual
+// number of headers received and continue requesting the remainder in the
+// next iteration.
 func (s *Syncer[H]) requestHeaders(
 	ctx context.Context,
 	fromHead H,
 	to uint64,
 ) error {
-	amount := to - fromHead.Height()
-	// start requesting headers until amount remaining will be 0
-	for amount > 0 {
+	for fromHead.Height() < to {
+		amount := to - fromHead.Height()
 		size := header.MaxRangeRequestSize
 		if amount < size {
 			size = amount
 		}
 
-		to := fromHead.Height() + size + 1
+		reqTo := fromHead.Height() + size + 1
 		start := time.Now()
-		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, to)
+		headers, err := s.getter.GetRangeByHeight(ctx, fromHead, reqTo)
 		s.metrics.recordRangeRequest(ctx, time.Since(start), size)
 		if err != nil {
 			return err
+		}
+		if len(headers) == 0 {
+			return fmt.Errorf("syncer: getter returned empty range for (%d:%d)",
+				fromHead.Height(), reqTo)
+		}
+		if headers[0].Height() != fromHead.Height()+1 {
+			return fmt.Errorf("syncer: getter returned non-adjacent range, expected first header at %d, got %d",
+				fromHead.Height()+1, headers[0].Height())
 		}
 
 		if err := s.store.Append(ctx, headers...); err != nil {
 			return err
 		}
 
-		amount -= size // size == len(headers)
+		if uint64(len(headers)) < size {
+			log.Debugw("partial range received, will continue from last received header",
+				"requested", size, "received", len(headers),
+				"from", fromHead.Height(), "to", reqTo)
+		}
 		fromHead = headers[len(headers)-1]
 	}
 	return nil
