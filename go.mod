@@ -18,7 +18,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.41.0
 	go.opentelemetry.io/otel/trace v1.41.0
 	go.uber.org/zap v1.27.1
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 )
 
 require (
