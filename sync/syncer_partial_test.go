@@ -14,19 +14,13 @@ import (
 	"github.com/celestiaorg/go-header/local"
 )
 
-// partialGetter wraps an underlying Getter and truncates GetRangeByHeight
-// responses to simulate a peer that returns a contiguous prefix of the
-// requested range with a nil error.
+// partialGetter truncates GetRangeByHeight responses to simulate a peer that
+// returns a contiguous prefix of the requested range.
 type partialGetter[H header.Header[H]] struct {
 	header.Getter[H]
-	// truncateTo limits the number of headers returned per call.
-	// If 0, returns the full range. If headers returned exceed truncateTo,
-	// only the first truncateTo are returned.
 	truncateTo int
-	// emptyOnce, if true, makes the first call return an empty slice with
-	// nil error (a contract violation we want to test the syncer rejects).
-	emptyOnce atomic.Bool
-	calls     atomic.Int32
+	emptyOnce  atomic.Bool
+	calls      atomic.Int32
 }
 
 func (p *partialGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error) {
@@ -46,10 +40,8 @@ func (p *partialGetter[H]) GetRangeByHeight(ctx context.Context, from H, to uint
 	return headers, nil
 }
 
-// TestSyncer_PartialRangeTail simulates a peer that consistently returns
-// fewer headers than requested (e.g. peer is itself catching up).
-// The syncer must keep requesting the remainder until it reaches the target,
-// without skipping any headers.
+// TestSyncer_PartialRangeTail: a getter that always returns fewer headers than
+// requested must still let the syncer reach the target without skipping any.
 func TestSyncer_PartialRangeTail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -91,9 +83,8 @@ func TestSyncer_PartialRangeTail(t *testing.T) {
 	assert.GreaterOrEqual(t, int(getter.calls.Load()), minCalls)
 }
 
-// TestSyncer_PartialRangeMidRequest checks that when the partial happens
-// mid-way (after several full-size responses), the syncer still advances
-// correctly and reaches the target without skipping headers.
+// TestSyncer_PartialRangeMidRequest: a partial response mid-way (after several
+// full-size ones) must not make the syncer skip headers.
 func TestSyncer_PartialRangeMidRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -109,7 +100,11 @@ func TestSyncer_PartialRangeMidRequest(t *testing.T) {
 	// truncate only the second batch to a small prefix
 	var calls atomic.Int32
 	getter := wrapGetterFunc(local.NewExchange(remoteStore),
-		func(ctx context.Context, from *headertest.DummyHeader, to uint64) ([]*headertest.DummyHeader, error) {
+		func(
+			ctx context.Context,
+			from *headertest.DummyHeader,
+			to uint64,
+		) ([]*headertest.DummyHeader, error) {
 			n := calls.Add(1)
 			headers, err := local.NewExchange(remoteStore).GetRangeByHeight(ctx, from, to)
 			if err != nil {
@@ -140,9 +135,8 @@ func TestSyncer_PartialRangeMidRequest(t *testing.T) {
 	assert.Equal(t, head.Height()+uint64(total), gotHead.Height())
 }
 
-// TestSyncer_PartialRangeEmptyReturnsError checks that a getter which
-// violates the contract by returning an empty slice with nil error is
-// rejected with an error, rather than panicking.
+// TestSyncer_PartialRangeEmptyReturnsError: an empty slice with a nil error
+// (contract violation) must be rejected, not panic.
 func TestSyncer_PartialRangeEmptyReturnsError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -173,9 +167,8 @@ func TestSyncer_PartialRangeEmptyReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "empty range")
 }
 
-// TestSyncer_PartialRangeNonAdjacentReturnsError checks that a getter which
-// violates the contract by returning headers that don't start at
-// fromHead.Height()+1 is rejected with an error.
+// TestSyncer_PartialRangeNonAdjacentReturnsError: a range not starting at
+// fromHead.Height()+1 (contract violation) must be rejected.
 func TestSyncer_PartialRangeNonAdjacentReturnsError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
@@ -187,7 +180,11 @@ func TestSyncer_PartialRangeNonAdjacentReturnsError(t *testing.T) {
 	require.NoError(t, remoteStore.Append(ctx, suite.GenDummyHeaders(10)...))
 
 	getter := wrapGetterFunc(local.NewExchange(remoteStore),
-		func(ctx context.Context, from *headertest.DummyHeader, to uint64) ([]*headertest.DummyHeader, error) {
+		func(
+			ctx context.Context,
+			from *headertest.DummyHeader,
+			to uint64,
+		) ([]*headertest.DummyHeader, error) {
 			headers, err := local.NewExchange(remoteStore).GetRangeByHeight(ctx, from, to)
 			if err != nil {
 				return nil, err
@@ -215,8 +212,7 @@ func TestSyncer_PartialRangeNonAdjacentReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-adjacent")
 }
 
-// getterFunc adapts a function into a header.Getter by delegating Head/Get/GetByHeight
-// to an underlying getter while overriding GetRangeByHeight.
+// getterFunc overrides GetRangeByHeight on an underlying Getter with fn.
 type getterFunc[H header.Header[H]] struct {
 	header.Getter[H]
 	fn func(ctx context.Context, from H, to uint64) ([]H, error)

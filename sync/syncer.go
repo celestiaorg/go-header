@@ -345,11 +345,8 @@ func (s *Syncer[H]) processHeaders(
 }
 
 // requestHeaders requests headers from the network -> (fromHeader.Height : to].
-//
-// The getter may return a contiguous prefix shorter than requested (see
-// Getter.GetRangeByHeight). In that case we advance fromHead by the actual
-// number of headers received and continue requesting the remainder in the
-// next iteration.
+// The getter may return a contiguous prefix shorter than requested, in which
+// case the remainder is requested in the next iteration.
 func (s *Syncer[H]) requestHeaders(
 	ctx context.Context,
 	fromHead H,
@@ -374,7 +371,7 @@ func (s *Syncer[H]) requestHeaders(
 				fromHead.Height(), reqTo)
 		}
 		if headers[0].Height() != fromHead.Height()+1 {
-			return fmt.Errorf("syncer: getter returned non-adjacent range, expected first header at %d, got %d",
+			return fmt.Errorf("syncer: getter returned non-adjacent range: want %d, got %d",
 				fromHead.Height()+1, headers[0].Height())
 		}
 
@@ -383,9 +380,8 @@ func (s *Syncer[H]) requestHeaders(
 		}
 
 		if uint64(len(headers)) < size {
-			log.Debugw("partial range received, will continue from last received header",
-				"requested", size, "received", len(headers),
-				"from", fromHead.Height(), "to", reqTo)
+			log.Debugw("partial range received, continuing from last received header",
+				"requested up to", reqTo, "received", headers[len(headers)-1].Height())
 		}
 		fromHead = headers[len(headers)-1]
 	}
