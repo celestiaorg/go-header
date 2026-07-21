@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 var meter = otel.Meter("header/sync")
 
 type metrics struct {
+	mu        sync.Mutex
 	syncerReg metric.Registration
 
 	trustedPeersOutOfSync metric.Int64Counter
@@ -103,15 +105,33 @@ func newMetrics() (*metrics, error) {
 		subjectiveHeadInst:    subjectiveHead,
 	}
 
-	m.syncerReg, err = meter.RegisterCallback(
-		m.observeMetrics,
-		m.subjectiveHeadInst,
-	)
-	if err != nil {
+	if err := m.Start(); err != nil {
 		return nil, err
 	}
 
 	return m, nil
+}
+
+func (m *metrics) Start() error {
+	if m == nil {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.syncerReg != nil {
+		return nil
+	}
+
+	reg, err := meter.RegisterCallback(
+		m.observeMetrics,
+		m.subjectiveHeadInst,
+	)
+	if err != nil {
+		return err
+	}
+	m.syncerReg = reg
+	return nil
 }
 
 func (m *metrics) observeMetrics(_ context.Context, obs metric.Observer) error {
@@ -200,5 +220,14 @@ func (m *metrics) Close() error {
 	if m == nil {
 		return nil
 	}
-	return m.syncerReg.Unregister()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.syncerReg == nil {
+		return nil
+	}
+
+	err := m.syncerReg.Unregister()
+	m.syncerReg = nil
+	return err
 }
