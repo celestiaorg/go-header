@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -41,6 +40,13 @@ type Syncer[H header.Header[H]] struct {
 	stateLk sync.RWMutex
 	state   State
 
+	// lifecycleMu protects lifecycleState and run.
+	lifecycleMu       sync.Mutex
+	lifecycleState    lifecycleState
+	run               *syncRun
+	verifierMu        sync.Mutex
+	verifierInstalled bool
+
 	// signals to start syncing
 	triggerSync chan struct{}
 	// pending keeps ranges of valid new network headers awaiting to be appended to store
@@ -49,10 +55,6 @@ type Syncer[H header.Header[H]] struct {
 	incomingMu sync.Mutex
 	// tailMu prevents concurrent tail movements
 	tailMu sync.Mutex
-
-	// controls lifecycle for syncLoop
-	ctx    context.Context
-	cancel context.CancelFunc
 
 	Params *Parameters
 
@@ -94,66 +96,6 @@ func NewSyncer[H header.Header[H]](
 		Params:      &params,
 		started:     make(chan struct{}),
 	}, nil
-}
-
-// Start starts the syncing routine.
-func (s *Syncer[H]) Start(ctx context.Context) error {
-	//nolint:gosec // G118 - cancel is called in Stop
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-
-	// register validator for header subscriptions
-	// syncer does not subscribe itself and syncs headers together with validation
-	err := s.sub.SetVerifier(func(ctx context.Context, h H) error {
-		// HACK(@Wondertan):
-		//  During subjective init we request the Head and then the Tail.
-		//  However, we store them in the opposite order, s.t before Tail arrives
-		//  there is a window where Head awaits Tail without being stored.
-		//  During this window, headersub may deliver new network head. As it can't
-		//  see the awaiting Head, it triggers duplicate subjective initialization
-		//  which may frontrun Tail, violating the storing order and corrupting the store.
-		//  This hack basically stalls headersub until Syncer has fully started, but it should
-		//  not be this way.
-		//
-		//  This will be fixed with bsync as Syncer will learn how to verify Tail from Head backwards,
-		//  allowing Head to be stored first and then the Tail.
-		select {
-		case <-s.started:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		if err := s.incomingNetworkHead(ctx, h); err != nil {
-			return err
-		}
-		// lazily trigger pruning by getting subjective tail
-		if _, err := s.subjectiveTail(ctx, h); err != nil {
-			log.Errorw("subjective tail", "head", h.Height(), "err", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	// gets the latest head and kicks off syncing if necessary
-	_, err = s.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("error getting latest head during Start: %w", err)
-	}
-	// start syncLoop only if Start is errorless
-	go s.syncLoop()
-	select {
-	case <-s.started:
-	default:
-		close(s.started)
-	}
-	return nil
-}
-
-// Stop stops Syncer.
-func (s *Syncer[H]) Stop(context.Context) error {
-	s.cancel()
-	return s.metrics.Close()
 }
 
 // SyncWait blocks until ongoing sync is done.
@@ -200,7 +142,7 @@ func (s *Syncer[H]) State() State {
 	state := s.state
 	s.stateLk.RUnlock()
 
-	head, err := s.store.Head(s.ctx)
+	head, err := s.store.Head(context.Background())
 	if err == nil {
 		state.Height = head.Height()
 	} else if state.Error == "" {
@@ -220,12 +162,12 @@ func (s *Syncer[H]) wantSync() {
 }
 
 // syncLoop controls syncing process.
-func (s *Syncer[H]) syncLoop() {
+func (s *Syncer[H]) syncLoop(runCtx context.Context) {
 	for {
 		select {
 		case <-s.triggerSync:
-			s.sync(s.ctx)
-		case <-s.ctx.Done():
+			s.sync(runCtx)
+		case <-runCtx.Done():
 			return
 		}
 	}
