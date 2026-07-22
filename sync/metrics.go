@@ -30,6 +30,8 @@ type metrics struct {
 	subjectiveHead     atomic.Uint64
 
 	requestRangeTimeHist metric.Float64Histogram
+
+	headLagHist metric.Float64Histogram
 }
 
 func newMetrics() (*metrics, error) {
@@ -93,6 +95,18 @@ func newMetrics() (*metrics, error) {
 		return nil, err
 	}
 
+	headLagHist, err := meter.Float64Histogram(
+		"hdr_sync_subjective_head_lag_seconds",
+		metric.WithDescription(
+			"seconds between a header's Time() (BFT median timestamp of the "+
+				"previous block's precommits) and the moment the syncer sets it "+
+				"as the new subjective head",
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	m := &metrics{
 		trustedPeersOutOfSync: trustedPeersOutOfSync,
 		outdatedHeader:        outdatedHeader,
@@ -101,6 +115,7 @@ func newMetrics() (*metrics, error) {
 		failedBifurcations:    failedBifurcations,
 		requestRangeTimeHist:  requestRangeTimeHist,
 		subjectiveHeadInst:    subjectiveHead,
+		headLagHist:           headLagHist,
 	}
 
 	m.syncerReg, err = meter.RegisterCallback(
@@ -141,9 +156,10 @@ func (m *metrics) subjectiveInitialization(ctx context.Context) {
 	})
 }
 
-func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64) {
-	m.observe(ctx, func(_ context.Context) {
+func (m *metrics) newSubjectiveHead(ctx context.Context, height uint64, timestamp time.Time) {
+	m.observe(ctx, func(ctx context.Context) {
 		m.subjectiveHead.Store(height)
+		m.headLagHist.Record(ctx, time.Since(timestamp).Seconds())
 	})
 }
 
