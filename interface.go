@@ -109,6 +109,10 @@ type Getter[H Header[H]] interface {
 	// GetRangeByHeight requests the header range from the provided Header and
 	// verifies that the returned headers are adjacent to each other.
 	// Expected to return the range [from.Height()+1:to).
+	//
+	// Implementations MAY return a non-empty contiguous prefix of the range
+	// (starting at from.Height()+1, no gaps) with a nil error, otherwise they
+	// MUST return an error rather than an empty or sparse slice.
 	GetRangeByHeight(ctx context.Context, from H, to uint64) ([]H, error)
 }
 
