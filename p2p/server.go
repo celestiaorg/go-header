@@ -253,13 +253,13 @@ func (serv *ExchangeServer[H]) handleRangeRequest(
 			serv.metrics.rangeServed(ctx, time.Since(startTime), to-from, true)
 			return nil, header.ErrNotFound
 		}
+		// change `to` height to return a partial range
+		to = min(to, head.Height()+1)
 
 		log.Debugw("server: serving partial range",
 			"prevMaxHeight", to,
 			"newMaxHeight", head.Height()+1,
 		)
-		// change `to` height to return a partial range
-		to = min(to, head.Height()+1)
 	}
 
 	headersByRange, err := serv.store.GetRange(ctx, from, to)
