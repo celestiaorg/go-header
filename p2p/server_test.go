@@ -129,6 +129,51 @@ func TestExchangeServer_Timeout(t *testing.T) {
 	}
 }
 
+// TestExchangeServer_partialRangeNotExpanded ensures that a request for a range
+// below the tail of a non-archival node does not expand `to` up to the head.
+// Regression test: requesting [1;2) against a node with a very high head used to
+// overwrite `to` with head.Height()+1, forcing GetRange over a huge range (OOM).
+func TestExchangeServer_partialRangeNotExpanded(t *testing.T) {
+	peer := createMocknet(t, 1)
+
+	head := headertest.RandDummyHeader(t)
+	head.HeightI = 10_000_000 // simulate a node synced far ahead
+	store := &partialRangeStore[*headertest.DummyHeader]{head: head}
+
+	server, err := NewExchangeServer[*headertest.DummyHeader](
+		peer[0],
+		store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+
+	// request a low range that is not stored (pruned/below tail)
+	_, err = server.handleRangeRequest(context.Background(), 1, 2)
+	require.NoError(t, err)
+
+	// `to` must stay at the requested value, not be expanded to head.Height()+1
+	require.Equal(t, uint64(2), store.gotTo)
+}
+
+// partialRangeStore is a minimal store where every height is reported as absent
+// (HasAt == false) and the head is far ahead. It records the `to` passed to GetRange.
+type partialRangeStore[H header.Header[H]] struct {
+	header.Store[H]
+	head  H
+	gotTo uint64
+}
+
+func (s *partialRangeStore[H]) HasAt(context.Context, uint64) bool { return false }
+
+func (s *partialRangeStore[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
+	return s.head, nil
+}
+
+func (s *partialRangeStore[H]) GetRange(_ context.Context, _, to uint64) ([]H, error) {
+	s.gotTo = to
+	return nil, nil
+}
+
 var _ header.Store[*headertest.DummyHeader] = timeoutStore[*headertest.DummyHeader]{}
 
 // timeoutStore does nothing but waits till context cancellation for every method.

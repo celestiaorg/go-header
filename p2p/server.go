@@ -259,7 +259,7 @@ func (serv *ExchangeServer[H]) handleRangeRequest(
 			"newMaxHeight", head.Height()+1,
 		)
 		// change `to` height to return a partial range
-		to = head.Height() + 1
+		to = min(to, head.Height()+1)
 	}
 
 	headersByRange, err := serv.store.GetRange(ctx, from, to)
