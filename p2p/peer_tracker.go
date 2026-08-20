@@ -226,6 +226,8 @@ func (p *peerTracker) peers() []*peerStat {
 // * connected peers whose scores are less than or equal than defaultScore;
 func (p *peerTracker) gc() {
 	ticker := time.NewTicker(gcCycle)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-p.ctx.Done():
