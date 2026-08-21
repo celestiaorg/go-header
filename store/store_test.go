@@ -39,6 +39,7 @@ func TestStore(t *testing.T) {
 	in := suite.GenDummyHeaders(10)
 	err = store.Append(ctx, in...)
 	require.NoError(t, err)
+	require.NoError(t, store.Sync(ctx))
 
 	out, err := store.GetRange(ctx, 2, 12)
 	require.NoError(t, err)
