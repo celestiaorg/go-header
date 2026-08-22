@@ -103,6 +103,35 @@ func TestStore(t *testing.T) {
 	assert.Len(t, out, 1)
 }
 
+func TestStore_CacheHitRatio(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	store := NewTestStore(t, ctx, ds, suite.Head(), WithMetrics(), WithWriteBatchSize(1))
+
+	store.cache.Purge()
+	baselineAccesses := store.metrics.cacheAccesses.Load()
+	baselineHits := store.metrics.cacheHits.Load()
+
+	_, err := store.Get(ctx, suite.Head().Hash())
+	require.NoError(t, err)
+	assert.Equal(t, baselineAccesses+1, store.metrics.cacheAccesses.Load())
+	assert.Equal(t, baselineHits, store.metrics.cacheHits.Load())
+
+	_, err = store.Get(ctx, suite.Head().Hash())
+	require.NoError(t, err)
+	assert.Equal(t, baselineAccesses+2, store.metrics.cacheAccesses.Load())
+	assert.Equal(t, baselineHits+1, store.metrics.cacheHits.Load())
+	assert.InDelta(
+		t,
+		float64(baselineHits+1)/float64(baselineAccesses+2),
+		store.metrics.cacheHitRatio(),
+		0.0001,
+	)
+}
+
 // TestStore_GetRangeByHeight_ExpectedRange
 func TestStore_GetRangeByHeight_ExpectedRange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
