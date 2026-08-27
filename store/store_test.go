@@ -13,6 +13,10 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
@@ -103,33 +107,50 @@ func TestStore(t *testing.T) {
 	assert.Len(t, out, 1)
 }
 
-func TestStore_CacheHitRatio(t *testing.T) {
+func TestStore_CacheAccesses(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	t.Cleanup(cancel)
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	previousProvider := otel.GetMeterProvider()
+	otel.SetMeterProvider(provider)
+	t.Cleanup(func() {
+		otel.SetMeterProvider(previousProvider)
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
 
 	suite := headertest.NewTestSuite(t)
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	store := NewTestStore(t, ctx, ds, suite.Head(), WithMetrics(), WithWriteBatchSize(1))
 
 	store.cache.Purge()
-	baselineAccesses := store.metrics.cacheAccesses.Load()
-	baselineHits := store.metrics.cacheHits.Load()
 
 	_, err := store.Get(ctx, suite.Head().Hash())
 	require.NoError(t, err)
-	assert.Equal(t, baselineAccesses+1, store.metrics.cacheAccesses.Load())
-	assert.Equal(t, baselineHits, store.metrics.cacheHits.Load())
 
 	_, err = store.Get(ctx, suite.Head().Hash())
 	require.NoError(t, err)
-	assert.Equal(t, baselineAccesses+2, store.metrics.cacheAccesses.Load())
-	assert.Equal(t, baselineHits+1, store.metrics.cacheHits.Load())
-	assert.InDelta(
-		t,
-		float64(baselineHits+1)/float64(baselineAccesses+2),
-		store.metrics.cacheHitRatio(),
-		0.0001,
-	)
+
+	var data metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &data))
+
+	accesses := make(map[bool]int64)
+	for _, scope := range data.ScopeMetrics {
+		for _, exportedMetric := range scope.Metrics {
+			if exportedMetric.Name != "hdr_store_cache_access_counter" {
+				continue
+			}
+			sum, ok := exportedMetric.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, point := range sum.DataPoints {
+				found, ok := point.Attributes.Value(attribute.Key("found"))
+				require.True(t, ok)
+				accesses[found.AsBool()] += point.Value
+			}
+		}
+	}
+	require.Equal(t, int64(1), accesses[false])
+	require.Equal(t, int64(1), accesses[true])
 }
 
 // TestStore_GetRangeByHeight_ExpectedRange

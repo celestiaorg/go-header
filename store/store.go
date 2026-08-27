@@ -217,8 +217,9 @@ func (s *Store[H]) Tail(_ context.Context) (H, error) {
 
 func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 	var zero H
-	if v, ok := s.cache.Get(hash.String()); ok {
-		s.metrics.cacheAccess(true)
+	v, found := s.cache.Get(hash.String())
+	s.metrics.cacheAccess(ctx, found)
+	if found {
 		return v, nil
 	}
 	// check if the requested header is not yet written on disk
@@ -226,7 +227,6 @@ func (s *Store[H]) Get(ctx context.Context, hash header.Hash) (H, error) {
 		return h, nil
 	}
 
-	s.metrics.cacheAccess(false)
 	b, err := s.get(ctx, hash)
 	if err != nil {
 		return zero, err

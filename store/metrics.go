@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync/atomic"
@@ -18,18 +17,15 @@ var meter = otel.Meter("header/store")
 type metrics struct {
 	headHeight     atomic.Uint64
 	tailHeight     atomic.Uint64
-	cacheAccesses  atomic.Uint64
-	cacheHits      atomic.Uint64
 	headHeightInst metric.Int64ObservableGauge
 	tailHeightInst metric.Int64ObservableGauge
-	cacheHitInst   metric.Float64ObservableGauge
 	heightReg      metric.Registration
-	cacheHitReg    metric.Registration
 
 	flushTimeInst metric.Float64Histogram
 	readTimeInst  metric.Float64Histogram
 
 	writesQueueBlockedInst metric.Int64Counter
+	cacheAccessInst        metric.Int64Counter
 }
 
 func newMetrics() (m *metrics, err error) {
@@ -52,22 +48,6 @@ func newMetrics() (m *metrics, err error) {
 	if err != nil {
 		return nil, err
 	}
-	m.cacheHitInst, err = meter.Float64ObservableGauge(
-		"hdr_store_cache_hit_ratio_gauge",
-		metric.WithDescription(
-			"ratio of header store reads served by cache instead of datastore, from 0 to 1",
-		),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		_ = m.heightReg.Unregister()
-		return nil, err
-	}
-	m.cacheHitReg, err = meter.RegisterCallback(m.observeCacheHitRatio, m.cacheHitInst)
-	if err != nil {
-		_ = m.heightReg.Unregister()
-		return nil, err
-	}
 	m.flushTimeInst, err = meter.Float64Histogram(
 		"hdr_store_flush_time_hist",
 		metric.WithDescription("header store flush time in seconds"),
@@ -87,6 +67,13 @@ func newMetrics() (m *metrics, err error) {
 	m.writesQueueBlockedInst, err = meter.Int64Counter(
 		"hdr_store_writes_blocked_counter",
 		metric.WithDescription("header store writes blocked counter"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	m.cacheAccessInst, err = meter.Int64Counter(
+		"hdr_store_cache_access_counter",
+		metric.WithDescription("header store cache accesses"),
 	)
 	if err != nil {
 		return nil, err
@@ -126,28 +113,10 @@ func (m *metrics) observeHeight(_ context.Context, obs metric.Observer) error {
 	return nil
 }
 
-func (m *metrics) observeCacheHitRatio(_ context.Context, obs metric.Observer) error {
-	obs.ObserveFloat64(m.cacheHitInst, m.cacheHitRatio())
-	return nil
-}
-
-func (m *metrics) cacheAccess(hit bool) {
-	if m == nil {
-		return
-	}
-
-	m.cacheAccesses.Add(1)
-	if hit {
-		m.cacheHits.Add(1)
-	}
-}
-
-func (m *metrics) cacheHitRatio() float64 {
-	accesses := m.cacheAccesses.Load()
-	if accesses == 0 {
-		return 0
-	}
-	return float64(m.cacheHits.Load()) / float64(accesses)
+func (m *metrics) cacheAccess(ctx context.Context, found bool) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.cacheAccessInst.Add(ctx, 1, metric.WithAttributes(attribute.Bool("found", found)))
+	})
 }
 
 func (m *metrics) flush(ctx context.Context, duration time.Duration, amount int, failed bool) {
@@ -194,5 +163,5 @@ func (m *metrics) Close() error {
 		return nil
 	}
 
-	return errors.Join(m.heightReg.Unregister(), m.cacheHitReg.Unregister())
+	return m.heightReg.Unregister()
 }
