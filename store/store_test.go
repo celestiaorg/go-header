@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/rand"
 	stdsync "sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,64 @@ import (
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
 )
+
+type readCountingDatastore struct {
+	datastore.Batching
+	gets   atomic.Int64
+	has    atomic.Int64
+	hasErr error
+}
+
+func (ds *readCountingDatastore) Get(ctx context.Context, key datastore.Key) ([]byte, error) {
+	ds.gets.Add(1)
+	return ds.Batching.Get(ctx, key)
+}
+
+func (ds *readCountingDatastore) Has(ctx context.Context, key datastore.Key) (bool, error) {
+	ds.has.Add(1)
+	if ds.hasErr != nil {
+		return false, ds.hasErr
+	}
+	return ds.Batching.Has(ctx, key)
+}
+
+func (ds *readCountingDatastore) resetCounts() {
+	ds.gets.Store(0)
+	ds.has.Store(0)
+}
+
+func putHeadersDirectly(
+	t *testing.T,
+	ctx context.Context,
+	store *Store[*headertest.DummyHeader],
+	headers ...*headertest.DummyHeader,
+) {
+	t.Helper()
+
+	batch, err := store.ds.Batch(ctx)
+	require.NoError(t, err)
+	for _, h := range headers {
+		data, err := h.MarshalBinary()
+		require.NoError(t, err)
+		require.NoError(t, batch.Put(ctx, headerKey(h), data))
+	}
+	require.NoError(t, indexTo(ctx, batch, headers...))
+	require.NoError(t, batch.Commit(ctx))
+}
+
+func newBoundaryTestStore(
+	t *testing.T,
+	ds datastore.Batching,
+	boundary *headertest.DummyHeader,
+) *Store[*headertest.DummyHeader] {
+	t.Helper()
+
+	store, err := NewStore[*headertest.DummyHeader](ds)
+	require.NoError(t, err)
+	store.contiguousHead.Store(&boundary)
+	store.tailHeader.Store(&boundary)
+	return store
+}
 
 func TestStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -294,6 +353,72 @@ func TestStore_Append_stableHeadWhenGaps(t *testing.T) {
 		height := store.Height()
 		assert.Equal(t, height, head.Height())
 	}
+}
+
+func TestStore_NextHeadLoadsOnlyBoundaryHeader(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	ds := &readCountingDatastore{Batching: sync.MutexWrap(datastore.NewMapDatastore())}
+	store := newBoundaryTestStore(t, ds, suite.Head())
+	headers := suite.GenDummyHeaders(10)
+	putHeadersDirectly(t, ctx, store, headers...)
+	ds.resetCounts()
+
+	head, changed := store.nextHead(ctx)
+
+	require.True(t, changed)
+	require.Equal(t, headers[len(headers)-1].Hash(), head.Hash())
+	require.EqualValues(t, 2, ds.gets.Load(), "only the boundary index and header should be read")
+	require.EqualValues(
+		t,
+		len(headers)+1,
+		ds.has.Load(),
+		"each height and the first gap should be checked",
+	)
+}
+
+func TestStore_NextTailLoadsOnlyBoundaryHeader(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	headers := append([]*headertest.DummyHeader{suite.Head()}, suite.GenDummyHeaders(10)...)
+	ds := &readCountingDatastore{Batching: sync.MutexWrap(datastore.NewMapDatastore())}
+	store := newBoundaryTestStore(t, ds, headers[len(headers)-1])
+	putHeadersDirectly(t, ctx, store, headers[:len(headers)-1]...)
+	ds.resetCounts()
+
+	tail, changed := store.nextTail(ctx)
+
+	require.True(t, changed)
+	require.Equal(t, headers[0].Hash(), tail.Hash())
+	require.EqualValues(t, 2, ds.gets.Load(), "only the boundary index and header should be read")
+	require.EqualValues(
+		t,
+		len(headers)-1,
+		ds.has.Load(),
+		"each valid preceding height should be checked",
+	)
+}
+
+func TestStore_NextHeadDoesNotAdvanceOnPresenceError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	ds := &readCountingDatastore{Batching: sync.MutexWrap(datastore.NewMapDatastore())}
+	store := newBoundaryTestStore(t, ds, suite.Head())
+	ds.resetCounts()
+	ds.hasErr = errors.New("presence check failed")
+
+	head, changed := store.nextHead(ctx)
+
+	require.False(t, changed)
+	require.Equal(t, suite.Head().Hash(), head.Hash())
+	require.Zero(t, ds.gets.Load())
+	require.EqualValues(t, 1, ds.has.Load())
 }
 
 func TestStoreGetByHeight_whenGaps(t *testing.T) {
