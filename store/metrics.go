@@ -12,8 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-var meter = otel.Meter("header/store")
-
 type metrics struct {
 	headHeight     atomic.Uint64
 	tailHeight     atomic.Uint64
@@ -29,6 +27,7 @@ type metrics struct {
 }
 
 func newMetrics() (m *metrics, err error) {
+	meter := otel.Meter("header/store")
 	m = new(metrics)
 	m.headHeightInst, err = meter.Int64ObservableGauge(
 		"hdr_store_head_height_gauge",
