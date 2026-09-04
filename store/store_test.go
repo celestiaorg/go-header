@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -112,10 +111,10 @@ func TestStore_CacheAccesses(t *testing.T) {
 	t.Cleanup(cancel)
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	previousProvider := otel.GetMeterProvider()
-	otel.SetMeterProvider(provider)
+	previousMeter := meter
+	meter = provider.Meter("header/store")
 	t.Cleanup(func() {
-		otel.SetMeterProvider(previousProvider)
+		meter = previousMeter
 		require.NoError(t, provider.Shutdown(context.Background()))
 	})
 
