@@ -25,6 +25,7 @@ type metrics struct {
 	readTimeInst  metric.Float64Histogram
 
 	writesQueueBlockedInst metric.Int64Counter
+	cacheAccessInst        metric.Int64Counter
 }
 
 func newMetrics() (m *metrics, err error) {
@@ -70,6 +71,13 @@ func newMetrics() (m *metrics, err error) {
 	if err != nil {
 		return nil, err
 	}
+	m.cacheAccessInst, err = meter.Int64Counter(
+		"hdr_store_cache_access_counter",
+		metric.WithDescription("header store cache accesses"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -103,6 +111,12 @@ func (m *metrics) observeHeight(_ context.Context, obs metric.Observer) error {
 	obs.ObserveInt64(m.headHeightInst, int64(headHeight))
 	obs.ObserveInt64(m.tailHeightInst, int64(tailHeight)) //nolint:gosec
 	return nil
+}
+
+func (m *metrics) cacheAccess(ctx context.Context, found bool) {
+	m.observe(ctx, func(ctx context.Context) {
+		m.cacheAccessInst.Add(ctx, 1, metric.WithAttributes(attribute.Bool("found", found)))
+	})
 }
 
 func (m *metrics) flush(ctx context.Context, duration time.Duration, amount int, failed bool) {

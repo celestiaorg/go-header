@@ -185,7 +185,9 @@ func TestExchangeServer_partialRangeNotExpanded(t *testing.T) {
 
 	head := headertest.RandDummyHeader(t)
 	head.HeightI = 10_000_000 // simulate a node synced far ahead
-	store := &partialRangeStore[*headertest.DummyHeader]{head: head}
+	tail := headertest.RandDummyHeader(t)
+	tail.HeightI = 1
+	store := &partialRangeStore[*headertest.DummyHeader]{head: head, tail: tail}
 
 	server, err := NewExchangeServer[*headertest.DummyHeader](
 		peer[0],
@@ -207,6 +209,7 @@ func TestExchangeServer_partialRangeNotExpanded(t *testing.T) {
 type partialRangeStore[H header.Header[H]] struct {
 	header.Store[H]
 	head  H
+	tail  H
 	gotTo uint64
 }
 
@@ -214,6 +217,10 @@ func (s *partialRangeStore[H]) HasAt(context.Context, uint64) bool { return fals
 
 func (s *partialRangeStore[H]) Head(context.Context, ...header.HeadOption[H]) (H, error) {
 	return s.head, nil
+}
+
+func (s *partialRangeStore[H]) Tail(context.Context) (H, error) {
+	return s.tail, nil
 }
 
 func (s *partialRangeStore[H]) GetRange(_ context.Context, _, to uint64) ([]H, error) {
