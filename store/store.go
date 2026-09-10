@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -630,6 +631,17 @@ func (s *Store[H]) recedeTail(ctx context.Context) {
 	}
 }
 
+// hasHeaderAt reports whether a header is pending or indexed at the given height.
+// Checking the index avoids reading and unmarshaling the full header while looking
+// for a new contiguous boundary.
+func (s *Store[H]) hasHeaderAt(ctx context.Context, height uint64) (bool, error) {
+	if h := s.pending.GetByHeight(height); !h.IsZero() {
+		return true, nil
+	}
+
+	return s.heightIndex.Has(ctx, height)
+}
+
 // nextHead finds the new contiguous Head by iterating the current Head up until the newer height Head is found.
 // Returns true if the newer one was found.
 func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
@@ -642,32 +654,45 @@ func (s *Store[H]) nextHead(ctx context.Context) (head H, changed bool) {
 	ctx, done := s.withReadTransaction(ctx)
 	defer done()
 
+	boundary := head.Height()
 	for ctx.Err() == nil {
-		h, err := s.getByHeight(ctx, head.Height()+1)
-		if err != nil {
-			log.Debugw("next head error", "current", head.Height(), "err", err)
-			return head, changed
+		if boundary == math.MaxUint64 {
+			break
 		}
-
-		if !changed && log.Level() == zapcore.DebugLevel {
+		has, err := s.hasHeaderAt(ctx, boundary+1)
+		if err != nil {
+			log.Debugw("checking next head", "current", boundary, "err", err)
+			return head, false
+		}
+		if !has {
+			break
+		}
+		if boundary == head.Height() && log.Level() == zapcore.DebugLevel {
 			now := time.Now()
 			log.Debugw("advancing head", "start_height", head.Height())
 			defer func() {
 				log.Debugw(
 					"finished advancing head",
 					"end_height",
-					head.Height(),
+					boundary,
 					"took(s)",
 					time.Since(now),
 				)
 			}()
 		}
-
-		head = h
-		changed = true
+		boundary++
 	}
 
-	return head, changed
+	if boundary == head.Height() || ctx.Err() != nil {
+		return head, false
+	}
+
+	newHead, err := s.getByHeight(ctx, boundary)
+	if err != nil {
+		log.Debugw("loading next head", "height", boundary, "err", err)
+		return head, false
+	}
+	return newHead, true
 }
 
 // nextTail finds the new contiguous Tail by iterating the current Tail down until the older height Tail is found.
@@ -682,31 +707,45 @@ func (s *Store[H]) nextTail(ctx context.Context) (tail H, changed bool) {
 	ctx, done := s.withReadTransaction(ctx)
 	defer done()
 
+	boundary := tail.Height()
 	for ctx.Err() == nil {
-		h, err := s.getByHeight(ctx, tail.Height()-1)
-		if err != nil {
-			return tail, changed
+		if boundary <= 1 {
+			break
 		}
-
-		if !changed && log.Level() == zapcore.DebugLevel {
+		has, err := s.hasHeaderAt(ctx, boundary-1)
+		if err != nil {
+			log.Debugw("checking previous tail", "current", boundary, "err", err)
+			return tail, false
+		}
+		if !has {
+			break
+		}
+		if boundary == tail.Height() && log.Level() == zapcore.DebugLevel {
 			now := time.Now()
 			log.Debugw("receding tail", "start_height", tail.Height())
 			defer func() {
 				log.Debugw(
 					"finished receding tail",
 					"end_height",
-					tail.Height(),
+					boundary,
 					"took(s)",
 					time.Since(now),
 				)
 			}()
 		}
-
-		tail = h
-		changed = true
+		boundary--
 	}
 
-	return tail, changed
+	if boundary == tail.Height() || ctx.Err() != nil {
+		return tail, false
+	}
+
+	newTail, err := s.getByHeight(ctx, boundary)
+	if err != nil {
+		log.Debugw("loading next tail", "height", boundary, "err", err)
+		return tail, false
+	}
+	return newTail, true
 }
 
 // init loads the head and tail headers and sets them on the store.
