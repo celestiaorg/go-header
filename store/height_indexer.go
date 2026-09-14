@@ -53,3 +53,12 @@ func (hi *heightIndexer[H]) HashByHeight(
 	}
 	return val, nil
 }
+
+// Has reports whether a header hash is indexed at the given height.
+func (hi *heightIndexer[H]) Has(ctx context.Context, height uint64) (bool, error) {
+	if hi.cache.Contains(height) {
+		return true, nil
+	}
+
+	return hi.ds.Has(ctx, heightKey(height))
+}
