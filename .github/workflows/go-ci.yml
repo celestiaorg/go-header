@@ -11,6 +11,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for tokenless Codecov uploads via OIDC.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +27,15 @@ jobs:
         run: go build -v ./...
 
       - name: Test & Coverage
-        run: go test -cover -coverprofile coverage.o ./... -- -v --race
-      - uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        run: go test -timeout 10m -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          file: ./coverage.o
+          disable_search: true
+          fail_ci_if_error: true
+          files: ./coverage.txt
+          use_oidc: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
