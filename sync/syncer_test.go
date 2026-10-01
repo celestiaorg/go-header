@@ -313,12 +313,21 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
+	// duplicate of the current head isn't punished
 	var verErr *header.VerifyError
 	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
-	assert.ErrorAs(t, err, &verErr)
+	require.ErrorAs(t, err, &verErr)
+	assert.ErrorIs(t, err, header.ErrKnownHeader)
+	assert.True(t, verErr.SoftFailure)
 
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
+
+	// older known header is
+	err = syncer.incomingNetworkHead(ctx, range1[0])
+	require.ErrorAs(t, err, &verErr)
+	assert.ErrorIs(t, err, header.ErrKnownHeader)
+	assert.False(t, verErr.SoftFailure)
 }
 
 // TestSync_SoftFailureBifurcate asserts that network head soft failure is handled correctly,

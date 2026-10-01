@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -255,6 +256,12 @@ func (s *Syncer[H]) verify(ctx context.Context, newHead H) error {
 	if errors.As(err, &verErr) && verErr.SoftFailure {
 		// bifurcate for soft failures only
 		return s.verifyBifurcating(ctx, sbjHead, newHead)
+	}
+
+	if errors.Is(err, header.ErrKnownHeader) && bytes.Equal(newHead.Hash(), sbjHead.Hash()) {
+		// honest peers may gossip the current head more than once,
+		// e.g. with different commit signature sets, so don't punish them for it
+		return &header.VerifyError{Reason: err, SoftFailure: true}
 	}
 
 	logF := log.Warnw
