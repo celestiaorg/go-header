@@ -51,8 +51,10 @@ type Syncer[H header.Header[H]] struct {
 	tailMu sync.Mutex
 
 	// controls lifecycle for syncLoop
-	ctx    context.Context
-	cancel context.CancelFunc
+	lifecycleLk sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	syncLoopWg  sync.WaitGroup
 
 	Params *Parameters
 
@@ -92,12 +94,19 @@ func NewSyncer[H header.Header[H]](
 		metrics:     metrics,
 		triggerSync: make(chan struct{}, 1), // should be buffered
 		Params:      &params,
+		ctx:         context.Background(),
 		started:     make(chan struct{}),
 	}, nil
 }
 
 // Start starts the syncing routine.
 func (s *Syncer[H]) Start(ctx context.Context) error {
+	s.lifecycleLk.Lock()
+	defer s.lifecycleLk.Unlock()
+	if s.cancel != nil {
+		return errors.New("syncer already started")
+	}
+
 	//nolint:gosec // G118 - cancel is called in Stop
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 
@@ -133,15 +142,22 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 		return nil
 	})
 	if err != nil {
+		s.cancel()
+		s.ctx = context.Background()
+		s.cancel = nil
 		return err
 	}
 	// gets the latest head and kicks off syncing if necessary
 	_, err = s.Head(ctx)
 	if err != nil {
+		s.cancel()
+		s.ctx = context.Background()
+		s.cancel = nil
 		return fmt.Errorf("error getting latest head during Start: %w", err)
 	}
 	// start syncLoop only if Start is errorless
-	go s.syncLoop()
+	s.syncLoopWg.Add(1)
+	go s.syncLoop(s.ctx)
 	select {
 	case <-s.started:
 	default:
@@ -152,7 +168,15 @@ func (s *Syncer[H]) Start(ctx context.Context) error {
 
 // Stop stops Syncer.
 func (s *Syncer[H]) Stop(context.Context) error {
+	s.lifecycleLk.Lock()
+	defer s.lifecycleLk.Unlock()
+	if s.cancel == nil {
+		return s.metrics.Close()
+	}
 	s.cancel()
+	s.syncLoopWg.Wait()
+	s.ctx = context.Background()
+	s.cancel = nil
 	return s.metrics.Close()
 }
 
@@ -200,7 +224,10 @@ func (s *Syncer[H]) State() State {
 	state := s.state
 	s.stateLk.RUnlock()
 
-	head, err := s.store.Head(s.ctx)
+	s.lifecycleLk.RLock()
+	ctx := s.ctx
+	s.lifecycleLk.RUnlock()
+	head, err := s.store.Head(ctx)
 	if err == nil {
 		state.Height = head.Height()
 	} else if state.Error == "" {
@@ -220,12 +247,13 @@ func (s *Syncer[H]) wantSync() {
 }
 
 // syncLoop controls syncing process.
-func (s *Syncer[H]) syncLoop() {
+func (s *Syncer[H]) syncLoop(ctx context.Context) {
+	defer s.syncLoopWg.Done()
 	for {
 		select {
 		case <-s.triggerSync:
-			s.sync(s.ctx)
-		case <-s.ctx.Done():
+			s.sync(ctx)
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -273,10 +301,13 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 		return
 	}
 
+	s.stateLk.RLock()
+	elapsed := s.state.End.Sub(s.state.Start)
+	s.stateLk.RUnlock()
 	log.Infow("finished syncing headers",
 		"from", from,
 		"to", subjHead.Height(),
-		"elapsed time", s.state.End.Sub(s.state.Start))
+		"elapsed time", elapsed)
 }
 
 // doSync performs actual syncing updating the internal State.
