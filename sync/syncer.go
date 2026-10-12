@@ -245,13 +245,9 @@ func (s *Syncer[H]) sync(ctx context.Context) {
 		return
 	}
 
+	s.pending.Prune(storeHead.Height())
 	if storeHead.Height() >= subjHead.Height() {
-		log.Warnw("sync attempt to an already synced header",
-			"synced_height", storeHead.Height(),
-			"attempted_height", subjHead.Height(),
-		)
-		log.Warn("PLEASE REPORT THIS AS A BUG")
-		return // should never happen, but just in case
+		return
 	}
 
 	from := storeHead.Height() + 1

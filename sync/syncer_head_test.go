@@ -423,3 +423,20 @@ func (e errorGetter) GetRangeByHeight(
 ) ([]*headertest.DummyHeader, error) {
 	panic("implement me")
 }
+
+func TestSyncer_SetLocalHeadPrunesStaleTarget(t *testing.T) {
+	ctx := context.Background()
+	suite := headertest.NewTestSuite(t)
+	store := headertest.NewStore[*headertest.DummyHeader](t, suite, 3)
+	syncer, err := NewSyncer[*headertest.DummyHeader](store, store, nil)
+	require.NoError(t, err)
+
+	syncer.pending.Add(suite.Head())
+	next := suite.NextHeader()
+	syncer.setLocalHead(ctx, next)
+
+	assert.True(t, syncer.pending.Head().IsZero())
+	head, err := syncer.localHead(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, next, head)
+}

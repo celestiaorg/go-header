@@ -67,6 +67,21 @@ func (rs *ranges[H]) Add(h H) {
 	}
 }
 
+// Prune drops all headers at or below the given height.
+func (rs *ranges[H]) Prune(height uint64) {
+	rs.lk.Lock()
+	defer rs.lk.Unlock()
+
+	for len(rs.ranges) > 0 {
+		r := rs.ranges[0]
+		r.Remove(height)
+		if !r.Empty() {
+			return
+		}
+		rs.ranges = rs.ranges[1:]
+	}
+}
+
 // First provides a first non-empty range, while cleaning up empty ones.
 func (rs *ranges[H]) First() (*headerRange[H], bool) {
 	rs.lk.Lock()
@@ -154,7 +169,7 @@ func (r *headerRange[H]) rangeAmount(end uint64) uint64 {
 	}
 
 	amnt := uint64(len(r.headers))
-	if r.start+amnt >= end {
+	if r.start+amnt > end {
 		amnt = end - r.start + 1 // + 1 to include 'end' as well
 	}
 
