@@ -17,7 +17,8 @@ func TestSyncer_StalePendingHeadConcurrent(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suite := headertest.NewTestSuite(t)
-	headers := []*headReadBarrierHeader{{DummyHeader: suite.Head()}}
+	headers := make([]*headReadBarrierHeader, 1, 6)
+	headers[0] = &headReadBarrierHeader{DummyHeader: suite.Head()}
 	for _, h := range suite.GenDummyHeaders(5) {
 		headers = append(headers, &headReadBarrierHeader{DummyHeader: h})
 	}
