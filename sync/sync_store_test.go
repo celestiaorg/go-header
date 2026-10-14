@@ -214,6 +214,38 @@ func TestSyncStore_AppendWaitRespectsContext(t *testing.T) {
 	assert.Len(t, fs.appended, 1, "canceled writer must not write")
 }
 
+func TestSyncStore_NonAdjacentDoesNotWaitForAppend(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	hdrs := headertest.NewTestSuite(t).GenDummyHeaders(12)
+	gate := make(chan struct{})
+	fs := &fakeStore{
+		head:          hdrs[9],
+		appendGates:   map[uint64]chan struct{}{11: gate},
+		appendEntered: make(chan uint64, 1),
+	}
+	ss := newTestSyncStore(fs)
+	written := make(chan error, 1)
+	go func() { written <- ss.Append(ctx, hdrs[10]) }()
+	receive(t, ctx, fs.appendEntered)
+
+	// Even a canceled caller must get the non-adjacency result from the cache,
+	// without competing for the semaphore held by the blocked write.
+	headCtx, headCancel := context.WithCancel(ctx)
+	headCancel()
+	var nonAdj *errNonAdjacent
+	require.ErrorAs(t, ss.Append(headCtx, hdrs[11]), &nonAdj)
+	assert.EqualValues(t, 10, nonAdj.Head)
+	assert.EqualValues(t, 12, nonAdj.Attempted)
+	assert.EqualValues(t, 10, cachedHeight(ss))
+
+	close(gate)
+	require.NoError(t, receive(t, ctx, written))
+	// The same header becomes appendable once the preceding write succeeds.
+	require.NoError(t, ss.Append(ctx, hdrs[11]))
+	assert.EqualValues(t, 12, cachedHeight(ss))
+}
+
 // Over the real asynchronous store, the published head and the written headers agree
 // once the store has processed its write queue.
 func TestSyncStore_AppendRealStore(t *testing.T) {

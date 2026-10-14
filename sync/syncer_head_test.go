@@ -77,6 +77,41 @@ func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {
 	assert.EqualValues(t, 1, hits.Load())
 }
 
+func TestSyncer_NetworkHeadsDuringBlockedAppend(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	hdrs := headertest.NewTestSuite(t).GenDummyHeaders(13)
+	gate := make(chan struct{})
+	fs := &fakeStore{
+		head:          hdrs[9],
+		appendGates:   map[uint64]chan struct{}{11: gate},
+		appendEntered: make(chan uint64, 1),
+	}
+	syncer, err := NewSyncer(fs, fs, headertest.NewDummySubscriber())
+	require.NoError(t, err)
+	written := make(chan error, 1)
+	go func() { written <- syncer.store.Append(ctx, hdrs[10]) }()
+	receive(t, ctx, fs.appendEntered)
+
+	headCtx, headCancel := context.WithTimeout(ctx, time.Second)
+	defer headCancel()
+	for _, h := range hdrs[11:] {
+		require.NoError(t, syncer.incomingNetworkHead(headCtx, h))
+		require.NoError(t, headCtx.Err(), "validation waited for a blocked store write")
+		require.Equal(t, h, syncer.pending.Head(), "candidate must remain available for syncing")
+	}
+	select {
+	case err := <-written:
+		t.Fatal("store write completed before it was released:", err)
+	default:
+	}
+
+	close(gate)
+	require.NoError(t, receive(t, ctx, written))
+	assert.EqualValues(t, 11, cachedHeight(&syncer.store))
+	assert.Equal(t, hdrs[12], syncer.pending.Head())
+}
+
 // TestSyncer_HeadWithTrustedHead tests whether the syncer
 // requests Head (new sync target) from tracked peers when
 // it already has a subjective head within the unbonding period.

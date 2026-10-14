@@ -60,6 +60,15 @@ func (s *syncStore[H]) Append(ctx context.Context, headers ...H) error {
 		return nil
 	}
 
+	// Reject gaps before waiting for a writer. Network-head validation holds incomingMu,
+	// so waiting here would stall validation when the store write queue is blocked.
+	if cached := s.head.Load(); cached != nil {
+		headHeight := (*cached).Height()
+		if headers[0].Height() > headHeight+1 {
+			return &errNonAdjacent{Head: headHeight, Attempted: headers[0].Height()}
+		}
+	}
+
 	if err := s.lockAppend(ctx); err != nil {
 		return err
 	}
