@@ -86,7 +86,7 @@ func NewSyncer[H header.Header[H]](
 	}
 	return &Syncer[H]{
 		sub:         sub,
-		store:       syncStore[H]{Store: store},
+		store:       newSyncStore(store),
 		head:        syncHead[H]{head: getter},
 		getter:      getter,
 		metrics:     metrics,
