@@ -176,19 +176,19 @@ func (s *Syncer[H]) subjectiveHead(ctx context.Context) (H, bool, error) {
 
 // localHead reports the current highest locally known head.
 func (s *Syncer[H]) localHead(ctx context.Context) (H, error) {
-	// pending head is the latest known subjective head and a sync target
-	// if it is empty, no sync is in progress
+	// Pending can lag behind the store when setLocalHead races with sync.
 	pendHead := s.pending.Head()
-	if !pendHead.IsZero() {
-		return pendHead, nil
-	}
-	// if pending is empty - get the latest stored/synced head
 	head, err := s.store.Head(ctx)
-	if err != nil {
+	switch {
+	case err != nil && !pendHead.IsZero():
+		return pendHead, nil
+	case err != nil:
 		return head, fmt.Errorf("local store head: %w", err)
+	case !pendHead.IsZero() && pendHead.Height() > head.Height():
+		return pendHead, nil
+	default:
+		return head, nil
 	}
-
-	return head, nil
 }
 
 // setLocalHead takes the already validated head and sets it as the new sync target.
@@ -210,7 +210,8 @@ func (s *Syncer[H]) setLocalHead(ctx context.Context, netHead H) {
 
 	storeHead, err := s.store.Head(ctx)
 	if err == nil && storeHead.Height() >= netHead.Height() {
-		// we already synced it up - do nothing
+		// A concurrent setLocalHead may have re-added an already synced target.
+		s.pending.Prune(storeHead.Height())
 		return
 	}
 	// and if valid, set it as new subjective head
