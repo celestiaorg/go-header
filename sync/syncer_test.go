@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -313,12 +315,21 @@ func TestSyncerIncomingDuplicate(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
+	// duplicate of the current head isn't punished
 	var verErr *header.VerifyError
 	err = syncer.incomingNetworkHead(ctx, range1[len(range1)-1])
-	assert.ErrorAs(t, err, &verErr)
+	require.ErrorAs(t, err, &verErr)
+	assert.ErrorIs(t, err, header.ErrKnownHeader)
+	assert.True(t, verErr.SoftFailure)
 
 	err = syncer.SyncWait(ctx)
 	require.NoError(t, err)
+
+	// older known header is
+	err = syncer.incomingNetworkHead(ctx, range1[0])
+	require.ErrorAs(t, err, &verErr)
+	assert.ErrorIs(t, err, header.ErrKnownHeader)
+	assert.False(t, verErr.SoftFailure)
 }
 
 // TestSync_SoftFailureBifurcate asserts that network head soft failure is handled correctly,
@@ -412,6 +423,68 @@ func TestSync_SoftFailureBifurcate(t *testing.T) {
 
 	require.Equal(t, expectedHead.Height(), syncHead.Height())
 	require.Equal(t, expectedHead.Height(), storeHead.Height())
+}
+
+// TestSyncer_FailedAppendDoesNotSkipHeights asserts that a range the store failed to accept
+// is requested again on the next sync instead of being skipped.
+func TestSyncer_FailedAppendDoesNotSkipHeights(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	head := suite.Head()
+
+	remoteStore := newTestStore(t, ctx, head)
+	localStore := &failingStore{Store: newTestStore(t, ctx, head)}
+	localStore.failOnce.Store(true)
+	syncer, err := NewSyncer(
+		local.NewExchange(remoteStore),
+		localStore,
+		headertest.NewDummySubscriber(),
+	)
+	require.NoError(t, err)
+	require.NoError(t, syncer.Start(ctx))
+	t.Cleanup(func() {
+		require.NoError(t, syncer.Stop(context.Background()))
+	})
+
+	headers := suite.GenDummyHeaders(20)
+	require.NoError(t, remoteStore.Append(ctx, headers...))
+	netHead := headers[len(headers)-1]
+
+	// the gap below netHead is requested from the network, and the store rejects that range
+	require.NoError(t, syncer.incomingNetworkHead(ctx, netHead))
+	require.Eventually(t, func() bool {
+		return syncer.State().Error != ""
+	}, time.Second, 10*time.Millisecond, "first sync didn't fail")
+	assert.EqualValues(t, head.Height(), syncer.State().Height, "head moved past the failed range")
+
+	// retry must request the rejected range again instead of appending only netHead
+	syncer.wantSync()
+	require.NoError(t, syncer.SyncWait(ctx))
+	require.Eventually(t, func() bool {
+		storeHead, err := localStore.Head(ctx)
+		return err == nil && storeHead.Height() == netHead.Height()
+	}, time.Second, 10*time.Millisecond, "store head is stuck below the skipped range")
+	// SyncWait only guarantees the header is available, the sync state is updated right after
+	require.Eventually(t, func() bool {
+		state := syncer.State()
+		return state.Error == "" && state.Height == netHead.Height()
+	}, time.Second, 10*time.Millisecond, "sync state wasn't updated after the retry")
+}
+
+// failingStore rejects the first multi-header Append, like a store that stops
+// or a write that is canceled in the middle of a sync.
+type failingStore struct {
+	header.Store[*headertest.DummyHeader]
+	failOnce atomic.Bool
+}
+
+func (f *failingStore) Append(ctx context.Context, headers ...*headertest.DummyHeader) error {
+	if len(headers) > 1 && f.failOnce.CompareAndSwap(true, false) {
+		return errors.New("append failed")
+	}
+	return f.Store.Append(ctx, headers...)
 }
 
 type delayedGetter[H header.Header[H]] struct {
