@@ -72,7 +72,6 @@ func newSession[H header.Header[H]](
 		cancel:         cancel,
 		protocolID:     protocolID,
 		host:           h,
-		queue:          newPeerQueue(ctx, peerTracker.peers()),
 		peerTracker:    peerTracker,
 		requestTimeout: requestTimeout,
 		metrics:        metrics,
@@ -102,6 +101,14 @@ func (s *session[H]) getRangeByHeight(
 		otelattr.Uint64("to", from+amount-1),
 	))
 	defer span.End()
+
+	// an empty queue is never refilled, so wait for the tracker to have peers (e.g. right after start)
+	peers, err := s.peerTracker.waitPeers(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	s.queue = newPeerQueue(s.ctx, peers)
 
 	requests := prepareRequests(from, amount, headersPerPeer)
 	result := make(chan []H, len(requests))

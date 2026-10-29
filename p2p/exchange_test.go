@@ -395,6 +395,91 @@ func (s *skipFirstStore) GetRange(
 	return s.Store.GetRange(ctx, from+1, to)
 }
 
+// TestExchange_GetRangeByHeight_WaitsForPeers ensures a range request issued while the
+// peerTracker is still empty (e.g. right after a restart) proceeds once a peer gets tracked.
+func TestExchange_GetRangeByHeight_WaitsForPeers(t *testing.T) {
+	net, err := mocknet.WithNPeers(2)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, serverHost := net.Hosts()[0], net.Hosts()[1]
+
+	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	srv, err := NewExchangeServer[*headertest.DummyHeader](serverHost, store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, srv.Start(context.Background()))
+	t.Cleanup(func() { srv.Stop(context.Background()) }) //nolint:errcheck
+
+	ex, err := NewExchange[*headertest.DummyHeader](clientHost, nil, nil,
+		WithNetworkID[ClientParameters](networkID),
+		WithChainID(networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, ex.Start(context.Background()))
+	t.Cleanup(func() { ex.Stop(context.Background()) }) //nolint:errcheck
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	from := store.Headers[1]
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := ex.GetRangeByHeight(ctx, from, 5)
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("request returned without peers: %v", err)
+	case <-time.After(time.Millisecond * 100):
+	}
+
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+	require.NoError(t, <-errCh)
+}
+
+func TestExchange_GetRangeByHeight_WaitForPeersCanceled(t *testing.T) {
+	newEx := func(t *testing.T) *Exchange[*headertest.DummyHeader] {
+		ex, err := NewExchange[*headertest.DummyHeader](createMocknet(t, 1)[0], nil, nil,
+			WithNetworkID[ClientParameters](networkID),
+		)
+		require.NoError(t, err)
+		require.NoError(t, ex.Start(context.Background()))
+		return ex
+	}
+	from := headertest.NewTestSuite(t).GenDummyHeaders(1)[0]
+
+	t.Run("context", func(t *testing.T) {
+		ex := newEx(t)
+		t.Cleanup(func() { ex.Stop(context.Background()) }) //nolint:errcheck
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+		t.Cleanup(cancel)
+		_, err := ex.GetRangeByHeight(ctx, from, from.Height()+5)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		ex := newEx(t)
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := ex.GetRangeByHeight(context.Background(), from, from.Height()+5)
+			errCh <- err
+		}()
+		time.Sleep(time.Millisecond * 50)
+		require.NoError(t, ex.Stop(context.Background()))
+
+		select {
+		case err := <-errCh:
+			require.Error(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("request did not return after exchange stop")
+		}
+	})
+}
+
 // TestExchange_RequestFullRangeHeaders requests max amount of headers
 // to verify how session will parallelize all requests.
 func TestExchange_RequestFullRangeHeaders(t *testing.T) {
