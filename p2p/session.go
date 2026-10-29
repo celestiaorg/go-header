@@ -23,7 +23,10 @@ var tracerSession = otel.Tracer("header/p2p-session")
 
 // errEmptyResponse means that server side closes the connection without sending at least 1
 // response.
-var errEmptyResponse = errors.New("empty response")
+var (
+	errEmptyResponse   = errors.New("empty response")
+	errUnexpectedRange = errors.New("response does not start at the requested height")
+)
 
 type option[H header.Header[H]] func(*session[H])
 
@@ -198,7 +201,7 @@ func (s *session[H]) doRequest(
 		log.Debugw("requesting headers from peer failed", "peer", stat.peerID, "err", err)
 	}
 
-	h, err := s.processResponses(r)
+	h, err := s.processResponses(req, r)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		logFn := log.Errorw
@@ -267,8 +270,11 @@ func (s *session[H]) doRequest(
 	s.queue.push(stat)
 }
 
-// processResponses converts HeaderResponse to Header.
-func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) (h []H, err error) {
+// processResponses converts HeaderResponse to Header and checks it answers the request.
+func (s *session[H]) processResponses(
+	req *p2p_pb.HeaderRequest,
+	responses []*p2p_pb.HeaderResponse,
+) (h []H, err error) {
 	defer func() {
 		r := recover()
 		if r != nil {
@@ -279,6 +285,16 @@ func (s *session[H]) processResponses(responses []*p2p_pb.HeaderResponse) (h []H
 	hdrs, err := processResponses[H](responses)
 	if err != nil {
 		return nil, err
+	}
+	// VerifyRange only checks adjacency within the response, so a response skipping
+	// the requested height would otherwise pass and reward the peer.
+	if hdrs[0].Height() != req.GetOrigin() {
+		return nil, fmt.Errorf(
+			"%w: requested %d, got %d",
+			errUnexpectedRange,
+			req.GetOrigin(),
+			hdrs[0].Height(),
+		)
 	}
 
 	return s.verify(hdrs)
