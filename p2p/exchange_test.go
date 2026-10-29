@@ -328,6 +328,73 @@ func TestExchange_GetRangeByHeight_FailsVerification(t *testing.T) {
 	require.True(t, hosts[1].ID() == peers[0])
 }
 
+// TestExchange_GetRangeByHeight_SkippedHeight ensures a peer answering a range request
+// without the requested first height is blocked instead of being rewarded.
+func TestExchange_GetRangeByHeight_SkippedHeight(t *testing.T) {
+	hosts := createMocknet(t, 2)
+	store := &skipFirstStore{
+		headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5),
+	}
+	exchg := createP2PExAndServerWithStore(t, hosts[0], hosts[1], store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	t.Cleanup(cancel)
+
+	// requests range (1:4)
+	_, err := exchg.GetRangeByHeight(ctx, store.Headers[1], 4)
+	require.Error(t, err)
+
+	peers := exchg.peerTracker.connGater.ListBlockedPeers()
+	require.Len(t, peers, 1)
+	require.Equal(t, hosts[1].ID(), peers[0])
+}
+
+// TestExchange_GetRangeByHeight_SkippedHeightFallsBackToHonestPeer ensures the range is still
+// served by an honest peer once the top-scored peer skipping the requested height is blocked.
+func TestExchange_GetRangeByHeight_SkippedHeightFallsBackToHonestPeer(t *testing.T) {
+	hosts := createMocknet(t, 3)
+	store := &skipFirstStore{
+		headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5),
+	}
+	exchg := createP2PExAndServerWithStore(t, hosts[0], hosts[1], store)
+
+	honest, err := NewExchangeServer[*headertest.DummyHeader](hosts[2], store.Store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, honest.Start(context.Background()))
+	t.Cleanup(func() {
+		honest.Stop(context.Background()) //nolint:errcheck
+	})
+	exchg.peerTracker.peerLk.Lock()
+	exchg.peerTracker.trackedPeers[hosts[2].ID()] = &peerStat{peerID: hosts[2].ID(), peerScore: 20}
+	exchg.peerTracker.peerLk.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	// requests range (1:4)
+	headers, err := exchg.GetRangeByHeight(ctx, store.Headers[1], 4)
+	require.NoError(t, err)
+	require.Len(t, headers, 2)
+	require.EqualValues(t, 2, headers[0].Height())
+
+	peers := exchg.peerTracker.connGater.ListBlockedPeers()
+	require.Equal(t, []peer.ID{hosts[1].ID()}, peers)
+}
+
+// skipFirstStore serves ranges without their first header.
+type skipFirstStore struct {
+	*headertest.Store[*headertest.DummyHeader]
+}
+
+func (s *skipFirstStore) GetRange(
+	ctx context.Context,
+	from, to uint64,
+) ([]*headertest.DummyHeader, error) {
+	return s.Store.GetRange(ctx, from+1, to)
+}
+
 // TestExchange_RequestFullRangeHeaders requests max amount of headers
 // to verify how session will parallelize all requests.
 func TestExchange_RequestFullRangeHeaders(t *testing.T) {
@@ -625,7 +692,15 @@ func createP2PExAndServer(
 	host, tpeer libhost.Host,
 ) (*Exchange[*headertest.DummyHeader], *headertest.Store[*headertest.DummyHeader]) {
 	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	return createP2PExAndServerWithStore(t, host, tpeer, store), store
+}
 
+// createP2PExAndServerWithStore creates a Exchange served by tpeer from the given store.
+func createP2PExAndServerWithStore(
+	t *testing.T,
+	host, tpeer libhost.Host,
+	store header.Store[*headertest.DummyHeader],
+) *Exchange[*headertest.DummyHeader] {
 	serverSideEx, err := NewExchangeServer[*headertest.DummyHeader](tpeer, store,
 		WithNetworkID[ServerParameters](networkID),
 	)
@@ -654,7 +729,7 @@ func createP2PExAndServer(
 		ex.Stop(context.Background())           //nolint:errcheck
 	})
 
-	return ex, store
+	return ex
 }
 
 func quicHosts(t *testing.T, n int) []libhost.Host {
