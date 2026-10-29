@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"container/heap"
-	"context"
 	"sync"
 	"time"
 
@@ -98,20 +97,17 @@ func (ps *peerStats) Pop() any {
 
 // peerQueue wraps peerStats and guards it with the mutex.
 type peerQueue struct {
-	ctx context.Context
-
 	statsLk sync.RWMutex
 	stats   peerStats
 
+	// havePeer is signaled on every push, so a waiter can retry pop.
 	havePeer chan struct{}
 }
 
-func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
-	statsCh := make(chan struct{}, len(stats))
+func newPeerQueue(stats []*peerStat) *peerQueue {
 	pq := &peerQueue{
-		ctx:      ctx,
 		stats:    newPeerStats(),
-		havePeer: statsCh,
+		havePeer: make(chan struct{}, 1),
 	}
 	for _, stat := range stats {
 		pq.push(stat)
@@ -119,24 +115,19 @@ func newPeerQueue(ctx context.Context, stats []*peerStat) *peerQueue {
 	return pq
 }
 
-// waitPop pops the peer with the biggest score.
-// in case if there are no peer available in current session, it blocks until
-// the peer will be pushed in.
-func (p *peerQueue) waitPop(ctx context.Context) *peerStat {
-	// TODO(vgonkivs): implement fallback solution for cases when peer queue is empty.
-	// As we discussed with @Wondertan there could be 2 possible solutions:
-	// * use libp2p.Discovery to find new peers outside peerTracker to request headers;
-	// * implement IWANT/IHAVE messaging system and start requesting ranges from the Peerstore;
-	select {
-	case <-ctx.Done():
-		return &peerStat{}
-	case <-p.ctx.Done():
-		return &peerStat{}
-	case <-p.havePeer:
-	}
+// pop pops the peer with the biggest score, reporting false if the queue is empty.
+func (p *peerQueue) pop() (*peerStat, bool) {
 	p.statsLk.Lock()
 	defer p.statsLk.Unlock()
-	return heap.Pop(&p.stats).(*peerStat)
+	if p.stats.Len() == 0 {
+		return nil, false
+	}
+	return heap.Pop(&p.stats).(*peerStat), true
+}
+
+// pushed returns a channel signaled once a peer is pushed after the last receive.
+func (p *peerQueue) pushed() <-chan struct{} {
+	return p.havePeer
 }
 
 // push adds the peer to the queue.
@@ -145,5 +136,8 @@ func (p *peerQueue) push(stat *peerStat) {
 	heap.Push(&p.stats, stat)
 	p.statsLk.Unlock()
 	// notify that the peer is available in the queue, so it can be popped out
-	p.havePeer <- struct{}{}
+	select {
+	case p.havePeer <- struct{}{}:
+	default:
+	}
 }

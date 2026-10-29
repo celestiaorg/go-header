@@ -118,15 +118,16 @@ func (p *peerTracker) track() {
 		p.done <- struct{}{}
 	}()
 
-	// store peers that have been already connected
-	for _, c := range p.host.Network().Conns() {
-		p.connected(c.RemotePeer())
-	}
-
 	subs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerConnectednessChanged", "err", err)
 		return
+	}
+
+	// store peers that have been already connected
+	// after subscribing, so a peer connecting in between is not missed
+	for _, c := range p.host.Network().Conns() {
+		p.connected(c.RemotePeer())
 	}
 
 	for {
@@ -178,6 +179,10 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
+	if _, ok := p.trackedPeers[pID]; ok {
+		// seen by both the initial scan and the subscription
+		return
+	}
 	// skip adding the peer to avoid overfilling of the peerTracker with unused peers if:
 	// peerTracker reaches the maxTrackerSize and there are more connected peers
 	// than disconnected peers.
@@ -226,13 +231,18 @@ func (p *peerTracker) peers() []*peerStat {
 	return peers
 }
 
+// newPeerCh returns a channel that is closed once a new peer gets tracked.
+func (p *peerTracker) newPeerCh() <-chan struct{} {
+	p.peerLk.RLock()
+	defer p.peerLk.RUnlock()
+	return p.newPeer
+}
+
 // waitPeers returns tracked peers, blocking until at least one is available.
 func (p *peerTracker) waitPeers(ctx context.Context) ([]*peerStat, error) {
 	for {
 		// newPeer must be taken before peers() so a peer tracked in between is not missed.
-		p.peerLk.RLock()
-		newPeer := p.newPeer
-		p.peerLk.RUnlock()
+		newPeer := p.newPeerCh()
 
 		peers := p.peers()
 		if len(peers) > 0 {
