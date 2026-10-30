@@ -395,6 +395,229 @@ func (s *skipFirstStore) GetRange(
 	return s.Store.GetRange(ctx, from+1, to)
 }
 
+// TestExchange_GetRangeByHeight_WaitsForPeers ensures a range request issued while the
+// peerTracker is still empty (e.g. right after a restart) proceeds once a peer gets tracked.
+func TestExchange_GetRangeByHeight_WaitsForPeers(t *testing.T) {
+	net, err := mocknet.WithNPeers(2)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, serverHost := net.Hosts()[0], net.Hosts()[1]
+
+	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	srv, err := NewExchangeServer[*headertest.DummyHeader](serverHost, store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, srv.Start(context.Background()))
+	t.Cleanup(func() { srv.Stop(context.Background()) }) //nolint:errcheck
+
+	ex, err := NewExchange[*headertest.DummyHeader](clientHost, nil, nil,
+		WithNetworkID[ClientParameters](networkID),
+		WithChainID(networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, ex.Start(context.Background()))
+	t.Cleanup(func() { ex.Stop(context.Background()) }) //nolint:errcheck
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	from := store.Headers[1]
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := ex.GetRangeByHeight(ctx, from, 5)
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("request returned without peers: %v", err)
+	case <-time.After(time.Millisecond * 100):
+	}
+
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+	require.NoError(t, <-errCh)
+}
+
+// TestExchange_GetRangeByHeight_RequeuesPeerAfterEmptyResponse ensures the only peer stays in the
+// session after an empty response (here, it doesn't serve headers yet) and the range completes
+// once it does.
+func TestExchange_GetRangeByHeight_RequeuesPeerAfterEmptyResponse(t *testing.T) {
+	setRequeueDelay(t, time.Millisecond*20)
+
+	net, err := mocknet.WithNPeers(2)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, serverHost := net.Hosts()[0], net.Hosts()[1]
+
+	ex := newClientExchange(t, clientHost)
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := ex.GetRangeByHeight(ctx, store.Headers[1], 5)
+		errCh <- err
+	}()
+
+	// requests fail immediately with an empty response until the server is up
+	time.Sleep(time.Millisecond * 100)
+	startServer(t, serverHost, store)
+	require.NoError(t, <-errCh)
+}
+
+// TestExchange_GetRangeByHeight_UsesPeerTrackedAfterStart ensures a peer connecting after the
+// session started serves the range once the session's own peers are exhausted.
+func TestExchange_GetRangeByHeight_UsesPeerTrackedAfterStart(t *testing.T) {
+	// the first peer is never requested again within the test
+	setRequeueDelay(t, time.Hour)
+
+	net, err := mocknet.WithNPeers(3)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, emptyHost, serverHost := net.Hosts()[0], net.Hosts()[1], net.Hosts()[2]
+
+	store := headertest.NewStore[*headertest.DummyHeader](t, headertest.NewTestSuite(t), 5)
+	startServer(t, serverHost, store)
+
+	ex := newClientExchange(t, clientHost)
+	_, err = net.ConnectPeers(clientHost.ID(), emptyHost.ID())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := ex.GetRangeByHeight(ctx, store.Headers[1], 5)
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("request returned without a serving peer: %v", err)
+	case <-time.After(time.Millisecond * 100):
+	}
+
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+	require.NoError(t, <-errCh)
+}
+
+// TestSession_NextPeerWakesOnForget ensures a waiting session picks up a connected peer once the
+// peer is forgotten, e.g. when it reconnected while still marked as known.
+func TestSession_NextPeerWakesOnForget(t *testing.T) {
+	net, err := mocknet.WithNPeers(2)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, serverHost := net.Hosts()[0], net.Hosts()[1]
+
+	ex := newClientExchange(t, clientHost)
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(ex.peerTracker.peers()) == 1 },
+		time.Second, time.Millisecond*10)
+
+	ses := newSession[*headertest.DummyHeader](
+		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, time.Second, ex.metrics,
+	)
+	t.Cleanup(ses.close)
+	ses.queue = newPeerQueue(nil)
+	// the peer is known to the session, as if its failed request is still being handled
+	ses.known[serverHost.ID()] = struct{}{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+	statCh := make(chan *peerStat, 1)
+	go func() {
+		stat, _ := ses.nextPeer(ctx)
+		statCh <- stat
+	}()
+
+	// let nextPeer skip the known peer and wait
+	time.Sleep(time.Millisecond * 50)
+	ses.forgetPeer(serverHost.ID())
+
+	select {
+	case stat := <-statCh:
+		require.NotNil(t, stat)
+		require.Equal(t, serverHost.ID(), stat.peerID)
+	case <-ctx.Done():
+		t.Fatal("session did not pick up the forgotten connected peer")
+	}
+}
+
+func setRequeueDelay(t *testing.T, delay time.Duration) {
+	prev := emptyResponseRequeueDelay
+	emptyResponseRequeueDelay = delay
+	t.Cleanup(func() { emptyResponseRequeueDelay = prev })
+}
+
+func newClientExchange(t *testing.T, host libhost.Host) *Exchange[*headertest.DummyHeader] {
+	ex, err := NewExchange[*headertest.DummyHeader](host, nil, nil,
+		WithNetworkID[ClientParameters](networkID),
+		WithChainID(networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, ex.Start(context.Background()))
+	t.Cleanup(func() { ex.Stop(context.Background()) }) //nolint:errcheck
+	return ex
+}
+
+func startServer(t *testing.T, host libhost.Host, store header.Store[*headertest.DummyHeader]) {
+	srv, err := NewExchangeServer[*headertest.DummyHeader](host, store,
+		WithNetworkID[ServerParameters](networkID),
+	)
+	require.NoError(t, err)
+	require.NoError(t, srv.Start(context.Background()))
+	t.Cleanup(func() { srv.Stop(context.Background()) }) //nolint:errcheck
+}
+
+func TestExchange_GetRangeByHeight_WaitForPeersCanceled(t *testing.T) {
+	newEx := func(t *testing.T) *Exchange[*headertest.DummyHeader] {
+		ex, err := NewExchange[*headertest.DummyHeader](createMocknet(t, 1)[0], nil, nil,
+			WithNetworkID[ClientParameters](networkID),
+		)
+		require.NoError(t, err)
+		require.NoError(t, ex.Start(context.Background()))
+		return ex
+	}
+	from := headertest.NewTestSuite(t).GenDummyHeaders(1)[0]
+
+	t.Run("context", func(t *testing.T) {
+		ex := newEx(t)
+		t.Cleanup(func() { ex.Stop(context.Background()) }) //nolint:errcheck
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+		t.Cleanup(cancel)
+		_, err := ex.GetRangeByHeight(ctx, from, from.Height()+5)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		ex := newEx(t)
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := ex.GetRangeByHeight(context.Background(), from, from.Height()+5)
+			errCh <- err
+		}()
+		time.Sleep(time.Millisecond * 50)
+		require.NoError(t, ex.Stop(context.Background()))
+
+		select {
+		case err := <-errCh:
+			require.Error(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("request did not return after exchange stop")
+		}
+	})
+}
+
 // TestExchange_RequestFullRangeHeaders requests max amount of headers
 // to verify how session will parallelize all requests.
 func TestExchange_RequestFullRangeHeaders(t *testing.T) {

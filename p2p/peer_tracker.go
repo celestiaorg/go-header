@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -40,6 +41,8 @@ type peerTracker struct {
 	// disconnectedPeers contains disconnected peers. In case if peer does not return
 	// online until pruneDeadline, it will be removed and its score will be lost
 	disconnectedPeers map[libpeer.ID]*peerStat
+	// newPeer is closed and replaced every time a peer gets tracked to wake up waitPeers.
+	newPeer chan struct{}
 
 	// an optional interface used to periodically dump
 	// good peers during garbage collection
@@ -65,6 +68,7 @@ func newPeerTracker(
 		metrics:           metrics,
 		trackedPeers:      make(map[libpeer.ID]*peerStat),
 		disconnectedPeers: make(map[libpeer.ID]*peerStat),
+		newPeer:           make(chan struct{}),
 		pidstore:          pidstore,
 		ctx:               ctx,
 		cancel:            cancel,
@@ -114,15 +118,16 @@ func (p *peerTracker) track() {
 		p.done <- struct{}{}
 	}()
 
-	// store peers that have been already connected
-	for _, c := range p.host.Network().Conns() {
-		p.connected(c.RemotePeer())
-	}
-
 	subs, err := p.host.EventBus().Subscribe(&event.EvtPeerConnectednessChanged{})
 	if err != nil {
 		log.Errorw("subscribing to EvtPeerConnectednessChanged", "err", err)
 		return
+	}
+
+	// store peers that have been already connected
+	// after subscribing, so a peer connecting in between is not missed
+	for _, c := range p.host.Network().Conns() {
+		p.connected(c.RemotePeer())
 	}
 
 	for {
@@ -174,6 +179,10 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 
 	p.peerLk.Lock()
 	defer p.peerLk.Unlock()
+	if _, ok := p.trackedPeers[pID]; ok {
+		// seen by both the initial scan and the subscription
+		return
+	}
 	// skip adding the peer to avoid overfilling of the peerTracker with unused peers if:
 	// peerTracker reaches the maxTrackerSize and there are more connected peers
 	// than disconnected peers.
@@ -191,6 +200,8 @@ func (p *peerTracker) connected(pID libpeer.ID) {
 		delete(p.disconnectedPeers, pID)
 	}
 	p.trackedPeers[pID] = stats
+	close(p.newPeer)
+	p.newPeer = make(chan struct{})
 
 	p.metrics.peersTracked(1)
 }
@@ -218,6 +229,35 @@ func (p *peerTracker) peers() []*peerStat {
 		peers = append(peers, stat)
 	}
 	return peers
+}
+
+// newPeerCh returns a channel that is closed once a new peer gets tracked.
+func (p *peerTracker) newPeerCh() <-chan struct{} {
+	p.peerLk.RLock()
+	defer p.peerLk.RUnlock()
+	return p.newPeer
+}
+
+// waitPeers returns tracked peers, blocking until at least one is available.
+func (p *peerTracker) waitPeers(ctx context.Context) ([]*peerStat, error) {
+	for {
+		// newPeer must be taken before peers() so a peer tracked in between is not missed.
+		newPeer := p.newPeerCh()
+
+		peers := p.peers()
+		if len(peers) > 0 {
+			return peers, nil
+		}
+
+		log.Debug("no tracked peers, waiting for a new peer")
+		select {
+		case <-newPeer:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-p.ctx.Done():
+			return nil, errors.New("header/p2p: peer tracker is stopped")
+		}
+	}
 }
 
 // gc goes through connected and disconnected peers once every gcPeriod

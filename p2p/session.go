@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,6 +31,10 @@ var (
 	errUnexpectedRange = errors.New("response does not start at the requested height")
 )
 
+// emptyResponseRequeueDelay is how long a still connected peer that responded with nothing
+// waits before it can be requested again, so a peer failing immediately isn't requested in a loop.
+var emptyResponseRequeueDelay = time.Second
+
 type option[H header.Header[H]] func(*session[H])
 
 func withValidation[H header.Header[H]](from H) option[H] {
@@ -42,6 +49,10 @@ type session[H header.Header[H]] struct {
 	host       host.Host
 	protocolID protocol.ID
 	queue      *peerQueue
+	// knownLk protects known, which keeps peers that are queued, in flight or awaiting a requeue,
+	// so the queue is never refilled with them twice.
+	knownLk sync.Mutex
+	known   map[peer.ID]struct{}
 	// peerTracker contains discovered peers with records that describes their activity.
 	peerTracker *peerTracker
 	metrics     *exchangeMetrics
@@ -50,6 +61,7 @@ type session[H header.Header[H]] struct {
 	// `from` is set when additional validation for range is needed.
 	from           H
 	requestTimeout time.Duration
+	requeueDelay   time.Duration
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,9 +84,10 @@ func newSession[H header.Header[H]](
 		cancel:         cancel,
 		protocolID:     protocolID,
 		host:           h,
-		queue:          newPeerQueue(ctx, peerTracker.peers()),
+		known:          make(map[peer.ID]struct{}),
 		peerTracker:    peerTracker,
 		requestTimeout: requestTimeout,
+		requeueDelay:   emptyResponseRequeueDelay,
 		metrics:        metrics,
 	}
 
@@ -102,6 +115,15 @@ func (s *session[H]) getRangeByHeight(
 		otelattr.Uint64("to", from+amount-1),
 	))
 	defer span.End()
+
+	// wait for the tracker to have peers (e.g. right after start)
+	peers, err := s.peerTracker.waitPeers(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	s.queue = newPeerQueue(nil)
+	s.addPeers(peers)
 
 	requests := prepareRequests(from, amount, headersPerPeer)
 	result := make(chan []H, len(requests))
@@ -162,13 +184,68 @@ func (s *session[H]) handleOutgoingRequests(ctx context.Context, result chan []H
 			return
 		case req := <-s.reqCh:
 			// select peer with the highest score among the available ones for the request
-			stats := s.queue.waitPop(ctx)
-			if stats.peerID == "" {
+			stats, ok := s.nextPeer(ctx)
+			if !ok {
 				return
 			}
 			go s.doRequest(ctx, stats, req, result)
 		}
 	}
+}
+
+// nextPeer pops the peer with the highest score. While the queue is empty, it queues tracked peers
+// the session doesn't know yet, so peers connecting after the session started can serve it.
+func (s *session[H]) nextPeer(ctx context.Context) (*peerStat, bool) {
+	for {
+		// newPeer must be taken before tracked peers are read so a peer tracked in between is not missed.
+		newPeer := s.peerTracker.newPeerCh()
+		if stat, ok := s.queue.pop(); ok {
+			return stat, true
+		}
+
+		var connected []*peerStat
+		for _, stat := range s.peerTracker.peers() {
+			if s.host.Network().Connectedness(stat.peerID) == network.Connected {
+				connected = append(connected, stat)
+			}
+		}
+		s.addPeers(connected)
+		if stat, ok := s.queue.pop(); ok {
+			return stat, true
+		}
+
+		select {
+		case <-s.queue.pushed():
+		case <-newPeer:
+		case <-ctx.Done():
+			return nil, false
+		case <-s.ctx.Done():
+			return nil, false
+		}
+	}
+}
+
+// addPeers queues the given peers unless the session already knows them.
+func (s *session[H]) addPeers(peers []*peerStat) {
+	s.knownLk.Lock()
+	defer s.knownLk.Unlock()
+	for _, stat := range peers {
+		if _, ok := s.known[stat.peerID]; ok {
+			continue
+		}
+		s.known[stat.peerID] = struct{}{}
+		s.queue.push(stat)
+	}
+}
+
+// forgetPeer lets the queue be refilled with the peer once it is tracked and connected again.
+func (s *session[H]) forgetPeer(id peer.ID) {
+	s.knownLk.Lock()
+	delete(s.known, id)
+	s.knownLk.Unlock()
+	// the peer may have reconnected before it was forgotten and been skipped as known,
+	// so let a waiting nextPeer look at the tracked peers again
+	s.queue.signal()
 }
 
 // doRequest chooses the best peer to fetch headers and sends a request in range of available
@@ -225,11 +302,19 @@ func (s *session[H]) doRequest(
 			"err", err,
 			"peer", stat.peerID,
 		)
-		// ErrNotFound is not a critical error here. It means
-		// that peer hasn't synced the requested range yet.
-		// Returning peer to the queue, so it could serve another ranges.
-		if errors.Is(err, header.ErrNotFound) {
+		switch {
+		case errors.Is(err, header.ErrNotFound):
+			// ErrNotFound is not a critical error here. It means
+			// that peer hasn't synced the requested range yet.
+			// Returning peer to the queue, so it could serve another ranges.
 			s.queue.push(stat)
+		case errors.Is(err, errEmptyResponse) &&
+			s.host.Network().Connectedness(stat.peerID) == network.Connected:
+			// the peer is still around (e.g. the request timed out) and its score is lowered,
+			// so others go first; the delay keeps a peer failing immediately from a request loop
+			time.AfterFunc(s.requeueDelay, func() { s.queue.push(stat) })
+		default:
+			s.forgetPeer(stat.peerID)
 		}
 		return
 	}
