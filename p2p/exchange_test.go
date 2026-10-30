@@ -509,6 +509,49 @@ func TestExchange_GetRangeByHeight_UsesPeerTrackedAfterStart(t *testing.T) {
 	require.NoError(t, <-errCh)
 }
 
+// TestSession_NextPeerWakesOnForget ensures a waiting session picks up a connected peer once the
+// peer is forgotten, e.g. when it reconnected while still marked as known.
+func TestSession_NextPeerWakesOnForget(t *testing.T) {
+	net, err := mocknet.WithNPeers(2)
+	require.NoError(t, err)
+	require.NoError(t, net.LinkAll())
+	clientHost, serverHost := net.Hosts()[0], net.Hosts()[1]
+
+	ex := newClientExchange(t, clientHost)
+	_, err = net.ConnectPeers(clientHost.ID(), serverHost.ID())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(ex.peerTracker.peers()) == 1 },
+		time.Second, time.Millisecond*10)
+
+	ses := newSession[*headertest.DummyHeader](
+		ex.ctx, ex.host, ex.peerTracker, ex.protocolID, time.Second, ex.metrics,
+	)
+	t.Cleanup(ses.close)
+	ses.queue = newPeerQueue(nil)
+	// the peer is known to the session, as if its failed request is still being handled
+	ses.known[serverHost.ID()] = struct{}{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	t.Cleanup(cancel)
+	statCh := make(chan *peerStat, 1)
+	go func() {
+		stat, _ := ses.nextPeer(ctx)
+		statCh <- stat
+	}()
+
+	// let nextPeer skip the known peer and wait
+	time.Sleep(time.Millisecond * 50)
+	ses.forgetPeer(serverHost.ID())
+
+	select {
+	case stat := <-statCh:
+		require.NotNil(t, stat)
+		require.Equal(t, serverHost.ID(), stat.peerID)
+	case <-ctx.Done():
+		t.Fatal("session did not pick up the forgotten connected peer")
+	}
+}
+
 func setRequeueDelay(t *testing.T, delay time.Duration) {
 	prev := emptyResponseRequeueDelay
 	emptyResponseRequeueDelay = delay

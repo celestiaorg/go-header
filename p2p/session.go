@@ -243,6 +243,9 @@ func (s *session[H]) forgetPeer(id peer.ID) {
 	s.knownLk.Lock()
 	delete(s.known, id)
 	s.knownLk.Unlock()
+	// the peer may have reconnected before it was forgotten and been skipped as known,
+	// so let a waiting nextPeer look at the tracked peers again
+	s.queue.signal()
 }
 
 // doRequest chooses the best peer to fetch headers and sends a request in range of available

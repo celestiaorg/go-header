@@ -136,6 +136,11 @@ func (p *peerQueue) push(stat *peerStat) {
 	heap.Push(&p.stats, stat)
 	p.statsLk.Unlock()
 	// notify that the peer is available in the queue, so it can be popped out
+	p.signal()
+}
+
+// signal wakes up a waiter without blocking.
+func (p *peerQueue) signal() {
 	select {
 	case p.havePeer <- struct{}{}:
 	default:
