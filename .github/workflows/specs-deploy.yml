@@ -42,6 +42,6 @@ jobs:
         # Only run this job if the PR was created from a branch on
         # rollkit/rollkit because this job will fail for branches from forks.
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: rossjrw/pr-preview-action@2fb559e4766555e23d07b73d313fe97c4f8c3cfe # v1.6.1
+        uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1.8.2
         with:
           source-dir: ./specs/book
