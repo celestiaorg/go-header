@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,8 +10,11 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/celestiaorg/go-header/headertest"
+	"github.com/celestiaorg/go-header/internal/otelattr"
 	"github.com/celestiaorg/go-header/store"
 )
 
@@ -113,6 +117,59 @@ func TestSyncer_TailEstimation(t *testing.T) {
 	tail, err = localStore.Tail(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 51, tail.Height())
+}
+
+func TestSyncer_HeadTracingPruneError(t *testing.T) {
+	recorder := recordSyncSpans(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*50)
+	t.Cleanup(cancel)
+
+	suite := headertest.NewTestSuite(t)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 100)
+	ds := dssync.MutexWrap(datastore.NewMapDatastore())
+	localStore, err := store.NewStore[*headertest.DummyHeader](ds, store.WithWriteBatchSize(1))
+	require.NoError(t, err)
+	require.NoError(t, localStore.Start(ctx))
+	t.Cleanup(func() { require.NoError(t, localStore.Stop(context.Background())) })
+
+	syncer, err := NewSyncer(
+		remoteStore,
+		localStore,
+		headertest.NewDummySubscriber(),
+		WithBlockTime(headertest.HeaderTime),
+		WithPruningWindow(time.Nanosecond*50),
+	)
+	require.NoError(t, err)
+	require.NoError(t, syncer.Start(ctx))
+	t.Cleanup(func() { require.NoError(t, syncer.Stop(context.Background())) })
+	require.Eventually(t, func() bool {
+		return localStore.Height() == remoteStore.Height()
+	}, time.Second*5, time.Millisecond)
+
+	expectedErr := errors.New("pruning failed")
+	var deleteSpan trace.SpanContext
+	localStore.OnDelete(func(ctx context.Context, _ uint64) error {
+		deleteSpan = trace.SpanContextFromContext(ctx)
+		return expectedErr
+	})
+	require.NoError(t, remoteStore.Append(ctx, suite.NextHeader()))
+
+	_, err = syncer.Head(ctx)
+	require.ErrorIs(t, err, expectedErr)
+
+	spans := recorder.Ended()
+	pruneSpan := spanByName(t, spans, "prune")
+	tailSpan := spanByID(t, spans, pruneSpan.Parent().SpanID())
+	headSpan := spanByID(t, spans, tailSpan.Parent().SpanID())
+	assert.Equal(t, "head", headSpan.Name())
+	assert.Equal(t, "subjective-tail", tailSpan.Name())
+	assert.Equal(t, headSpan.SpanContext().SpanID(), tailSpan.Parent().SpanID())
+	assert.Equal(t, tailSpan.SpanContext().SpanID(), pruneSpan.Parent().SpanID())
+	assert.Equal(t, pruneSpan.SpanContext(), deleteSpan)
+	assert.Contains(t, pruneSpan.Attributes(), otelattr.Uint64("from", 1))
+	assert.Contains(t, pruneSpan.Attributes(), otelattr.Uint64("to", 51))
+	assert.Equal(t, codes.Error, pruneSpan.Status().Code)
+	assert.Contains(t, pruneSpan.Status().Description, expectedErr.Error())
 }
 
 func TestSyncer_TailReconfiguration(t *testing.T) {
