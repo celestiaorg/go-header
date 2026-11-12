@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/celestiaorg/go-header"
 	"github.com/celestiaorg/go-header/headertest"
@@ -43,6 +46,95 @@ func TestSyncer_HeadConcurrencyError(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestSyncer_HeadTracing(t *testing.T) {
+	recorder := recordSyncSpans(t)
+	ctx := context.Background()
+	suite := headertest.NewTestSuite(t)
+	store := headertest.NewStore[*headertest.DummyHeader](t, suite, 1)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 0)
+	require.NoError(t, remoteStore.Append(ctx, suite.Head(), suite.NextHeader()))
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		remoteStore,
+		store,
+		headertest.NewDummySubscriber(),
+		WithRecencyThreshold(time.Nanosecond),
+	)
+	require.NoError(t, err)
+
+	head, err := syncer.Head(ctx)
+	require.NoError(t, err)
+	require.False(t, head.IsZero())
+
+	spans := recorder.Ended()
+	headSpan := spanWithEvent(t, spans, "head-found")
+	assert.Equal(t, "head", headSpan.Name())
+	assert.Equal(t, codes.Ok, headSpan.Status().Code)
+
+	networkSpan := spanByName(t, spans, "network-head")
+	requestSpan := spanByName(t, spans, "request-head")
+	assert.Equal(t, networkSpan.SpanContext().SpanID(), requestSpan.Parent().SpanID())
+	for _, name := range []string{"network-head", "subjective-tail", "incoming-network-head", "local-head"} {
+		phaseSpan := spanByName(t, spans, name)
+		assert.Equal(t, headSpan.SpanContext().SpanID(), phaseSpan.Parent().SpanID(), name)
+	}
+	assert.Equal(t, codes.Ok, networkSpan.Status().Code)
+	assert.Equal(t, codes.Ok, spanByName(t, spans, "subjective-tail").Status().Code)
+	assert.Equal(t, codes.Error, spanByName(t, spans, "incoming-network-head").Status().Code)
+	assert.Equal(t, codes.Ok, spanByName(t, spans, "local-head").Status().Code)
+}
+
+func TestSyncer_HeadTracingTailError(t *testing.T) {
+	recorder := recordSyncSpans(t)
+	ctx := context.Background()
+	suite := headertest.NewTestSuite(t)
+	store := headertest.NewStore[*headertest.DummyHeader](t, suite, 1)
+	remoteStore := headertest.NewStore[*headertest.DummyHeader](t, suite, 0)
+	require.NoError(t, remoteStore.Append(ctx, suite.Head(), suite.NextHeader()))
+	expectedErr := errors.New("tail unavailable")
+	syncer, err := NewSyncer[*headertest.DummyHeader](
+		remoteStore,
+		&tailErrorStore{Store: store, err: expectedErr},
+		headertest.NewDummySubscriber(),
+		WithRecencyThreshold(time.Nanosecond),
+	)
+	require.NoError(t, err)
+
+	_, err = syncer.Head(ctx)
+	require.ErrorIs(t, err, expectedErr)
+
+	spans := recorder.Ended()
+	headSpan := spanByName(t, spans, "head")
+	tailSpan := spanByName(t, spans, "subjective-tail")
+	assert.Equal(t, headSpan.SpanContext().SpanID(), tailSpan.Parent().SpanID())
+	assert.Equal(t, codes.Error, tailSpan.Status().Code)
+	assert.Equal(t, expectedErr.Error(), tailSpan.Status().Description)
+	assert.Equal(t, codes.Error, headSpan.Status().Code)
+	assert.NotEqual(
+		t, expectedErr.Error(), headSpan.Status().Description, "root error keeps stage context",
+	)
+	assert.Contains(t, headSpan.Status().Description, "subjective tail")
+	assert.Nil(t, findSpanByName(spans, "incoming-network-head"))
+	assert.Nil(t, findSpanByName(spans, "local-head"))
+}
+
+func findSpanByName(spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	return nil
+}
+
+type tailErrorStore struct {
+	header.Store[*headertest.DummyHeader]
+	err error
+}
+
+func (s *tailErrorStore) Tail(context.Context) (*headertest.DummyHeader, error) {
+	return nil, s.err
 }
 
 func TestSyncer_incomingNetworkHeadRaces(t *testing.T) {

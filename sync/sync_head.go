@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/celestiaorg/go-header"
 )
 
@@ -17,7 +19,7 @@ type syncHead[H header.Header[H]] struct {
 	resErr  error
 }
 
-func (sh *syncHead[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (H, error) {
+func (sh *syncHead[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (head H, err error) {
 	sh.headMu.Lock()
 	doneCh := sh.headCh
 	acquired := doneCh == nil
@@ -27,8 +29,19 @@ func (sh *syncHead[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 	}
 	sh.headMu.Unlock()
 
+	ctx, span := tracerSync.Start(ctx, "request-head")
+	defer func() {
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetStatus(codes.Ok, "")
+		}
+		span.End()
+	}()
+
 	if acquired {
-		head, err := sh.head.Head(ctx, opts...)
+		span.AddEvent("requesting-head-from-source")
+		head, err = sh.head.Head(ctx, opts...)
 
 		sh.headMu.Lock()
 		sh.resHead, sh.resErr = head, err
@@ -39,11 +52,13 @@ func (sh *syncHead[H]) Head(ctx context.Context, opts ...header.HeadOption[H]) (
 		return head, err
 	}
 
+	span.AddEvent("waiting-for-ongoing-head-request")
 	select {
 	case <-doneCh:
 		sh.headMu.Lock()
 		defer sh.headMu.Unlock()
-		return sh.resHead, sh.resErr
+		head, err = sh.resHead, sh.resErr
+		return head, err
 	case <-ctx.Done():
 		var zero H
 		return zero, ctx.Err()

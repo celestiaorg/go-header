@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/internal/otelattr"
 )
 
 // NetworkHeadRequestTimeout is the amount of time the syncer is willing to wait for
@@ -19,8 +23,26 @@ var NetworkHeadRequestTimeout = time.Second * 2
 // It will try to get the most recent network head or return the current
 // non-expired subjective head as a fallback.
 // If the head has changed, it will update the tail with the new head.
-func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, error) {
-	netHead, updated, err := s.networkHead(ctx)
+func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (head H, err error) {
+	ctx, span := tracerSync.Start(ctx, "head")
+	defer func() {
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			if !head.IsZero() {
+				span.AddEvent("head-found", trace.WithAttributes(
+					otelattr.Uint64("height", head.Height()),
+				))
+			}
+			span.SetStatus(codes.Ok, "")
+		}
+		span.End()
+	}()
+
+	networkCtx, networkSpan := tracerSync.Start(ctx, "network-head")
+	netHead, updated, err := s.networkHead(networkCtx)
+	setSpanStatus(networkSpan, err)
+	networkSpan.End()
 	if err != nil {
 		return netHead, fmt.Errorf("network head: %w", err)
 	}
@@ -28,7 +50,11 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 		return netHead, nil
 	}
 
-	if _, err = s.subjectiveTail(ctx, netHead); err != nil {
+	tailCtx, tailSpan := tracerSync.Start(ctx, "subjective-tail")
+	_, err = s.subjectiveTail(tailCtx, netHead)
+	setSpanStatus(tailSpan, err)
+	tailSpan.End()
+	if err != nil {
 		return netHead, fmt.Errorf(
 			"subjective tail for head %d: %w",
 			netHead.Height(),
@@ -38,9 +64,24 @@ func (s *Syncer[H]) Head(ctx context.Context, _ ...header.HeadOption[H]) (H, err
 
 	// attempt to set the (potentially) new network head
 	// it doesn't matter for the caller setting succeeds or not
-	_ = s.incomingNetworkHead(ctx, netHead)
+	incomingCtx, incomingSpan := tracerSync.Start(ctx, "incoming-network-head")
+	incomingErr := s.incomingNetworkHead(incomingCtx, netHead)
+	setSpanStatus(incomingSpan, incomingErr)
+	incomingSpan.End()
 	// so return whatever is the current highest head
-	return s.localHead(ctx)
+	localCtx, localSpan := tracerSync.Start(ctx, "local-head")
+	head, err = s.localHead(localCtx)
+	setSpanStatus(localSpan, err)
+	localSpan.End()
+	return head, err
+}
+
+func setSpanStatus(span trace.Span, err error) {
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return
+	}
+	span.SetStatus(codes.Ok, "")
 }
 
 // networkHead returns subjective head lazily ensuring its recency.
