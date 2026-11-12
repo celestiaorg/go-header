@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"container/heap"
+	"math"
 	"testing"
 	"time"
 
@@ -98,6 +99,21 @@ func Test_StatsUpdateStats(t *testing.T) {
 		require.Equal(t, updatedStat.score(), stat.score())
 		heap.Push(&pQueue.stats, updatedStat)
 	}
+}
+
+// Test_StatsUpdateStatsSubMillisecond ensures a reply faster than 1ms yields a
+// finite, comparable score instead of +Inf. Before the fix the divisor was
+// duration.Milliseconds(), which truncates sub-millisecond durations to 0.
+func Test_StatsUpdateStatsSubMillisecond(t *testing.T) {
+	stat := &peerStat{peerID: "peerID"}
+	stat.updateStats(1000, time.Microsecond*500)
+	score := float64(stat.score())
+	require.False(t, math.IsInf(score, 1), "score must stay finite for sub-ms replies")
+	require.Greater(t, stat.score(), float32(0))
+
+	// A second fast reply must keep the score finite and comparable, not absorbing.
+	stat.updateStats(1000, time.Microsecond*500)
+	require.False(t, math.IsInf(float64(stat.score()), 1))
 }
 
 func Test_StatDecreaseScore(t *testing.T) {
