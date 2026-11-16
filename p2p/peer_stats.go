@@ -28,10 +28,15 @@ type peerStat struct {
 func (p *peerStat) updateStats(amount int, duration time.Duration) {
 	p.Lock()
 	defer p.Unlock()
-	averageSpeed := float32(amount)
-	if duration != 0 {
-		averageSpeed /= float32(duration.Milliseconds())
+	// Compute the duration in milliseconds as a float so sub-millisecond replies
+	// are not truncated to zero. A floor keeps the divisor positive, otherwise a
+	// reply faster than the floor would divide by ~0 and make the score +Inf,
+	// which is absorbing: averaging could never bring it back down.
+	ms := float64(duration) / float64(time.Millisecond)
+	if ms < 0.1 {
+		ms = 0.1
 	}
+	averageSpeed := float32(float64(amount) / ms)
 	if p.peerScore == 0.0 {
 		p.peerScore = averageSpeed
 		return
