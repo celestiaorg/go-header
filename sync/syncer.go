@@ -8,11 +8,15 @@ import (
 	"time"
 
 	logging "github.com/ipfs/go-log/v2"
+	"go.opentelemetry.io/otel"
 
 	"github.com/celestiaorg/go-header"
 )
 
-var log = logging.Logger("header/sync")
+var (
+	log        = logging.Logger("header/sync")
+	tracerSync = otel.Tracer("header/sync")
+)
 
 // Syncer implements efficient synchronization for headers.
 //

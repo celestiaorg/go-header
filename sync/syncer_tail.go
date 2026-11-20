@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/celestiaorg/go-header"
+	"github.com/celestiaorg/go-header/internal/otelattr"
 )
 
 // subjectiveTail returns the current actual Tail header.
@@ -130,7 +133,12 @@ func (s *Syncer[H]) moveTail(ctx context.Context, from, to H) error {
 	switch {
 	case from.Height() < to.Height():
 		log.Infof("move tail up from %d to %d, pruning the diff...", from.Height(), to.Height())
-		err := s.store.DeleteRange(ctx, from.Height(), to.Height())
+		pruneCtx, span := tracerSync.Start(ctx, "prune", trace.WithAttributes(
+			otelattr.Uint64("from", from.Height()), otelattr.Uint64("to", to.Height()),
+		))
+		err := s.store.DeleteRange(pruneCtx, from.Height(), to.Height())
+		setSpanStatus(span, err)
+		span.End()
 		if err != nil {
 			return fmt.Errorf(
 				"deleting headers up to newly configured tail(%d): %w",
